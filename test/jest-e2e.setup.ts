@@ -1,3 +1,5 @@
-process.env.NODE_ENV ??= 'test';
+import 'dotenv/config';
+
+process.env.NODE_ENV = 'test';
 process.env.DATABASE_URL ??=
-  'postgresql://pathway:pathway@localhost:5432/pathway_test?schema=public';
+  'postgresql://pathway_user:pathway_password@localhost:5432/pathway_dev?schema=public';
