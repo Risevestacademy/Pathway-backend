@@ -1,0 +1,280 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum ResourceType {
+  COURSE
+  CERTIFICATION
+  ARTICLE
+  VIDEO
+  BOOK
+}
+
+enum PathwayStepStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum SkillProgressSource {
+  INITIAL_ASSESSMENT
+  STEP_ASSESSMENT
+}
+
+enum AssessmentStatus {
+  IN_PROGRESS
+  COMPLETED
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(USER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  refreshTokens   RefreshToken[]
+  assessments     Assessment[]
+  userSkills      UserSkill[]
+  pathwayProgress UserPathwayStep[]
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Skill {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  careerSkills      CareerSkill[]
+  pathwayStepSkills PathwayStepSkill[]
+  resourceSkills    ResourceSkill[]
+  questions         AssessmentQuestion[]
+  userSkills        UserSkill[]
+}
+
+model Career {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  category    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  skills  CareerSkill[]
+  outlook OutlookData?
+  pathway Pathway?
+}
+
+model CareerSkill {
+  careerId String
+  skillId  String
+
+  career Career @relation(fields: [careerId], references: [id], onDelete: Cascade)
+  skill  Skill  @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([careerId, skillId])
+}
+
+model OutlookData {
+  id         String   @id @default(uuid())
+  careerId   String   @unique
+  salaryMin  Decimal?
+  salaryMax  Decimal?
+  currency   String?
+  demand     String?
+  growthRate Decimal?
+  source     String?
+  updatedAt  DateTime @updatedAt
+
+  career Career @relation(fields: [careerId], references: [id], onDelete: Cascade)
+}
+
+model Pathway {
+  id          String   @id @default(uuid())
+  careerId    String   @unique
+  title       String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  career Career        @relation(fields: [careerId], references: [id], onDelete: Cascade)
+  steps  PathwayStep[]
+}
+
+model PathwayStep {
+  id          String   @id @default(uuid())
+  pathwayId   String
+  title       String
+  description String?
+  order       Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  pathway     Pathway               @relation(fields: [pathwayId], references: [id], onDelete: Cascade)
+  skills      PathwayStepSkill[]
+  resources   PathwayStepResource[]
+  progress    UserPathwayStep[]
+  assessments Assessment[]
+
+  @@unique([pathwayId, order])
+}
+
+model PathwayStepSkill {
+  pathwayStepId String
+  skillId       String
+
+  pathwayStep PathwayStep @relation(fields: [pathwayStepId], references: [id], onDelete: Cascade)
+  skill       Skill       @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([pathwayStepId, skillId])
+}
+
+model Resource {
+  id          String       @id @default(uuid())
+  title       String
+  description String?
+  url         String
+  type        ResourceType
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  pathwaySteps PathwayStepResource[]
+  skills       ResourceSkill[]
+}
+
+model PathwayStepResource {
+  pathwayStepId String
+  resourceId    String
+
+  pathwayStep PathwayStep @relation(fields: [pathwayStepId], references: [id], onDelete: Cascade)
+  resource    Resource    @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@id([pathwayStepId, resourceId])
+}
+
+model ResourceSkill {
+  resourceId String
+  skillId    String
+
+  resource Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  skill    Skill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([resourceId, skillId])
+}
+
+model UserPathwayStep {
+  id            String            @id @default(uuid())
+  userId        String
+  pathwayStepId String
+  status        PathwayStepStatus @default(NOT_STARTED)
+  completedAt   DateTime?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pathwayStep PathwayStep @relation(fields: [pathwayStepId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, pathwayStepId])
+  @@index([userId])
+}
+
+model UserSkill {
+  id        String   @id @default(uuid())
+  userId    String
+  skillId   String
+  rating    Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skill    Skill               @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  progress UserSkillProgress[]
+
+  @@unique([userId, skillId])
+  @@index([userId])
+}
+
+model UserSkillProgress {
+  id           String              @id @default(uuid())
+  userSkillId  String
+  assessmentId String?
+  rating       Int
+  source       SkillProgressSource
+  createdAt    DateTime            @default(now())
+
+  userSkill  UserSkill   @relation(fields: [userSkillId], references: [id], onDelete: Cascade)
+  assessment Assessment? @relation(fields: [assessmentId], references: [id], onDelete: SetNull)
+
+  @@index([userSkillId, createdAt])
+}
+
+model Assessment {
+  id            String           @id @default(uuid())
+  userId        String
+  pathwayStepId String?
+  status        AssessmentStatus @default(IN_PROGRESS)
+  startedAt     DateTime         @default(now())
+  completedAt   DateTime?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pathwayStep PathwayStep? @relation(fields: [pathwayStepId], references: [id], onDelete: SetNull)
+
+  responses AssessmentResponse[]
+  progress  UserSkillProgress[]
+
+  @@index([userId])
+  @@index([pathwayStepId])
+}
+
+model AssessmentQuestion {
+  id        String   @id @default(uuid())
+  skillId   String
+  question  String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  skill     Skill                @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  responses AssessmentResponse[]
+
+  @@index([skillId])
+}
+
+model AssessmentResponse {
+  id           String   @id @default(uuid())
+  assessmentId String
+  questionId   String
+  rating       Int
+  createdAt    DateTime @default(now())
+
+  assessment Assessment         @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  question   AssessmentQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([assessmentId, questionId])
+}
