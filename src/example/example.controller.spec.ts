@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ExampleController } from './example.controller';
 import { ExampleService } from './example.service';
+import { jest } from '@jest/globals';
 
 // Controller tests are deliberately light — just confirming the
 // controller routes to the right service method with the right args
