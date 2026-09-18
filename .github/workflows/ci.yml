@@ -21,9 +21,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: lts/*
           cache: npm
       - run: npm ci
+      - run: npx prisma generate
       - run: npm run format:check
       - run: npm run lint
       - run: npm run typecheck
@@ -31,7 +32,6 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
-
     services:
       postgres:
         image: postgres:16-alpine
@@ -55,13 +55,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: lts/*
           cache: npm
       - run: npm ci
+      - run: npx prisma generate
       - run: npx prisma migrate deploy
       - run: npm run db:seed
       - run: npm test
-      - run: npm run test:e2e
+      - run: npm run test:e2e 
 
   build:
     name: Build
@@ -70,7 +71,18 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: lts/* # UPDATED
           cache: npm
       - run: npm ci
+      - run: npx prisma generate # ADDED: Required for production build to succeed
       - run: npm run build
+
+  docker-build:
+    name: Build Staging Docker Image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        # This just tests if the Dockerfile is valid. It doesn't push it anywhere yet.
+        run: docker build -t pathway-server-staging .

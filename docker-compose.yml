@@ -17,5 +17,20 @@ services:
       timeout: 5s
       retries: 5
 
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pathway_server
+    restart: unless-stopped
+    ports:
+      - '${SERVER_PORT:-3000}:3000'
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      NODE_ENV: ${NODE_ENV:-staging}
+    depends_on:
+      postgres:
+        condition: service_healthy 
+
 volumes:
   postgres_data:
