@@ -47,7 +47,7 @@ describe('validateEnv', () => {
   });
 
   it('throws when NODE_ENV is not a known environment', () => {
-    expect(() => validateEnv({ ...validEnv, NODE_ENV: 'staging' })).toThrow(
+    expect(() => validateEnv({ ...validEnv, NODE_ENV: 'invalid' })).toThrow(
       /NODE_ENV/,
     );
   });
@@ -64,7 +64,11 @@ describe('validateEnv', () => {
 
   it('reports every invalid variable in one error', () => {
     expect(() =>
-      validateEnv({ NODE_ENV: 'staging', PORT: '0', DATABASE_URL: '' }),
+      validateEnv({
+        NODE_ENV: 'invalid',
+        PORT: '0',
+        DATABASE_URL: '',
+      }),
     ).toThrow(/NODE_ENV[\s\S]*PORT[\s\S]*DATABASE_URL/);
   });
 });
