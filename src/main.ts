@@ -1,9 +1,8 @@
+import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { EnvironmentVariables } from './config';
-import { createValidationPipe } from './common/pipes/validation.pipe';
-import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -11,10 +10,15 @@ async function bootstrap() {
   const config =
     app.get<ConfigService<EnvironmentVariables, true>>(ConfigService);
 
-  app.useGlobalPipes(createValidationPipe());
-  app.useGlobalFilters(new HttpExceptionFilter());
+  app.enableShutdownHooks();
 
   await app.listen(config.get('PORT', { infer: true }));
 }
 
-bootstrap();
+bootstrap().catch((error: unknown) => {
+  new Logger('Bootstrap').error(
+    'Application failed to start',
+    error instanceof Error ? error.stack : String(error),
+  );
+  process.exit(1);
+});
