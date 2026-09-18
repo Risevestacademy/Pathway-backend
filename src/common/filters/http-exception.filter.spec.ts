@@ -1,20 +1,36 @@
 import { jest } from '@jest/globals';
 import { HttpException, HttpStatus, NotFoundException } from '@nestjs/common';
+import type { ArgumentsHost } from '@nestjs/common';
+import type { Request } from 'express';
 import { HttpExceptionFilter } from './http-exception.filter';
 
+type ErrorResponseBody = {
+  statusCode: number;
+  message: string | string[];
+  error: string;
+  path: string;
+  timestamp: string;
+};
+
+type MockResponse = {
+  status: jest.Mock<(statusCode: number) => MockResponse>;
+  json: jest.Mock<(body: ErrorResponseBody) => MockResponse>;
+};
 
 describe('HttpExceptionFilter', () => {
   let filter: HttpExceptionFilter;
-  let mockResponse: any;
-  let mockRequest: any;
-  let mockHost: any;
+  let mockResponse: MockResponse;
+  let mockRequest: Pick<Request, 'url'>;
+  let mockHost: ArgumentsHost;
 
   beforeEach(() => {
     filter = new HttpExceptionFilter();
 
     mockResponse = {
-      status: jest.fn().mockReturnThis(),
-      json: jest.fn().mockReturnThis(),
+      status: jest.fn<(statusCode: number) => MockResponse>().mockReturnThis(),
+      json: jest
+        .fn<(body: ErrorResponseBody) => MockResponse>()
+        .mockReturnThis(),
     };
 
     mockRequest = {
@@ -26,7 +42,7 @@ describe('HttpExceptionFilter', () => {
         getResponse: () => mockResponse,
         getRequest: () => mockRequest,
       }),
-    };
+    } as unknown as ArgumentsHost;
   });
 
   it('should format a known HTTP exception', () => {
@@ -59,6 +75,24 @@ describe('HttpExceptionFilter', () => {
         statusCode: 400,
         message: ['email must be an email'],
         error: 'VALIDATION_ERROR',
+      }),
+    );
+  });
+
+  it('should fall back to the exception message when the body has no message', () => {
+    const exception = new HttpException(
+      { error: 'Conflict' },
+      HttpStatus.CONFLICT,
+    );
+
+    filter.catch(exception, mockHost);
+
+    expect(mockResponse.status).toHaveBeenCalledWith(409);
+    expect(mockResponse.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        statusCode: 409,
+        message: exception.message,
+        error: 'CONFLICT',
       }),
     );
   });
