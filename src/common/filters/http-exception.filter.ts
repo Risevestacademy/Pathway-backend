@@ -38,26 +38,21 @@ export class HttpExceptionFilter implements ExceptionFilter {
         message = exception.message;
       }
 
-      
       if (statusCode === HttpStatus.BAD_REQUEST && Array.isArray(message)) {
         errorCode = 'VALIDATION_ERROR';
       } else {
         errorCode = this.getErrorCode(statusCode);
       }
-    } 
-
-    else {
+    } else {
       statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
       message = 'Internal server error';
       errorCode = 'INTERNAL_SERVER_ERROR';
-
 
       this.logger.error(
         `Unexpected error: ${exception instanceof Error ? exception.message : 'Unknown error'}`,
         exception instanceof Error ? exception.stack : '',
       );
     }
-
 
     const errorResponse = {
       statusCode,
