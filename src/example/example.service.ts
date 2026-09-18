@@ -18,14 +18,14 @@ export class ExampleService {
 
   async findAll() {
     // return this.prisma.example.findMany();
-    throw new Error('Not implemented — replace with real Prisma call');
+    throw new Error('Database exploded');
   }
 
   async findById(id: string) {
     // const record = await this.prisma.example.findUnique({ where: { id } });
     // if (!record) throw new NotFoundException('Example not found');
     // return record;
-    throw new Error('Not implemented — replace with real Prisma call');
+    throw new NotFoundException(`Example with ID ${id} not found`);
   }
 
   async create(dto: CreateExampleDto) {
