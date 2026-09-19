@@ -8,8 +8,6 @@ import { AppModule } from './app.module';
 
 import { EnvironmentVariables } from './config';
 
-import { createValidationPipe } from './common/pipes/validation.pipe';
-
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     bufferLogs: true,
