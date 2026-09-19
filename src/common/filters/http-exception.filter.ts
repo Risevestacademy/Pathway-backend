@@ -1,26 +1,38 @@
 import {
-  ExceptionFilter,
-  Catch,
   ArgumentsHost,
+  Catch,
+  ExceptionFilter,
   HttpException,
   HttpStatus,
   Logger,
+  Optional,
 } from '@nestjs/common';
+import type { LoggerService } from '@nestjs/common';
 import { Request, Response } from 'express';
 
-type HttpExceptionBody = { message?: string | string[] };
+type RequestWithId = Request & {
+  id?: string;
+};
+
+type HttpExceptionBody = {
+  message?: string | string[];
+};
 
 const hasMessage = (response: object): response is HttpExceptionBody =>
   'message' in response;
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
-  private readonly logger = new Logger(HttpExceptionFilter.name);
+  private readonly logger: LoggerService;
+
+  constructor(@Optional() logger?: LoggerService) {
+    this.logger = logger || new Logger(HttpExceptionFilter.name);
+  }
 
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
-    const request = ctx.getRequest<Request>();
+    const request = ctx.getRequest<RequestWithId>();
 
     let statusCode: number;
     let message: string | string[];
@@ -33,7 +45,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
       if (typeof exceptionResponse === 'string') {
         message = exceptionResponse;
       } else if (exceptionResponse !== null && hasMessage(exceptionResponse)) {
-        message = exceptionResponse.message || exception.message;
+        message =
+          (exceptionResponse as HttpExceptionBody).message || exception.message;
       } else {
         message = exception.message;
       }
@@ -49,8 +62,14 @@ export class HttpExceptionFilter implements ExceptionFilter {
       errorCode = 'INTERNAL_SERVER_ERROR';
 
       this.logger.error(
-        `Unexpected error: ${exception instanceof Error ? exception.message : 'Unknown error'}`,
-        exception instanceof Error ? exception.stack : '',
+        {
+          err: exception,
+          requestId: request.id,
+          method: request.method,
+          route: request.url,
+          statusCode,
+        },
+        'Unexpected error',
       );
     }
 

@@ -20,11 +20,18 @@ type MockResponse = {
 describe('HttpExceptionFilter', () => {
   let filter: HttpExceptionFilter;
   let mockResponse: MockResponse;
-  let mockRequest: Pick<Request, 'url'>;
+  let mockRequest: Pick<Request, 'url' | 'method' | 'id'>;
+  let mockLogger: {
+    error: jest.Mock;
+  };
   let mockHost: ArgumentsHost;
 
   beforeEach(() => {
-    filter = new HttpExceptionFilter();
+    mockLogger = {
+      error: jest.fn(),
+    };
+
+    filter = new HttpExceptionFilter(mockLogger);
 
     mockResponse = {
       status: jest.fn<(statusCode: number) => MockResponse>().mockReturnThis(),
@@ -35,6 +42,8 @@ describe('HttpExceptionFilter', () => {
 
     mockRequest = {
       url: '/test',
+      method: 'GET',
+      id: 'test-request-id',
     };
 
     mockHost = {
@@ -120,5 +129,30 @@ describe('HttpExceptionFilter', () => {
     const response = mockResponse.json.mock.calls[0][0];
     expect(response.timestamp).toBeDefined();
     expect(new Date(response.timestamp).toISOString()).toBe(response.timestamp);
+  });
+
+  it('should log unexpected errors with request context', () => {
+    const exception = new Error('Database connection failed');
+
+    filter.catch(exception, mockHost);
+
+    expect(mockLogger.error).toHaveBeenCalledWith(
+      {
+        err: exception,
+        requestId: 'test-request-id',
+        method: 'GET',
+        route: '/test',
+        statusCode: 500,
+      },
+      'Unexpected error',
+    );
+  });
+
+  it('should not log known HTTP exceptions as unexpected errors', () => {
+    const exception = new NotFoundException('User not found');
+
+    filter.catch(exception, mockHost);
+
+    expect(mockLogger.error).not.toHaveBeenCalled();
   });
 });
