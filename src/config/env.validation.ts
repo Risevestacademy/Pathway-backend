@@ -3,6 +3,7 @@ import {
   IsEnum,
   IsInt,
   IsNotEmpty,
+  IsOptional,
   IsString,
   Max,
   Min,
@@ -29,6 +30,10 @@ export class EnvironmentVariables {
   @IsString()
   @IsNotEmpty()
   DATABASE_URL: string;
+
+  @IsOptional()
+  @IsString()
+  LOG_LEVEL = 'info';
 }
 
 export function validateEnv(
