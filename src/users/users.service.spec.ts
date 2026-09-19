@@ -1,7 +1,7 @@
 import { NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { jest } from '@jest/globals';
-import { Role } from '@prisma/client';
+import { Role } from '../generated/prisma/client';
 import { UsersService } from './users.service';
 import { PrismaService } from '../prisma';
 

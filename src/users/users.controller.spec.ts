@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { jest } from '@jest/globals';
-import { Role } from '@prisma/client';
+import { Role } from '../generated/prisma/client';
 import { UsersController } from './users.controller';
 import { PublicUser, UsersService } from './users.service';
 
