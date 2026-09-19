@@ -3,19 +3,16 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-# Provide a dummy DATABASE_URL to satisfy Prisma config parsing during build
 ENV DATABASE_URL="postgresql://user:password@localhost:5432/db?schema=public"
 
-# Copy package files, prisma folder, and prisma config file
 COPY package*.json ./
 COPY prisma ./prisma/
 COPY prisma.config.ts ./
 
-# Install ALL dependencies (triggers postinstall -> prisma generate)
 RUN npm ci
 
-# Copy source code and compile
 COPY . .
+RUN npx prisma generate
 RUN npm run build
 
 
@@ -26,19 +23,16 @@ WORKDIR /app
 
 ENV NODE_ENV=staging
 
-# Copy package files
 COPY package*.json ./
 
-# Install production dependencies only (skip postinstall script)
+# Installs @prisma/client (runtime helpers) as a normal prod dependency
 RUN npm ci --omit=dev --ignore-scripts
 
-# Copy Prisma schema, config, and generated client engines from builder
+# Only needed if you run `prisma migrate deploy` at runtime/entrypoint
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/prisma.config.ts ./
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder /app/node_modules/@prisma/client ./node_modules/@prisma/client
 
-# Copy the compiled application code
+# dist/generated is compiled TS — the whole client ships here now
 COPY --from=builder /app/dist ./dist
 
 EXPOSE 3000
