@@ -5,6 +5,7 @@ import {
   HttpException,
   HttpStatus,
   Logger,
+  Optional,
 } from '@nestjs/common';
 import type { LoggerService } from '@nestjs/common';
 import { Request, Response } from 'express';
@@ -24,7 +25,7 @@ const hasMessage = (response: object): response is HttpExceptionBody =>
 export class HttpExceptionFilter implements ExceptionFilter {
   private readonly logger: LoggerService;
 
-  constructor(logger?: LoggerService) {
+  constructor(@Optional() logger?: LoggerService) {
     this.logger = logger || new Logger(HttpExceptionFilter.name);
   }
 
