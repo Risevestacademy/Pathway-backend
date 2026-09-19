@@ -7,11 +7,15 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 
 import { EnvironmentVariables } from './config';
+import { RequestIdInterceptor } from './common/interceptors/request-id.interceptor';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     bufferLogs: true,
   });
+
+  app.useLogger(app.get(PinoLogger));
+  app.useGlobalInterceptors(new RequestIdInterceptor());
 
   app.useLogger(app.get(PinoLogger));
 

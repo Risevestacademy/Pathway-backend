@@ -1,13 +1,13 @@
 import { Module } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { LoggerModule } from 'nestjs-pino';
 
 import { CommonModule } from './common';
-import { AppConfigModule } from './config';
+import { AppConfigModule, EnvironmentVariables } from './config';
 import { HealthModule } from './health';
 import { PrismaModule } from './prisma';
 import { UsersModule } from './users';
-import { ConfigService } from '@nestjs/config';
-import { EnvironmentVariables } from './config';
+import { generateRequestId } from './common/utils/request-id';
 
 @Module({
   imports: [
@@ -18,6 +18,9 @@ import { EnvironmentVariables } from './config';
       useFactory: (config: ConfigService<EnvironmentVariables, true>) => ({
         pinoHttp: {
           level: config.get('LOG_LEVEL', { infer: true }),
+
+          genReqId: (req) => generateRequestId(req.headers['x-request-id']),
+
           redact: [
             'req.headers.authorization',
             'req.headers.cookie',
@@ -27,6 +30,7 @@ import { EnvironmentVariables } from './config';
             '*.refreshToken',
             '*.secret',
           ],
+
           transport:
             config.get('NODE_ENV', { infer: true }) === 'development'
               ? {
