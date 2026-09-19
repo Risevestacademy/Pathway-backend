@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
-import { APP_FILTER, APP_PIPE } from '@nestjs/core';
-import { HttpExceptionFilter } from './filters/http-exception.filter';
+import { APP_PIPE } from '@nestjs/core';
+
 import { createValidationPipe } from './pipes/validation.pipe';
 
 @Module({
@@ -8,10 +8,6 @@ import { createValidationPipe } from './pipes/validation.pipe';
     {
       provide: APP_PIPE,
       useFactory: createValidationPipe,
-    },
-    {
-      provide: APP_FILTER,
-      useClass: HttpExceptionFilter,
     },
   ],
 })

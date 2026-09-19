@@ -22,14 +22,12 @@ describe('HttpExceptionFilter', () => {
   let mockResponse: MockResponse;
   let mockRequest: Pick<Request, 'url' | 'method' | 'id'>;
   let mockLogger: {
-    setContext: jest.Mock;
     error: jest.Mock;
   };
   let mockHost: ArgumentsHost;
 
   beforeEach(() => {
     mockLogger = {
-      setContext: jest.fn(),
       error: jest.fn(),
     };
 

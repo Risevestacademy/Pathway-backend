@@ -1,23 +1,26 @@
 import { Logger as NestLogger } from '@nestjs/common';
-import { Logger as PinoLogger } from 'nestjs-pino';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import { Logger as PinoLogger } from 'nestjs-pino';
+
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 import { AppModule } from './app.module';
 
-import { EnvironmentVariables } from './config';
+import { HttpExceptionFilter } from './common';
 import { RequestIdInterceptor } from './common/interceptors/request-id.interceptor';
+import { EnvironmentVariables } from './config';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     bufferLogs: true,
   });
 
-  app.useLogger(app.get(PinoLogger));
-  app.useGlobalInterceptors(new RequestIdInterceptor());
+  const pinoLogger = app.get(PinoLogger);
 
-  app.useLogger(app.get(PinoLogger));
+  app.useLogger(pinoLogger);
+  app.useGlobalFilters(new HttpExceptionFilter(pinoLogger));
+  app.useGlobalInterceptors(new RequestIdInterceptor());
 
   const config =
     app.get<ConfigService<EnvironmentVariables, true>>(ConfigService);

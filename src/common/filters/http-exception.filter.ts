@@ -1,18 +1,17 @@
 import {
-  ExceptionFilter,
-  Catch,
   ArgumentsHost,
+  Catch,
+  ExceptionFilter,
   HttpException,
   HttpStatus,
-  Inject,
 } from '@nestjs/common';
-import { PinoLogger } from 'nestjs-pino';
 import { Request, Response } from 'express';
 
-type HttpExceptionBody = { message?: string | string[] };
+type HttpExceptionBody = {
+  message?: string | string[];
+};
 
 interface ExceptionLogger {
-  setContext(context: string): void;
   error(object: object, message: string): void;
 }
 
@@ -21,12 +20,7 @@ const hasMessage = (response: object): response is HttpExceptionBody =>
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
-  constructor(
-    @Inject(PinoLogger)
-    private readonly logger: ExceptionLogger,
-  ) {
-    this.logger.setContext(HttpExceptionFilter.name);
-  }
+  constructor(private readonly logger: ExceptionLogger) {}
 
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
@@ -43,7 +37,10 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
       if (typeof exceptionResponse === 'string') {
         message = exceptionResponse;
-      } else if (exceptionResponse !== null && hasMessage(exceptionResponse)) {
+      } else if (
+        exceptionResponse !== null &&
+        hasMessage(exceptionResponse)
+      ) {
         message = exceptionResponse.message || exception.message;
       } else {
         message = exception.message;
