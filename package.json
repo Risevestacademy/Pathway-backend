@@ -5,7 +5,6 @@
   "author": "",
   "private": true,
   "type": "commonjs",
-  "license": "UNLICENSED",
   "scripts": {
     "build": "nest build",
     "start": "nest start",
@@ -24,7 +23,14 @@
     "postinstall": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed",
-    "db:reset": "prisma migrate reset --force && prisma db seed"
+    "db:reset": "prisma migrate reset --force && prisma db seed",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ]
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",
@@ -53,7 +59,9 @@
     "cross-env": "^10.1.0",
     "dotenv": "^17.4.2",
     "eslint": "^10.10.0",
+    "husky": "^9.1.7",
     "jest": "^30.0.0",
+    "lint-staged": "^17.5.1",
     "prettier": "^3.4.2",
     "prisma": "^7.10.0",
     "supertest": "^7.0.0",
