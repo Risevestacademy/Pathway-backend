@@ -4,28 +4,34 @@ import {
   ExceptionFilter,
   HttpException,
   HttpStatus,
+  Logger,
 } from '@nestjs/common';
+import type { LoggerService } from '@nestjs/common';
 import { Request, Response } from 'express';
+
+type RequestWithId = Request & {
+  id?: string;
+};
 
 type HttpExceptionBody = {
   message?: string | string[];
 };
-
-interface ExceptionLogger {
-  error(object: object, message: string): void;
-}
 
 const hasMessage = (response: object): response is HttpExceptionBody =>
   'message' in response;
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
-  constructor(private readonly logger: ExceptionLogger) {}
+  private readonly logger: LoggerService;
+
+  constructor(logger?: LoggerService) {
+    this.logger = logger || new Logger(HttpExceptionFilter.name);
+  }
 
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
-    const request = ctx.getRequest<Request>();
+    const request = ctx.getRequest<RequestWithId>();
 
     let statusCode: number;
     let message: string | string[];
@@ -37,11 +43,9 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
       if (typeof exceptionResponse === 'string') {
         message = exceptionResponse;
-      } else if (
-        exceptionResponse !== null &&
-        hasMessage(exceptionResponse)
-      ) {
-        message = exceptionResponse.message || exception.message;
+      } else if (exceptionResponse !== null && hasMessage(exceptionResponse)) {
+        message =
+          (exceptionResponse as HttpExceptionBody).message || exception.message;
       } else {
         message = exception.message;
       }

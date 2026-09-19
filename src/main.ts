@@ -6,9 +6,6 @@ import { Logger as PinoLogger } from 'nestjs-pino';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 import { AppModule } from './app.module';
-
-import { HttpExceptionFilter } from './common';
-import { RequestIdInterceptor } from './common/interceptors/request-id.interceptor';
 import { EnvironmentVariables } from './config';
 
 async function bootstrap() {
@@ -17,10 +14,7 @@ async function bootstrap() {
   });
 
   const pinoLogger = app.get(PinoLogger);
-
   app.useLogger(pinoLogger);
-  app.useGlobalFilters(new HttpExceptionFilter(pinoLogger));
-  app.useGlobalInterceptors(new RequestIdInterceptor());
 
   const config =
     app.get<ConfigService<EnvironmentVariables, true>>(ConfigService);
