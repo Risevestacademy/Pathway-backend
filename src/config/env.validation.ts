@@ -34,6 +34,18 @@ export class EnvironmentVariables {
   @IsOptional()
   @IsString()
   LOG_LEVEL = 'info';
+
+  @IsString()
+  JWT_ACCESS_SECRET: string;
+
+  @IsString()
+  JWT_ACCESS_EXPIRY: string;
+
+  @IsString()
+  JWT_REFRESH_SECRET: string;
+
+  @IsString()
+  JWT_REFRESH_EXPIRY: string;
 }
 
 export function validateEnv(
