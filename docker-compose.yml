@@ -24,10 +24,14 @@ services:
     container_name: pathway_server
     restart: unless-stopped
     ports:
-      - '${SERVER_PORT:-3000}:3000'
+      - '${PORT:-3000}:3000'
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
       NODE_ENV: ${NODE_ENV:-staging}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_ACCESS_EXPIRY: ${JWT_ACCESS_EXPIRY}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      JWT_REFRESH_EXPIRY: ${JWT_REFRESH_EXPIRY}
     depends_on:
       postgres:
         condition: service_healthy 

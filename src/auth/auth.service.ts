@@ -9,12 +9,14 @@ import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { createHash } from 'crypto';
 import { StringValue } from 'ms';
-
+import ms from 'ms';
 import { UsersService } from '../users';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { Role } from '../generated/prisma/enums';
+import { PrismaService } from '../prisma';
+import { randomUUID } from 'crypto';
 
 const hashRefreshToken = (token: string) =>
   createHash('sha256').update(token).digest('hex');
@@ -30,6 +32,7 @@ export class AuthService {
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly prisma: PrismaService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -80,30 +83,23 @@ export class AuthService {
 
       const tokenHash = hashRefreshToken(refreshToken);
 
-      /*
-       * TODO: Replace with your Prisma/DB lookup
-       *
-       * const storedToken = await this.prisma.refreshToken.findFirst({
-       *   where: {
-       *     userId: payload.sub,
-       *     tokenHash,
-       *     revokedAt: null,
-       *     expiresAt: { gt: new Date() },
-       *   },
-       * });
-       *
-       * if (!storedToken) {
-       *   throw new UnauthorizedException('Invalid refresh token');
-       * }
-       *
-       * await this.prisma.refreshToken.update({
-       *   where: { id: storedToken.id },
-       *   data: { revokedAt: new Date() },
-       * });
-       */
+      const storedToken = await this.prisma.refreshToken.findFirst({
+        where: {
+          userId: payload.sub,
+          tokenHash,
+          revokedAt: null,
+          expiresAt: { gt: new Date() },
+        },
+      });
 
-      // Prevent unused-variable error until DB persistence is implemented.
-      void tokenHash;
+      if (!storedToken) {
+        throw new UnauthorizedException('Invalid refresh token');
+      }
+
+      await this.prisma.refreshToken.update({
+        where: { id: storedToken.id },
+        data: { revokedAt: new Date() },
+      });
 
       const user = await this.usersService.findById(payload.sub);
 
@@ -135,20 +131,16 @@ export class AuthService {
 
       const tokenHash = hashRefreshToken(refreshToken);
 
-      /*
-       * TODO: Replace with your Prisma/DB update
-       *
-       * await this.prisma.refreshToken.updateMany({
-       *   where: {
-       *     userId: payload.sub,
-       *     tokenHash,
-       *     revokedAt: null,
-       *   },
-       *   data: {
-       *     revokedAt: new Date(),
-       *   },
-       * });
-       */
+      await this.prisma.refreshToken.updateMany({
+        where: {
+          userId: payload.sub,
+          tokenHash,
+          revokedAt: null,
+        },
+        data: {
+          revokedAt: new Date(),
+        },
+      });
 
       void tokenHash;
 
@@ -161,10 +153,15 @@ export class AuthService {
   }
 
   private async issueTokens(user: { id: string; email: string; role: Role }) {
-    const payload: JwtPayload = {
+    const accessPayload: JwtPayload = {
       sub: user.id,
       email: user.email,
       role: user.role,
+    };
+
+    const refreshPayload = {
+      sub: user.id,
+      jti: randomUUID(),
     };
 
     const accessSecret = this.configService.get<string>('JWT_ACCESS_SECRET')!;
@@ -182,12 +179,12 @@ export class AuthService {
     );
 
     const [accessToken, refreshToken] = await Promise.all([
-      this.jwtService.signAsync(payload, {
+      this.jwtService.signAsync(accessPayload, {
         secret: accessSecret,
         expiresIn: accessExpiry,
       }),
 
-      this.jwtService.signAsync(payload, {
+      this.jwtService.signAsync(refreshPayload, {
         secret: refreshSecret,
         expiresIn: refreshExpiry,
       }),
@@ -195,20 +192,15 @@ export class AuthService {
 
     const tokenHash = hashRefreshToken(refreshToken);
 
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7);
+    const expiresAt = new Date(Date.now() + ms(refreshExpiry));
 
-    /*
-     * TODO: Replace with your Prisma/DB creation
-     *
-     * await this.prisma.refreshToken.create({
-     *   data: {
-     *     userId: user.id,
-     *     tokenHash,
-     *     expiresAt,
-     *   },
-     * });
-     */
+    await this.prisma.refreshToken.create({
+      data: {
+        userId: user.id,
+        tokenHash,
+        expiresAt,
+      },
+    });
 
     void tokenHash;
 
