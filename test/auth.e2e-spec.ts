@@ -24,6 +24,7 @@ describe('AuthController (e2e)', () => {
     app = moduleFixture.createNestApplication();
 
     app.use(cookieParser());
+
     app.useGlobalPipes(
       new ValidationPipe({
         whitelist: true,
@@ -45,11 +46,12 @@ describe('AuthController (e2e)', () => {
       .expect(201);
 
     expect(response.body).toBeDefined();
-    expect(response.body.email).toBe(testUser.email);
+    expect(response.body.data).toBeDefined();
+    expect(response.body.data.email).toBe(testUser.email);
 
     // Password hash should never be returned to the client.
-    expect(response.body.passwordHash).toBeUndefined();
-    expect(response.body.password).toBeUndefined();
+    expect(response.body.data.passwordHash).toBeUndefined();
+    expect(response.body.data.password).toBeUndefined();
   });
 
   it('/auth/register (POST) - duplicate email', async () => {
@@ -75,10 +77,12 @@ describe('AuthController (e2e)', () => {
       .send(testUser)
       .expect(200);
 
-    expect(response.body.accessToken).toBeDefined();
+    expect(response.body.data).toBeDefined();
+    expect(response.body.data.accessToken).toBeDefined();
 
-    accessToken = response.body.accessToken;
+    accessToken = response.body.data.accessToken;
 
+    // Refresh token is returned as an HttpOnly cookie for web clients.
     const cookies = response.headers['set-cookie'];
 
     expect(cookies).toBeDefined();
@@ -98,7 +102,8 @@ describe('AuthController (e2e)', () => {
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
 
-    expect(response.body.email).toBe(testUser.email);
+    expect(response.body.data).toBeDefined();
+    expect(response.body.data.email).toBe(testUser.email);
   });
 
   it('/auth/me (GET) - no access token', async () => {
@@ -111,7 +116,8 @@ describe('AuthController (e2e)', () => {
       .set('Cookie', [`refreshToken=${oldRefreshToken}`])
       .expect(200);
 
-    expect(response.body.accessToken).toBeDefined();
+    expect(response.body.data).toBeDefined();
+    expect(response.body.data.accessToken).toBeDefined();
 
     const cookies = response.headers['set-cookie'];
 
@@ -128,7 +134,7 @@ describe('AuthController (e2e)', () => {
     // Refresh token rotation should produce a different token.
     expect(refreshToken).not.toBe(oldRefreshToken);
 
-    accessToken = response.body.accessToken;
+    accessToken = response.body.data.accessToken;
   });
 
   it('/auth/refresh (POST) - old refresh token is rejected', async () => {
@@ -144,7 +150,8 @@ describe('AuthController (e2e)', () => {
       .set('Cookie', [`refreshToken=${refreshToken}`])
       .expect(200);
 
-    expect(response.body.accessToken).toBeDefined();
+    expect(response.body.data).toBeDefined();
+    expect(response.body.data.accessToken).toBeDefined();
 
     const cookies = response.headers['set-cookie'];
 
@@ -163,14 +170,17 @@ describe('AuthController (e2e)', () => {
     expect(nextRefreshToken).not.toBe(refreshToken);
 
     refreshToken = nextRefreshToken;
-    accessToken = response.body.accessToken;
+    accessToken = response.body.data.accessToken;
   });
 
   it('/auth/logout (POST) - success', async () => {
-    await request(app.getHttpServer())
+    const response = await request(app.getHttpServer())
       .post('/auth/logout')
       .set('Cookie', [`refreshToken=${refreshToken}`])
       .expect(200);
+
+    expect(response.body.data).toBeDefined();
+    expect(response.body.data.message).toBe('Logged out successfully');
   });
 
   it('/auth/refresh (POST) - rejected after logout', async () => {

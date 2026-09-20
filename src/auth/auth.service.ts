@@ -7,7 +7,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
-import { createHash } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { StringValue } from 'ms';
 import ms from 'ms';
 import { UsersService } from '../users';
@@ -16,7 +16,7 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { Role } from '../generated/prisma/enums';
 import { PrismaService } from '../prisma';
-import { randomUUID } from 'crypto';
+import { ApiResponse } from '../common';
 
 const hashRefreshToken = (token: string) =>
   createHash('sha256').update(token).digest('hex');
@@ -26,7 +26,7 @@ export class AuthService {
   private readonly logger = new Logger(AuthService.name);
 
   private readonly DUMMY_HASH =
-    '$2b$12$abcdefghijklmnopqrstuvwx.yzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    '$2b$12$LQv3c1yqBW1QYbB9LQmZ5eK8mY4jV6X3cT9nP2rH7sD1wF0gA6bC';
 
   constructor(
     private readonly usersService: UsersService,
@@ -35,7 +35,13 @@ export class AuthService {
     private readonly prisma: PrismaService,
   ) {}
 
-  async register(dto: RegisterDto) {
+  async register(dto: RegisterDto): Promise<
+    ApiResponse<{
+      id: string;
+      email: string;
+      role: Role;
+    }>
+  > {
     const existingUser = await this.usersService.findByEmail(dto.email);
 
     if (existingUser) {
@@ -51,10 +57,21 @@ export class AuthService {
 
     this.logger.log({ userId: user.id }, 'User registered');
 
-    return user;
+    return {
+      data: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+      },
+    };
   }
 
-  async login(dto: LoginDto) {
+  async login(dto: LoginDto): Promise<
+    ApiResponse<{
+      accessToken: string;
+      refreshToken: string;
+    }>
+  > {
     const user = await this.usersService.findByEmail(dto.email);
 
     const passwordHash = user?.passwordHash || this.DUMMY_HASH;
@@ -69,10 +86,19 @@ export class AuthService {
 
     this.logger.log({ userId: user.id }, 'Login succeeded');
 
-    return this.issueTokens(user);
+    const tokens = await this.issueTokens(user);
+
+    return {
+      data: tokens,
+    };
   }
 
-  async refresh(refreshToken: string) {
+  async refresh(refreshToken: string): Promise<
+    ApiResponse<{
+      accessToken: string;
+      refreshToken: string;
+    }>
+  > {
     try {
       const payload = await this.jwtService.verifyAsync<JwtPayload>(
         refreshToken,
@@ -107,7 +133,11 @@ export class AuthService {
         throw new UnauthorizedException('Invalid refresh token');
       }
 
-      return this.issueTokens(user);
+      const tokens = await this.issueTokens(user);
+
+      return {
+        data: tokens,
+      };
     } catch (error) {
       this.logger.warn(
         {
@@ -120,7 +150,9 @@ export class AuthService {
     }
   }
 
-  async logout(refreshToken: string) {
+  async logout(
+    refreshToken: string,
+  ): Promise<ApiResponse<{ message: string }>> {
     try {
       const payload = await this.jwtService.verifyAsync<JwtPayload>(
         refreshToken,
@@ -142,17 +174,26 @@ export class AuthService {
         },
       });
 
-      void tokenHash;
-
       this.logger.log({ userId: payload.sub }, 'User logged out');
     } catch {
       // Fail silently if token is already invalid.
     }
 
-    return { message: 'Logged out successfully' };
+    return {
+      data: {
+        message: 'Logged out successfully',
+      },
+    };
   }
 
-  private async issueTokens(user: { id: string; email: string; role: Role }) {
+  private async issueTokens(user: {
+    id: string;
+    email: string;
+    role: Role;
+  }): Promise<{
+    accessToken: string;
+    refreshToken: string;
+  }> {
     const accessPayload: JwtPayload = {
       sub: user.id,
       email: user.email,
@@ -201,8 +242,6 @@ export class AuthService {
         expiresAt,
       },
     });
-
-    void tokenHash;
 
     return {
       accessToken,

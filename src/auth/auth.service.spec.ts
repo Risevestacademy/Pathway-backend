@@ -24,7 +24,7 @@ describe('AuthService', () => {
   };
 
   const mockConfigService = {
-    get: jest.fn((key: string, defaultValue?: string) => {
+    get: jest.fn((key: string) => {
       if (key === 'JWT_ACCESS_EXPIRY') return '15m';
       if (key === 'JWT_REFRESH_EXPIRY') return '7d';
       return 'mock-secret';
@@ -79,7 +79,7 @@ describe('AuthService', () => {
         password: 'password123',
       });
 
-      expect(result).toEqual(mockPublicUser);
+      expect(result).toEqual({ data: mockPublicUser });
       expect(mockUsersService.create).toHaveBeenCalled();
     });
   });
@@ -117,8 +117,10 @@ describe('AuthService', () => {
       });
 
       expect(result).toEqual({
-        accessToken: 'mock-token',
-        refreshToken: 'mock-token',
+        data: {
+          accessToken: 'mock-token',
+          refreshToken: 'mock-token',
+        },
       });
       expect(mockPrismaService.refreshToken.create).toHaveBeenCalled();
     });
@@ -139,8 +141,10 @@ describe('AuthService', () => {
       const result = await service.refresh('valid-refresh-token');
 
       expect(result).toEqual({
-        accessToken: 'mock-token',
-        refreshToken: 'mock-token',
+        data: {
+          accessToken: 'mock-token',
+          refreshToken: 'mock-token',
+        },
       });
       expect(mockPrismaService.refreshToken.update).toHaveBeenCalled();
     });
@@ -162,7 +166,7 @@ describe('AuthService', () => {
       const result = await service.logout('valid-token');
 
       expect(mockPrismaService.refreshToken.updateMany).toHaveBeenCalled();
-      expect(result).toEqual({ message: 'Logged out successfully' });
+      expect(result).toEqual({ data: { message: 'Logged out successfully' } });
     });
 
     it('should fail silently and return success message if JWT verification fails', async () => {
@@ -170,7 +174,7 @@ describe('AuthService', () => {
 
       const result = await service.logout('expired-token');
 
-      expect(result).toEqual({ message: 'Logged out successfully' });
+      expect(result).toEqual({ data: { message: 'Logged out successfully' } });
     });
   });
 });
