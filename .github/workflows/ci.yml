@@ -50,6 +50,10 @@ jobs:
     env:
       NODE_ENV: test
       PORT: 3000
+      JWT_ACCESS_SECRET: access-secret
+      JWT_ACCESS_EXPIRY: 15m
+      JWT_REFRESH_SECRET: refresh-secret
+      JWT_REFRESH_EXPIRY: 7d
 
     steps:
       - uses: actions/checkout@v4
