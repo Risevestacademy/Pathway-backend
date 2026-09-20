@@ -4,7 +4,7 @@ import { NestFactory } from '@nestjs/core';
 import { Logger as PinoLogger } from 'nestjs-pino';
 
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-
+import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { EnvironmentVariables } from './config';
 
@@ -12,6 +12,8 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     bufferLogs: true,
   });
+
+  app.use(cookieParser());
 
   const pinoLogger = app.get(PinoLogger);
   app.useLogger(pinoLogger);
