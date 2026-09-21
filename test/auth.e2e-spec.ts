@@ -1,8 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
-import { AppModule } from '../src/app.module';
 import cookieParser from 'cookie-parser';
+
+import { AppModule } from '../src/app.module';
+import { EnvironmentVariables } from '../src/config';
 
 describe('AuthController (e2e)', () => {
   let app: INestApplication;
@@ -10,6 +13,8 @@ describe('AuthController (e2e)', () => {
   let accessToken: string;
   let refreshToken: string;
   let oldRefreshToken: string;
+
+  let apiPrefix: string;
 
   const testUser = {
     email: `e2e-${Date.now()}@test.com`,
@@ -24,6 +29,15 @@ describe('AuthController (e2e)', () => {
     app = moduleFixture.createNestApplication();
 
     app.use(cookieParser());
+
+    const config =
+      app.get<ConfigService<EnvironmentVariables, true>>(ConfigService);
+
+    const apiVersion = config.get('API_VERSION', { infer: true });
+
+    apiPrefix = `/api/${apiVersion}`;
+
+    app.setGlobalPrefix(apiPrefix);
 
     app.useGlobalPipes(
       new ValidationPipe({
@@ -41,7 +55,7 @@ describe('AuthController (e2e)', () => {
 
   it('/auth/register (POST) - success', async () => {
     const response = await request(app.getHttpServer())
-      .post('/auth/register')
+      .post(`${apiPrefix}/auth/register`)
       .send(testUser)
       .expect(201);
 
@@ -56,14 +70,14 @@ describe('AuthController (e2e)', () => {
 
   it('/auth/register (POST) - duplicate email', async () => {
     await request(app.getHttpServer())
-      .post('/auth/register')
+      .post(`${apiPrefix}/auth/register`)
       .send(testUser)
       .expect(409);
   });
 
   it('/auth/login (POST) - wrong password', async () => {
     await request(app.getHttpServer())
-      .post('/auth/login')
+      .post(`${apiPrefix}/auth/login`)
       .send({
         email: testUser.email,
         password: 'WrongPassword!',
@@ -73,7 +87,7 @@ describe('AuthController (e2e)', () => {
 
   it('/auth/login (POST) - success', async () => {
     const response = await request(app.getHttpServer())
-      .post('/auth/login')
+      .post(`${apiPrefix}/auth/login`)
       .send(testUser)
       .expect(200);
 
@@ -98,7 +112,7 @@ describe('AuthController (e2e)', () => {
 
   it('/auth/me (GET) - authenticated', async () => {
     const response = await request(app.getHttpServer())
-      .get('/auth/me')
+      .get(`${apiPrefix}/auth/me`)
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
 
@@ -107,12 +121,12 @@ describe('AuthController (e2e)', () => {
   });
 
   it('/auth/me (GET) - no access token', async () => {
-    await request(app.getHttpServer()).get('/auth/me').expect(401);
+    await request(app.getHttpServer()).get(`${apiPrefix}/auth/me`).expect(401);
   });
 
   it('/auth/refresh (POST) - success', async () => {
     const response = await request(app.getHttpServer())
-      .post('/auth/refresh')
+      .post(`${apiPrefix}/auth/refresh`)
       .set('Cookie', [`refreshToken=${oldRefreshToken}`])
       .expect(200);
 
@@ -139,14 +153,14 @@ describe('AuthController (e2e)', () => {
 
   it('/auth/refresh (POST) - old refresh token is rejected', async () => {
     await request(app.getHttpServer())
-      .post('/auth/refresh')
+      .post(`${apiPrefix}/auth/refresh`)
       .set('Cookie', [`refreshToken=${oldRefreshToken}`])
       .expect(401);
   });
 
   it('/auth/refresh (POST) - new refresh token works', async () => {
     const response = await request(app.getHttpServer())
-      .post('/auth/refresh')
+      .post(`${apiPrefix}/auth/refresh`)
       .set('Cookie', [`refreshToken=${refreshToken}`])
       .expect(200);
 
@@ -175,7 +189,7 @@ describe('AuthController (e2e)', () => {
 
   it('/auth/logout (POST) - success', async () => {
     const response = await request(app.getHttpServer())
-      .post('/auth/logout')
+      .post(`${apiPrefix}/auth/logout`)
       .set('Cookie', [`refreshToken=${refreshToken}`])
       .expect(200);
 
@@ -185,7 +199,7 @@ describe('AuthController (e2e)', () => {
 
   it('/auth/refresh (POST) - rejected after logout', async () => {
     await request(app.getHttpServer())
-      .post('/auth/refresh')
+      .post(`${apiPrefix}/auth/refresh`)
       .set('Cookie', [`refreshToken=${refreshToken}`])
       .expect(401);
   });

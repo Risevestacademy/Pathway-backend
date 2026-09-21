@@ -3,11 +3,11 @@ import { Logger as NestLogger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { Logger as PinoLogger } from 'nestjs-pino';
-
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
+
 import { AppModule } from './app.module';
 import { EnvironmentVariables } from './config';
+import { setupSwagger } from './swagger/swagger.config';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
@@ -22,17 +22,15 @@ async function bootstrap() {
   const config =
     app.get<ConfigService<EnvironmentVariables, true>>(ConfigService);
 
+  const apiVersion = config.get('API_VERSION', { infer: true });
+
+  app.setGlobalPrefix(`api/${apiVersion}`, {
+    exclude: ['health'],
+  });
+
+  setupSwagger(app);
+
   app.enableShutdownHooks();
-
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('Pathways API')
-    .setDescription('API documentation for the Pathways backend')
-    .setVersion('1.0')
-    .build();
-
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-
-  SwaggerModule.setup('docs', app, document);
 
   await app.listen(config.get('PORT', { infer: true }));
 }
