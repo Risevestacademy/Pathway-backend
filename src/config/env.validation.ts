@@ -4,7 +4,6 @@ import {
   IsInt,
   IsNotEmpty,
   IsOptional,
-  isString,
   IsString,
   Max,
   Min,
@@ -35,6 +34,10 @@ export class EnvironmentVariables {
   @IsOptional()
   @IsString()
   LOG_LEVEL = 'info';
+
+  @IsString()
+  @IsNotEmpty()
+  API_VERSION = 'v1';
 
   @IsString()
   JWT_ACCESS_SECRET: string;
