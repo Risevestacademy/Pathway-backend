@@ -1,14 +1,17 @@
 import {
-  ArgumentsHost,
   Catch,
-  ExceptionFilter,
   HttpException,
   HttpStatus,
   Logger,
   Optional,
 } from '@nestjs/common';
-import type { LoggerService } from '@nestjs/common';
-import { Request, Response } from 'express';
+import type {
+  ArgumentsHost,
+  ExceptionFilter,
+  LoggerService,
+} from '@nestjs/common';
+import type { Request, Response } from 'express';
+import * as Sentry from '@sentry/node';
 
 type RequestWithId = Request & {
   id?: string;
@@ -72,6 +75,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
         'Unexpected error',
       );
     }
+
+    Sentry.captureException(exception);
 
     const errorResponse = {
       statusCode,

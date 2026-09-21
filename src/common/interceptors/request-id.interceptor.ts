@@ -7,10 +7,14 @@ import {
 import { Request, Response } from 'express';
 import { Observable } from 'rxjs';
 
+type RequestWithId = Request & {
+  id?: string;
+};
+
 @Injectable()
 export class RequestIdInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
-    const request = context.switchToHttp().getRequest<Request>();
+    const request = context.switchToHttp().getRequest<RequestWithId>();
     const response = context.switchToHttp().getResponse<Response>();
     const requestId = request.id;
 

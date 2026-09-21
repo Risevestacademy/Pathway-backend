@@ -1,6 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LoggerModule } from 'nestjs-pino';
+import type { Request } from 'express';
 
 import { AppConfigModule, EnvironmentVariables } from '../config';
 import { generateRequestId } from '../common';
@@ -15,7 +16,8 @@ import { generateRequestId } from '../common';
         pinoHttp: {
           level: config.get('LOG_LEVEL', { infer: true }),
 
-          genReqId: (req) => generateRequestId(req.headers['x-request-id']),
+          genReqId: (req: Request) =>
+            generateRequestId(req.headers['x-request-id']),
 
           redact: [
             'req.headers.authorization',

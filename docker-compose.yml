@@ -32,6 +32,8 @@ services:
       JWT_ACCESS_EXPIRY: ${JWT_ACCESS_EXPIRY}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
       JWT_REFRESH_EXPIRY: ${JWT_REFRESH_EXPIRY}
+      SENTRY_DSN: ${SENTRY_DSN}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT}
     depends_on:
       postgres:
         condition: service_healthy 

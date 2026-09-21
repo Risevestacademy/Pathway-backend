@@ -4,6 +4,7 @@ import {
   IsInt,
   IsNotEmpty,
   IsOptional,
+  isString,
   IsString,
   Max,
   Min,
@@ -46,6 +47,14 @@ export class EnvironmentVariables {
 
   @IsString()
   JWT_REFRESH_EXPIRY: string;
+
+  @IsOptional()
+  @IsString()
+  SENTRY_DSN: string;
+
+  @IsOptional()
+  @IsString()
+  SENTRY_ENVIRONMENT: string;
 }
 
 export function validateEnv(

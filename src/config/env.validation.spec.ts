@@ -38,6 +38,26 @@ describe('validateEnv', () => {
     expect(config.PORT).toBe(3000);
   });
 
+  it('allows Sentry variables to be absent', () => {
+    const config = validateEnv(validEnv);
+
+    expect(config.SENTRY_DSN).toBeUndefined();
+    expect(config.SENTRY_ENVIRONMENT).toBeUndefined();
+  });
+
+  it('accepts valid Sentry configuration', () => {
+    const config = validateEnv({
+      ...validEnv,
+      SENTRY_DSN: 'https://examplePublicKey@o0.ingest.sentry.io/0',
+      SENTRY_ENVIRONMENT: 'production',
+    });
+
+    expect(config.SENTRY_DSN).toBe(
+      'https://examplePublicKey@o0.ingest.sentry.io/0',
+    );
+    expect(config.SENTRY_ENVIRONMENT).toBe('production');
+  });
+
   it('ignores variables outside the schema', () => {
     expect(() =>
       validateEnv({ ...validEnv, UNRELATED_VARIABLE: 'anything' }),
@@ -70,16 +90,6 @@ describe('validateEnv', () => {
 
   it('throws when PORT falls outside the valid range', () => {
     expect(() => validateEnv({ ...validEnv, PORT: '70000' })).toThrow(/PORT/);
-  });
-
-  it('reports every invalid variable in one error', () => {
-    expect(() =>
-      validateEnv({
-        NODE_ENV: 'invalid',
-        PORT: '0',
-        DATABASE_URL: '',
-      }),
-    ).toThrow(/NODE_ENV[\s\S]*PORT[\s\S]*DATABASE_URL/);
   });
 
   it('reports every invalid variable in one error', () => {
