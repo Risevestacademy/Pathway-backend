@@ -10,6 +10,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { type Request, type Response } from 'express';
+import { ConfigService } from '@nestjs/config';
 
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -22,6 +23,8 @@ import {
   LoginDto,
   RegisterDto,
 } from './dto';
+import { apiPrefix } from '../common';
+import { type EnvironmentVariables } from '../config';
 
 interface RequestWithCookies extends Request {
   cookies: {
@@ -31,7 +34,14 @@ interface RequestWithCookies extends Request {
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  private readonly refreshTokenCookiePath: string;
+
+  constructor(
+    private readonly authService: AuthService,
+    configService: ConfigService<EnvironmentVariables, true>,
+  ) {
+    this.refreshTokenCookiePath = `/${apiPrefix(configService)}/auth`;
+  }
 
   @ApiOperation({ summary: 'Register a new user' })
   @ApiResponse({
@@ -57,7 +67,7 @@ export class AuthController {
         schema: {
           type: 'string',
           example:
-            'refreshToken=eyJhbGciOiJIUzI1Ni...; Path=/auth; HttpOnly; SameSite=Lax',
+            'refreshToken=eyJhbGciOiJIUzI1Ni...; Path=/api/v1/auth; HttpOnly; SameSite=Lax',
         },
       },
     },
@@ -88,7 +98,7 @@ export class AuthController {
         schema: {
           type: 'string',
           example:
-            'refreshToken=eyJhbGciOiJIUzI1Ni...; Path=/auth; HttpOnly; SameSite=Lax',
+            'refreshToken=eyJhbGciOiJIUzI1Ni...; Path=/api/v1/auth; HttpOnly; SameSite=Lax',
         },
       },
     },
@@ -136,6 +146,7 @@ export class AuthController {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
+      path: this.refreshTokenCookiePath,
     });
 
     return {
@@ -157,7 +168,7 @@ export class AuthController {
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000,
-      path: '/auth',
+      path: this.refreshTokenCookiePath,
     });
   }
 }
