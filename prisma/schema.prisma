@@ -2,6 +2,7 @@ generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
 }
+
 datasource db {
   provider = "postgresql"
 }
@@ -46,6 +47,7 @@ model User {
   refreshTokens   RefreshToken[]
   assessments     Assessment[]
   userSkills      UserSkill[]
+  pathways        UserPathway[]
   pathwayProgress UserPathwayStep[]
 }
 
@@ -84,9 +86,10 @@ model Career {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  skills  CareerSkill[]
-  outlook OutlookData?
-  pathway Pathway?
+  skills       CareerSkill[]
+  outlook      OutlookData?
+  pathway      Pathway?
+  userPathways UserPathway[]
 }
 
 model CareerSkill {
@@ -184,6 +187,19 @@ model ResourceSkill {
   skill    Skill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
 
   @@id([resourceId, skillId])
+}
+
+model UserPathway {
+  id        String   @id @default(uuid())
+  userId    String
+  careerId  String
+  isActive  Boolean  @default(false)
+  startedAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  career Career @relation(fields: [careerId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, careerId])
 }
 
 model UserPathwayStep {
