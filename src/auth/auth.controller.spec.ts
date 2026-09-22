@@ -1,18 +1,52 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { jest } from '@jest/globals';
+import { ConfigService } from '@nestjs/config';
+import type { Response } from 'express';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { LoginDto } from './dto';
+
+type RefreshRequest = Parameters<AuthController['refresh']>[0];
+type LogoutRequest = Parameters<AuthController['logout']>[0];
 
 describe('AuthController', () => {
   let controller: AuthController;
 
+  const cookiePath = '/api/v1/auth';
+
+  const mockAuthService = {
+    login:
+      jest.fn<
+        () => Promise<{ data: { accessToken: string; refreshToken: string } }>
+      >(),
+    refresh:
+      jest.fn<
+        () => Promise<{ data: { accessToken: string; refreshToken: string } }>
+      >(),
+    logout: jest.fn<() => Promise<{ data: { message: string } }>>(),
+  };
+
+  const mockConfigService = {
+    get: jest.fn((key: string) => {
+      if (key === 'API_VERSION') return 'v1';
+      if (key === 'NODE_ENV') return 'test';
+      return undefined;
+    }),
+  };
+
+  const mockResponse = {
+    cookie: jest.fn(),
+    clearCookie: jest.fn(),
+  };
+
   beforeEach(async () => {
+    jest.clearAllMocks();
+
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AuthController],
       providers: [
-        {
-          provide: AuthService,
-          useValue: {},
-        },
+        { provide: AuthService, useValue: mockAuthService },
+        { provide: ConfigService, useValue: mockConfigService },
       ],
     }).compile();
 
@@ -21,5 +55,67 @@ describe('AuthController', () => {
 
   it('should be defined', () => {
     expect(controller).toBeDefined();
+  });
+
+  it('scopes the refresh token cookie to the versioned auth base path', async () => {
+    mockAuthService.login.mockResolvedValue({
+      data: { accessToken: 'access-token', refreshToken: 'refresh-token' },
+    });
+
+    const dto: LoginDto = {
+      email: 'dev@example.com',
+      password: 'Password123!',
+    };
+
+    await controller.login(dto, mockResponse as unknown as Response);
+
+    expect(mockResponse.cookie).toHaveBeenCalledWith(
+      'refreshToken',
+      'refresh-token',
+      expect.objectContaining({ path: cookiePath }),
+    );
+  });
+
+  it('scopes the rotated refresh token cookie to the same path', async () => {
+    mockAuthService.refresh.mockResolvedValue({
+      data: { accessToken: 'access-token', refreshToken: 'rotated-token' },
+    });
+
+    const request = {
+      cookies: { refreshToken: 'refresh-token' },
+    } as unknown as RefreshRequest;
+
+    await controller.refresh(
+      request,
+      undefined,
+      mockResponse as unknown as Response,
+    );
+
+    expect(mockResponse.cookie).toHaveBeenCalledWith(
+      'refreshToken',
+      'rotated-token',
+      expect.objectContaining({ path: cookiePath }),
+    );
+  });
+
+  it('clears the refresh token cookie from the path it was set on', async () => {
+    mockAuthService.logout.mockResolvedValue({
+      data: { message: 'Logged out successfully' },
+    });
+
+    const request = {
+      cookies: { refreshToken: 'refresh-token' },
+    } as unknown as LogoutRequest;
+
+    await controller.logout(
+      request,
+      undefined,
+      mockResponse as unknown as Response,
+    );
+
+    expect(mockResponse.clearCookie).toHaveBeenCalledWith(
+      'refreshToken',
+      expect.objectContaining({ path: cookiePath }),
+    );
   });
 });

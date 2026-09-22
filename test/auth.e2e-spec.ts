@@ -106,6 +106,7 @@ describe('AuthController (e2e)', () => {
     );
 
     expect(refreshCookie).toBeDefined();
+    expect(refreshCookie).toContain(`Path=${apiPrefix}/auth`);
 
     oldRefreshToken = refreshCookie!.split(';')[0].replace('refreshToken=', '');
   });
@@ -142,6 +143,7 @@ describe('AuthController (e2e)', () => {
     );
 
     expect(refreshCookie).toBeDefined();
+    expect(refreshCookie).toContain(`Path=${apiPrefix}/auth`);
 
     refreshToken = refreshCookie!.split(';')[0].replace('refreshToken=', '');
 
@@ -195,6 +197,17 @@ describe('AuthController (e2e)', () => {
 
     expect(response.body.data).toBeDefined();
     expect(response.body.data.message).toBe('Logged out successfully');
+
+    const cookies = response.headers['set-cookie'];
+
+    expect(cookies).toBeDefined();
+
+    const clearedCookie = cookies.find((cookie: string) =>
+      cookie.startsWith('refreshToken='),
+    );
+
+    expect(clearedCookie).toBeDefined();
+    expect(clearedCookie).toContain(`Path=${apiPrefix}/auth`);
   });
 
   it('/auth/refresh (POST) - rejected after logout', async () => {
