@@ -40,13 +40,13 @@ describe('HealthController', () => {
     service = module.get<HealthService>(HealthService);
   });
 
-  it('wraps the report the service produced in a data envelope', async () => {
+  it('returns the report the service produced', async () => {
     mockService.check.mockResolvedValue(healthy);
 
     const result = await controller.check(response);
 
     expect(service.check).toHaveBeenCalledTimes(1);
-    expect(result).toEqual({ data: healthy });
+    expect(result).toEqual(healthy);
   });
 
   it('responds 200 when the service reports ok', async () => {

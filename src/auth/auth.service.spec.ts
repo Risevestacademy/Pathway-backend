@@ -79,7 +79,7 @@ describe('AuthService', () => {
         password: 'password123',
       });
 
-      expect(result).toEqual({ data: mockPublicUser });
+      expect(result).toEqual(mockPublicUser);
       expect(mockUsersService.create).toHaveBeenCalled();
     });
   });
@@ -117,10 +117,8 @@ describe('AuthService', () => {
       });
 
       expect(result).toEqual({
-        data: {
-          accessToken: 'mock-token',
-          refreshToken: 'mock-token',
-        },
+        accessToken: 'mock-token',
+        refreshToken: 'mock-token',
       });
       expect(mockPrismaService.refreshToken.create).toHaveBeenCalled();
     });
@@ -141,10 +139,8 @@ describe('AuthService', () => {
       const result = await service.refresh('valid-refresh-token');
 
       expect(result).toEqual({
-        data: {
-          accessToken: 'mock-token',
-          refreshToken: 'mock-token',
-        },
+        accessToken: 'mock-token',
+        refreshToken: 'mock-token',
       });
       expect(mockPrismaService.refreshToken.update).toHaveBeenCalled();
     });
@@ -166,7 +162,7 @@ describe('AuthService', () => {
       const result = await service.logout('valid-token');
 
       expect(mockPrismaService.refreshToken.updateMany).toHaveBeenCalled();
-      expect(result).toEqual({ data: { message: 'Logged out successfully' } });
+      expect(result).toEqual({ message: 'Logged out successfully' });
     });
 
     it('should fail silently and return success message if JWT verification fails', async () => {
@@ -174,7 +170,7 @@ describe('AuthService', () => {
 
       const result = await service.logout('expired-token');
 
-      expect(result).toEqual({ data: { message: 'Logged out successfully' } });
+      expect(result).toEqual({ message: 'Logged out successfully' });
     });
   });
 });

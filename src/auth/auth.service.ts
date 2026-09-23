@@ -16,7 +16,6 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { Role } from '../generated/prisma/enums';
 import { PrismaService } from '../prisma';
-import { ApiResponse } from '../common';
 
 const hashRefreshToken = (token: string) =>
   createHash('sha256').update(token).digest('hex');
@@ -35,13 +34,11 @@ export class AuthService {
     private readonly prisma: PrismaService,
   ) {}
 
-  async register(dto: RegisterDto): Promise<
-    ApiResponse<{
-      id: string;
-      email: string;
-      role: Role;
-    }>
-  > {
+  async register(dto: RegisterDto): Promise<{
+    id: string;
+    email: string;
+    role: Role;
+  }> {
     const existingUser = await this.usersService.findByEmail(dto.email);
 
     if (existingUser) {
@@ -58,20 +55,16 @@ export class AuthService {
     this.logger.log({ userId: user.id }, 'User registered');
 
     return {
-      data: {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-      },
+      id: user.id,
+      email: user.email,
+      role: user.role,
     };
   }
 
-  async login(dto: LoginDto): Promise<
-    ApiResponse<{
-      accessToken: string;
-      refreshToken: string;
-    }>
-  > {
+  async login(dto: LoginDto): Promise<{
+    accessToken: string;
+    refreshToken: string;
+  }> {
     const user = await this.usersService.findByEmail(dto.email);
 
     const passwordHash = user?.passwordHash || this.DUMMY_HASH;
@@ -86,19 +79,13 @@ export class AuthService {
 
     this.logger.log({ userId: user.id }, 'Login succeeded');
 
-    const tokens = await this.issueTokens(user);
-
-    return {
-      data: tokens,
-    };
+    return this.issueTokens(user);
   }
 
-  async refresh(refreshToken: string): Promise<
-    ApiResponse<{
-      accessToken: string;
-      refreshToken: string;
-    }>
-  > {
+  async refresh(refreshToken: string): Promise<{
+    accessToken: string;
+    refreshToken: string;
+  }> {
     try {
       const payload = await this.jwtService.verifyAsync<JwtPayload>(
         refreshToken,
@@ -133,11 +120,7 @@ export class AuthService {
         throw new UnauthorizedException('Invalid refresh token');
       }
 
-      const tokens = await this.issueTokens(user);
-
-      return {
-        data: tokens,
-      };
+      return await this.issueTokens(user);
     } catch (error) {
       this.logger.warn(
         {
@@ -150,9 +133,7 @@ export class AuthService {
     }
   }
 
-  async logout(
-    refreshToken: string,
-  ): Promise<ApiResponse<{ message: string }>> {
+  async logout(refreshToken: string): Promise<{ message: string }> {
     try {
       const payload = await this.jwtService.verifyAsync<JwtPayload>(
         refreshToken,
@@ -179,11 +160,7 @@ export class AuthService {
       // Fail silently if token is already invalid.
     }
 
-    return {
-      data: {
-        message: 'Logged out successfully',
-      },
-    };
+    return { message: 'Logged out successfully' };
   }
 
   private async issueTokens(user: {

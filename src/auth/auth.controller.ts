@@ -18,8 +18,8 @@ import { CurrentUser } from './decorators/current-user.decorator';
 import { type AuthenticatedUser } from './interfaces/authenticated-user.interface';
 import { ApiOperation, ApiResponse } from '@nestjs/swagger';
 import {
-  RegisterApiResponseDto,
-  LoginApiResponseDto,
+  RegisterResponseDto,
+  AuthTokensResponseDto,
   LoginDto,
   RegisterDto,
 } from './dto';
@@ -47,7 +47,7 @@ export class AuthController {
   @ApiResponse({
     status: 201,
     description: 'User registered successfully',
-    type: RegisterApiResponseDto,
+    type: RegisterResponseDto,
   })
   @ApiResponse({ status: 409, description: 'Email already registered' })
   @Post('register')
@@ -60,7 +60,7 @@ export class AuthController {
     status: 200,
     description:
       'User logged in successfully. Sets a refresh token cookie for web clients.',
-    type: LoginApiResponseDto,
+    type: AuthTokensResponseDto,
     headers: {
       'Set-Cookie': {
         description: 'HttpOnly refresh token cookie for web clients',
@@ -79,11 +79,11 @@ export class AuthController {
     @Body() dto: LoginDto,
     @Res({ passthrough: true }) response: Response,
   ) {
-    const { data } = await this.authService.login(dto);
+    const tokens = await this.authService.login(dto);
 
-    this.setRefreshTokenCookie(response, data.refreshToken);
+    this.setRefreshTokenCookie(response, tokens.refreshToken);
 
-    return { data };
+    return tokens;
   }
 
   @ApiOperation({ summary: 'Refresh access token using refresh token' })
@@ -91,7 +91,7 @@ export class AuthController {
     status: 200,
     description:
       'Access token refreshed successfully. Sets a new refresh token cookie for web clients.',
-    type: LoginApiResponseDto,
+    type: AuthTokensResponseDto,
     headers: {
       'Set-Cookie': {
         description: 'HttpOnly rotated refresh token cookie for web clients',
@@ -120,11 +120,11 @@ export class AuthController {
       throw new UnauthorizedException('Refresh token required');
     }
 
-    const { data } = await this.authService.refresh(refreshToken);
+    const tokens = await this.authService.refresh(refreshToken);
 
-    this.setRefreshTokenCookie(response, data.refreshToken);
+    this.setRefreshTokenCookie(response, tokens.refreshToken);
 
-    return { data };
+    return tokens;
   }
 
   @ApiOperation({ summary: 'Logout a user' })
@@ -138,9 +138,9 @@ export class AuthController {
   ) {
     const refreshToken = request.cookies.refreshToken ?? bodyRefreshToken;
 
-    if (refreshToken) {
-      await this.authService.logout(refreshToken);
-    }
+    const result = refreshToken
+      ? await this.authService.logout(refreshToken)
+      : { message: 'Logged out successfully' };
 
     response.clearCookie('refreshToken', {
       httpOnly: true,
@@ -149,17 +149,13 @@ export class AuthController {
       path: this.refreshTokenCookiePath,
     });
 
-    return {
-      data: {
-        message: 'Logged out successfully',
-      },
-    };
+    return result;
   }
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
   async getMe(@CurrentUser() user: AuthenticatedUser) {
-    return { data: user };
+    return user;
   }
 
   private setRefreshTokenCookie(response: Response, refreshToken: string) {

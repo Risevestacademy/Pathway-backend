@@ -6,7 +6,7 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get(':id')
-  async findOne(@Param('id') id: string): Promise<{ data: PublicUser }> {
-    return { data: await this.usersService.findById(id) };
+  async findOne(@Param('id') id: string): Promise<PublicUser> {
+    return this.usersService.findById(id);
   }
 }

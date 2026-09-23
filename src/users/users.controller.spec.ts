@@ -38,6 +38,6 @@ describe('UsersController', () => {
     const result = await controller.findOne('user-1');
 
     expect(service.findById).toHaveBeenCalledWith('user-1');
-    expect(result).toEqual({ data: user });
+    expect(result).toEqual(user);
   });
 });
