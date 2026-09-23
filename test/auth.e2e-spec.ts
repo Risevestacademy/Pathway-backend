@@ -1,10 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import cookieParser from 'cookie-parser';
 
 import { AppModule } from '../src/app.module';
+import { createValidationPipe } from '../src/common';
 import { EnvironmentVariables } from '../src/config';
 
 describe('AuthController (e2e)', () => {
@@ -39,12 +40,7 @@ describe('AuthController (e2e)', () => {
 
     app.setGlobalPrefix(apiPrefix);
 
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        transform: true,
-      }),
-    );
+    app.useGlobalPipes(createValidationPipe());
 
     await app.init();
   });
@@ -60,12 +56,12 @@ describe('AuthController (e2e)', () => {
       .expect(201);
 
     expect(response.body).toBeDefined();
-    expect(response.body.data).toBeDefined();
-    expect(response.body.data.email).toBe(testUser.email);
+    expect(response.body.data).toBeUndefined();
+    expect(response.body.email).toBe(testUser.email);
 
     // Password hash should never be returned to the client.
-    expect(response.body.data.passwordHash).toBeUndefined();
-    expect(response.body.data.password).toBeUndefined();
+    expect(response.body.passwordHash).toBeUndefined();
+    expect(response.body.password).toBeUndefined();
   });
 
   it('/auth/register (POST) - duplicate email', async () => {
@@ -91,10 +87,10 @@ describe('AuthController (e2e)', () => {
       .send(testUser)
       .expect(200);
 
-    expect(response.body.data).toBeDefined();
-    expect(response.body.data.accessToken).toBeDefined();
+    expect(response.body.data).toBeUndefined();
+    expect(response.body.accessToken).toBeDefined();
 
-    accessToken = response.body.data.accessToken;
+    accessToken = response.body.accessToken;
 
     // Refresh token is returned as an HttpOnly cookie for web clients.
     const cookies = response.headers['set-cookie'];
@@ -117,8 +113,8 @@ describe('AuthController (e2e)', () => {
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
 
-    expect(response.body.data).toBeDefined();
-    expect(response.body.data.email).toBe(testUser.email);
+    expect(response.body.data).toBeUndefined();
+    expect(response.body.email).toBe(testUser.email);
   });
 
   it('/auth/me (GET) - no access token', async () => {
@@ -131,8 +127,8 @@ describe('AuthController (e2e)', () => {
       .set('Cookie', [`refreshToken=${oldRefreshToken}`])
       .expect(200);
 
-    expect(response.body.data).toBeDefined();
-    expect(response.body.data.accessToken).toBeDefined();
+    expect(response.body.data).toBeUndefined();
+    expect(response.body.accessToken).toBeDefined();
 
     const cookies = response.headers['set-cookie'];
 
@@ -150,7 +146,7 @@ describe('AuthController (e2e)', () => {
     // Refresh token rotation should produce a different token.
     expect(refreshToken).not.toBe(oldRefreshToken);
 
-    accessToken = response.body.data.accessToken;
+    accessToken = response.body.accessToken;
   });
 
   it('/auth/refresh (POST) - old refresh token is rejected', async () => {
@@ -166,8 +162,8 @@ describe('AuthController (e2e)', () => {
       .set('Cookie', [`refreshToken=${refreshToken}`])
       .expect(200);
 
-    expect(response.body.data).toBeDefined();
-    expect(response.body.data.accessToken).toBeDefined();
+    expect(response.body.data).toBeUndefined();
+    expect(response.body.accessToken).toBeDefined();
 
     const cookies = response.headers['set-cookie'];
 
@@ -186,7 +182,7 @@ describe('AuthController (e2e)', () => {
     expect(nextRefreshToken).not.toBe(refreshToken);
 
     refreshToken = nextRefreshToken;
-    accessToken = response.body.data.accessToken;
+    accessToken = response.body.accessToken;
   });
 
   it('/auth/logout (POST) - success', async () => {
@@ -195,8 +191,8 @@ describe('AuthController (e2e)', () => {
       .set('Cookie', [`refreshToken=${refreshToken}`])
       .expect(200);
 
-    expect(response.body.data).toBeDefined();
-    expect(response.body.data.message).toBe('Logged out successfully');
+    expect(response.body.data).toBeUndefined();
+    expect(response.body.message).toBe('Logged out successfully');
 
     const cookies = response.headers['set-cookie'];
 

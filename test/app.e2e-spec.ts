@@ -25,7 +25,7 @@ describe('Health (e2e)', () => {
       .get('/health')
       .expect(200);
 
-    expect(response.body.data).toEqual(
+    expect(response.body).toEqual(
       expect.objectContaining({
         status: 'ok',
         checks: { database: { status: 'up' } },

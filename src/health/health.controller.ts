@@ -9,13 +9,13 @@ export class HealthController {
   @Get()
   async check(
     @Res({ passthrough: true }) response: Response,
-  ): Promise<{ data: HealthReport }> {
+  ): Promise<HealthReport> {
     const report = await this.healthService.check();
 
     response.status(
       report.status === 'ok' ? HttpStatus.OK : HttpStatus.SERVICE_UNAVAILABLE,
     );
 
-    return { data: report };
+    return report;
   }
 }
