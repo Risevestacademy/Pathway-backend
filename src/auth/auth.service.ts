@@ -146,34 +146,27 @@ export class AuthService {
     return new UnauthorizedException('Invalid refresh token');
   }
 
-  async logout(refreshToken: string): Promise<{ message: string }> {
-    try {
-      const payload = await this.jwtService.verifyAsync<JwtPayload>(
-        refreshToken,
-        {
-          secret: this.configService.get<string>('JWT_REFRESH_SECRET')!,
-        },
-      );
+  async logout(refreshToken: string): Promise<void> {
+    const payload = await this.decodeRefreshToken(refreshToken);
 
-      const tokenHash = hashRefreshToken(refreshToken);
-
-      await this.prisma.refreshToken.updateMany({
-        where: {
-          userId: payload.sub,
-          tokenHash,
-          revokedAt: null,
-        },
-        data: {
-          revokedAt: new Date(),
-        },
-      });
-
-      this.logger.log({ userId: payload.sub }, 'User logged out');
-    } catch {
-      // Fail silently if token is already invalid.
+    if (!payload) {
+      return;
     }
 
-    return { message: 'Logged out successfully' };
+    const tokenHash = hashRefreshToken(refreshToken);
+
+    await this.prisma.refreshToken.updateMany({
+      where: {
+        userId: payload.sub,
+        tokenHash,
+        revokedAt: null,
+      },
+      data: {
+        revokedAt: new Date(),
+      },
+    });
+
+    this.logger.log({ userId: payload.sub }, 'User logged out');
   }
 
   private async issueTokens(

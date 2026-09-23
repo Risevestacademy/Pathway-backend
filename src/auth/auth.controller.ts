@@ -134,7 +134,7 @@ export class AuthController {
     const platform = resolveClientPlatform(request);
 
     const refreshToken =
-      platform === 'mobile' ? dto.refreshToken : request.cookies.refreshToken;
+      platform === 'mobile' ? dto.refreshToken : request.cookies?.refreshToken;
 
     if (!refreshToken) {
       throw new UnauthorizedException('Refresh token required');
@@ -146,19 +146,37 @@ export class AuthController {
   }
 
   @ApiOperation({ summary: 'Logout a user' })
-  @ApiResponse({ status: 200, description: 'User logged out successfully' })
+  @ApiResponse({
+    status: 204,
+    description:
+      'Every refresh token presented is revoked and the web refresh token cookie is cleared.',
+    headers: {
+      'Set-Cookie': {
+        description: 'Expired refresh token cookie for web clients',
+        schema: {
+          type: 'string',
+          example:
+            'refreshToken=; Path=/api/v1/auth; Expires=Thu, 01 Jan 1970 00:00:00 GMT',
+        },
+      },
+    },
+  })
   @Post('logout')
-  @HttpCode(200)
+  @HttpCode(204)
   async logout(
     @Req() request: RequestWithCookies,
-    @Body('refreshToken') bodyRefreshToken: string | undefined,
+    @Body() dto: RefreshTokenDto,
     @Res({ passthrough: true }) response: Response,
-  ) {
-    const refreshToken = request.cookies.refreshToken ?? bodyRefreshToken;
+  ): Promise<void> {
+    const presented = new Set(
+      [request.cookies?.refreshToken, dto.refreshToken].filter(
+        (token): token is string => Boolean(token),
+      ),
+    );
 
-    const result = refreshToken
-      ? await this.authService.logout(refreshToken)
-      : { message: 'Logged out successfully' };
+    await Promise.all(
+      [...presented].map((token) => this.authService.logout(token)),
+    );
 
     response.clearCookie('refreshToken', {
       httpOnly: true,
@@ -166,8 +184,6 @@ export class AuthController {
       sameSite: 'lax',
       path: this.refreshTokenCookiePath,
     });
-
-    return result;
   }
 
   @Get('me')

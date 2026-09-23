@@ -191,10 +191,10 @@ describe('AuthController (e2e)', () => {
     const response = await request(app.getHttpServer())
       .post(`${apiPrefix}/auth/logout`)
       .set('Cookie', [`refreshToken=${refreshToken}`])
-      .expect(200);
+      .expect(204);
 
-    expect(response.body.data).toBeUndefined();
-    expect(response.body.message).toBe('Logged out successfully');
+    expect(response.body).toEqual({});
+    expect(response.text).toBe('');
 
     const cookies = response.headers['set-cookie'];
 
@@ -213,6 +213,28 @@ describe('AuthController (e2e)', () => {
       .post(`${apiPrefix}/auth/refresh`)
       .set('Cookie', [`refreshToken=${refreshToken}`])
       .expect(401);
+  });
+
+  it('/auth/logout (POST) - without a refresh token', async () => {
+    const response = await request(app.getHttpServer())
+      .post(`${apiPrefix}/auth/logout`)
+      .expect(204);
+
+    expect(response.text).toBe('');
+  });
+
+  it('/auth/logout (POST) - tolerates an unusable refresh token', async () => {
+    await request(app.getHttpServer())
+      .post(`${apiPrefix}/auth/logout`)
+      .send({ refreshToken: 'not-a-jwt' })
+      .expect(204);
+  });
+
+  it('/auth/logout (POST) - tolerates an unsupported platform header', async () => {
+    await request(app.getHttpServer())
+      .post(`${apiPrefix}/auth/logout`)
+      .set('X-Client-Platform', 'desktop')
+      .expect(204);
   });
 
   describe('mobile clients', () => {
@@ -291,6 +313,37 @@ describe('AuthController (e2e)', () => {
         .set('X-Client-Platform', 'desktop')
         .send({ refreshToken: mobileRefreshToken })
         .expect(400);
+    });
+
+    it('revokes the body token on logout even when a cookie is attached', async () => {
+      const web = await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/login`)
+        .send(mobileUser)
+        .expect(200);
+
+      const cookie = (web.headers['set-cookie'] as unknown as string[]).find(
+        (entry) => entry.startsWith('refreshToken='),
+      )!;
+
+      const cookieToken = cookie.split(';')[0].replace('refreshToken=', '');
+
+      await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/logout`)
+        .set('X-Client-Platform', 'mobile')
+        .set('Cookie', [`refreshToken=${cookieToken}`])
+        .send({ refreshToken: mobileRefreshToken })
+        .expect(204);
+
+      await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/refresh`)
+        .set('X-Client-Platform', 'mobile')
+        .send({ refreshToken: mobileRefreshToken })
+        .expect(401);
+
+      await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/refresh`)
+        .set('Cookie', [`refreshToken=${cookieToken}`])
+        .expect(401);
     });
   });
 });
