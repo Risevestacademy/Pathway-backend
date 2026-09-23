@@ -27,7 +27,7 @@ describe('AuthController', () => {
       jest.fn<() => Promise<{ accessToken: string; refreshToken: string }>>(),
     refresh:
       jest.fn<() => Promise<{ accessToken: string; refreshToken: string }>>(),
-    logout: jest.fn<() => Promise<{ message: string }>>(),
+    logout: jest.fn<() => Promise<void>>(),
   };
 
   const mockConfigService = {
@@ -105,24 +105,89 @@ describe('AuthController', () => {
   });
 
   it('clears the refresh token cookie from the path it was set on', async () => {
-    mockAuthService.logout.mockResolvedValue({
-      message: 'Logged out successfully',
-    });
+    mockAuthService.logout.mockResolvedValue();
 
     const request = requestWith(undefined, {
       refreshToken: 'refresh-token',
     }) as unknown as LogoutRequest;
 
-    await controller.logout(
-      request,
-      undefined,
-      mockResponse as unknown as Response,
-    );
+    await controller.logout(request, {}, mockResponse as unknown as Response);
 
     expect(mockResponse.clearCookie).toHaveBeenCalledWith(
       'refreshToken',
       expect.objectContaining({ path: cookiePath }),
     );
+  });
+
+  it('returns no logout response body', async () => {
+    mockAuthService.logout.mockResolvedValue();
+
+    const result = await controller.logout(
+      requestWith(undefined, {
+        refreshToken: 'refresh-token',
+      }) as unknown as LogoutRequest,
+      {},
+      mockResponse as unknown as Response,
+    );
+
+    expect(result).toBeUndefined();
+  });
+
+  it('revokes every refresh token the client presents', async () => {
+    mockAuthService.logout.mockResolvedValue();
+
+    await controller.logout(
+      requestWith(undefined, {
+        refreshToken: 'cookie-refresh-token',
+      }) as unknown as LogoutRequest,
+      { refreshToken: 'body-refresh-token' },
+      mockResponse as unknown as Response,
+    );
+
+    expect(mockAuthService.logout).toHaveBeenCalledWith('cookie-refresh-token');
+    expect(mockAuthService.logout).toHaveBeenCalledWith('body-refresh-token');
+    expect(mockAuthService.logout).toHaveBeenCalledTimes(2);
+  });
+
+  it('revokes a token presented in both places only once', async () => {
+    mockAuthService.logout.mockResolvedValue();
+
+    await controller.logout(
+      requestWith(undefined, {
+        refreshToken: 'same-token',
+      }) as unknown as LogoutRequest,
+      { refreshToken: 'same-token' },
+      mockResponse as unknown as Response,
+    );
+
+    expect(mockAuthService.logout).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears the cookie without revoking when no token is presented', async () => {
+    await controller.logout(
+      requestWith() as unknown as LogoutRequest,
+      {},
+      mockResponse as unknown as Response,
+    );
+
+    expect(mockAuthService.logout).not.toHaveBeenCalled();
+    expect(mockResponse.clearCookie).toHaveBeenCalled();
+  });
+
+  it('accepts an unsupported platform header on logout', async () => {
+    mockAuthService.logout.mockResolvedValue();
+
+    await expect(
+      controller.logout(
+        requestWith('desktop', {
+          refreshToken: 'refresh-token',
+        }) as unknown as LogoutRequest,
+        {},
+        mockResponse as unknown as Response,
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(mockAuthService.logout).toHaveBeenCalledWith('refresh-token');
   });
 
   it('withholds the refresh token from a web login body', async () => {

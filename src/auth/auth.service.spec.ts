@@ -189,21 +189,32 @@ describe('AuthService', () => {
   });
 
   describe('logout', () => {
-    it('should revoke token in DB and return success message', async () => {
+    it('should revoke the token in the DB and resolve without a value', async () => {
       mockJwtService.verifyAsync.mockResolvedValue({ sub: 'user-1' });
 
       const result = await service.logout('valid-token');
 
       expect(mockPrismaService.refreshToken.updateMany).toHaveBeenCalled();
-      expect(result).toEqual({ message: 'Logged out successfully' });
+      expect(result).toBeUndefined();
     });
 
-    it('should fail silently and return success message if JWT verification fails', async () => {
+    it('should fail silently when JWT verification fails', async () => {
       mockJwtService.verifyAsync.mockRejectedValue(new Error('Invalid token'));
 
-      const result = await service.logout('expired-token');
+      await expect(service.logout('expired-token')).resolves.toBeUndefined();
 
-      expect(result).toEqual({ message: 'Logged out successfully' });
+      expect(mockPrismaService.refreshToken.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('should surface a database failure rather than report success', async () => {
+      mockJwtService.verifyAsync.mockResolvedValue({ sub: 'user-1' });
+      mockPrismaService.refreshToken.updateMany.mockRejectedValue(
+        new Error('connection terminated'),
+      );
+
+      await expect(service.logout('valid-token')).rejects.toThrow(
+        'connection terminated',
+      );
     });
   });
 });
