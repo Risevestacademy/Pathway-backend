@@ -38,6 +38,9 @@ describe('AuthService', () => {
       update: jest.fn().mockResolvedValue({ id: 'token-1' }),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
+    $transaction: jest.fn((callback: (tx: unknown) => unknown) =>
+      callback(mockPrismaService),
+    ),
   };
 
   beforeEach(async () => {
@@ -127,9 +130,7 @@ describe('AuthService', () => {
   describe('refresh', () => {
     it('should issue new tokens if refresh token is valid and found in DB', async () => {
       mockJwtService.verifyAsync.mockResolvedValue({ sub: 'user-1' });
-      mockPrismaService.refreshToken.findFirst.mockResolvedValue({
-        id: 'token-1',
-      });
+      mockPrismaService.refreshToken.updateMany.mockResolvedValue({ count: 1 });
       mockUsersService.findById.mockResolvedValue({
         id: 'user-1',
         email: 'test@test.com',
@@ -142,16 +143,48 @@ describe('AuthService', () => {
         accessToken: 'mock-token',
         refreshToken: 'mock-token',
       });
-      expect(mockPrismaService.refreshToken.update).toHaveBeenCalled();
+      expect(mockPrismaService.refreshToken.updateMany).toHaveBeenCalled();
+    });
+
+    it('should revoke the old token and issue the new one in one transaction', async () => {
+      mockJwtService.verifyAsync.mockResolvedValue({ sub: 'user-1' });
+      mockPrismaService.refreshToken.updateMany.mockResolvedValue({ count: 1 });
+      mockUsersService.findById.mockResolvedValue({
+        id: 'user-1',
+        email: 'test@test.com',
+        role: Role.USER,
+      });
+
+      await service.refresh('valid-refresh-token');
+
+      expect(mockPrismaService.$transaction).toHaveBeenCalledTimes(1);
+      expect(mockPrismaService.refreshToken.create).toHaveBeenCalled();
     });
 
     it('should throw UnauthorizedException if token is missing in DB', async () => {
       mockJwtService.verifyAsync.mockResolvedValue({ sub: 'user-1' });
-      mockPrismaService.refreshToken.findFirst.mockResolvedValue(null);
+      mockPrismaService.refreshToken.updateMany.mockResolvedValue({ count: 0 });
+      mockUsersService.findById.mockResolvedValue({
+        id: 'user-1',
+        email: 'test@test.com',
+        role: Role.USER,
+      });
 
       await expect(service.refresh('invalid-token')).rejects.toThrow(
         UnauthorizedException,
       );
+
+      expect(mockPrismaService.refreshToken.create).not.toHaveBeenCalled();
+    });
+
+    it('should not revoke anything when the token fails verification', async () => {
+      mockJwtService.verifyAsync.mockRejectedValue(new Error('Invalid token'));
+
+      await expect(service.refresh('garbage')).rejects.toThrow(
+        UnauthorizedException,
+      );
+
+      expect(mockPrismaService.$transaction).not.toHaveBeenCalled();
     });
   });
 

@@ -16,13 +16,19 @@ import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { type AuthenticatedUser } from './interfaces/authenticated-user.interface';
-import { ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { ApiHeader, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import {
   RegisterResponseDto,
   AuthTokensResponseDto,
   LoginDto,
+  RefreshTokenDto,
   RegisterDto,
 } from './dto';
+import {
+  CLIENT_PLATFORM_API_HEADER,
+  type ClientPlatform,
+  resolveClientPlatform,
+} from './utils/client-platform';
 import { apiPrefix } from '../common';
 import { type EnvironmentVariables } from '../config';
 
@@ -73,17 +79,23 @@ export class AuthController {
     },
   })
   @ApiResponse({ status: 401, description: 'Invalid Credentials' })
+  @ApiResponse({
+    status: 400,
+    description: 'Unsupported X-Client-Platform value',
+  })
+  @ApiHeader(CLIENT_PLATFORM_API_HEADER)
   @Post('login')
   @HttpCode(200)
   async login(
     @Body() dto: LoginDto,
+    @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ) {
+    const platform = resolveClientPlatform(request);
+
     const tokens = await this.authService.login(dto);
 
-    this.setRefreshTokenCookie(response, tokens.refreshToken);
-
-    return tokens;
+    return this.deliverTokens(response, platform, tokens);
   }
 
   @ApiOperation({ summary: 'Refresh access token using refresh token' })
@@ -104,17 +116,25 @@ export class AuthController {
     },
   })
   @ApiResponse({
+    status: 400,
+    description: 'Unsupported X-Client-Platform value',
+  })
+  @ApiResponse({
     status: 401,
     description: 'Refresh token required or invalid',
   })
+  @ApiHeader(CLIENT_PLATFORM_API_HEADER)
   @Post('refresh')
   @HttpCode(200)
   async refresh(
     @Req() request: RequestWithCookies,
-    @Body('refreshToken') bodyRefreshToken: string | undefined,
+    @Body() dto: RefreshTokenDto,
     @Res({ passthrough: true }) response: Response,
   ) {
-    const refreshToken = request.cookies.refreshToken ?? bodyRefreshToken;
+    const platform = resolveClientPlatform(request);
+
+    const refreshToken =
+      platform === 'mobile' ? dto.refreshToken : request.cookies.refreshToken;
 
     if (!refreshToken) {
       throw new UnauthorizedException('Refresh token required');
@@ -122,9 +142,7 @@ export class AuthController {
 
     const tokens = await this.authService.refresh(refreshToken);
 
-    this.setRefreshTokenCookie(response, tokens.refreshToken);
-
-    return tokens;
+    return this.deliverTokens(response, platform, tokens);
   }
 
   @ApiOperation({ summary: 'Logout a user' })
@@ -156,6 +174,20 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   async getMe(@CurrentUser() user: AuthenticatedUser) {
     return user;
+  }
+
+  private deliverTokens(
+    response: Response,
+    platform: ClientPlatform,
+    tokens: { accessToken: string; refreshToken: string },
+  ): AuthTokensResponseDto {
+    if (platform === 'mobile') {
+      return tokens;
+    }
+
+    this.setRefreshTokenCookie(response, tokens.refreshToken);
+
+    return { accessToken: tokens.accessToken };
   }
 
   private setRefreshTokenCookie(response: Response, refreshToken: string) {

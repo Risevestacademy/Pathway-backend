@@ -5,7 +5,7 @@ import { HealthModule } from './health';
 import { PrismaModule } from './prisma';
 import { UsersModule } from './users';
 import { AppLoggerModule } from './logger';
-import { AuthModule } from './auth/auth.module';
+import { AuthModule } from './auth';
 
 @Module({
   imports: [

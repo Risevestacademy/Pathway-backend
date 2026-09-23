@@ -89,6 +89,7 @@ describe('AuthController (e2e)', () => {
 
     expect(response.body.data).toBeUndefined();
     expect(response.body.accessToken).toBeDefined();
+    expect(response.body.refreshToken).toBeUndefined();
 
     accessToken = response.body.accessToken;
 
@@ -129,6 +130,7 @@ describe('AuthController (e2e)', () => {
 
     expect(response.body.data).toBeUndefined();
     expect(response.body.accessToken).toBeDefined();
+    expect(response.body.refreshToken).toBeUndefined();
 
     const cookies = response.headers['set-cookie'];
 
@@ -211,5 +213,84 @@ describe('AuthController (e2e)', () => {
       .post(`${apiPrefix}/auth/refresh`)
       .set('Cookie', [`refreshToken=${refreshToken}`])
       .expect(401);
+  });
+
+  describe('mobile clients', () => {
+    const mobileUser = {
+      email: `e2e-mobile-${Date.now()}@test.com`,
+      password: 'Password123!',
+    };
+
+    let mobileRefreshToken: string;
+
+    beforeAll(async () => {
+      await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/register`)
+        .send(mobileUser)
+        .expect(201);
+
+      const response = await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/login`)
+        .set('X-Client-Platform', 'mobile')
+        .send(mobileUser)
+        .expect(200);
+
+      mobileRefreshToken = response.body.refreshToken;
+    });
+
+    it('logs in without a refresh cookie', async () => {
+      const response = await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/login`)
+        .set('X-Client-Platform', 'mobile')
+        .send(mobileUser)
+        .expect(200);
+
+      expect(response.body.refreshToken).toBeDefined();
+      expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    it('refreshes from the request body', async () => {
+      const response = await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/refresh`)
+        .set('X-Client-Platform', 'mobile')
+        .send({ refreshToken: mobileRefreshToken })
+        .expect(200);
+
+      expect(response.body.accessToken).toBeDefined();
+      expect(response.body.refreshToken).toBeDefined();
+      expect(response.body.refreshToken).not.toBe(mobileRefreshToken);
+      mobileRefreshToken = response.body.refreshToken;
+    });
+
+    it('does not accept a cookie when the platform is mobile', async () => {
+      await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/refresh`)
+        .set('X-Client-Platform', 'mobile')
+        .set('Cookie', [`refreshToken=${mobileRefreshToken}`])
+        .expect(401);
+    });
+
+    it('does not accept a body token when the platform is web', async () => {
+      await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/refresh`)
+        .send({ refreshToken: mobileRefreshToken })
+        .expect(401);
+    });
+
+    it('rejects an unknown property in the request body', async () => {
+      await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/refresh`)
+        .set('X-Client-Platform', 'mobile')
+        .send({ refreshToken: mobileRefreshToken, extra: 'nope' })
+        .expect(400);
+    });
+
+    it('rejects an unsupported platform', async () => {
+      await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/refresh`)
+        .set('X-Client-Platform', 'desktop')
+        .send({ refreshToken: mobileRefreshToken })
+        .expect(400);
+    });
   });
 });
