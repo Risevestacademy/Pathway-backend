@@ -17,6 +17,8 @@ import { LoginDto } from './dto/login.dto';
 import { Role } from '../generated/prisma/enums';
 import { PrismaService } from '../prisma';
 
+type PrismaTransactionClient = Pick<PrismaService, 'refreshToken'>;
+
 const hashRefreshToken = (token: string) =>
   createHash('sha256').update(token).digest('hex');
 
@@ -86,51 +88,62 @@ export class AuthService {
     accessToken: string;
     refreshToken: string;
   }> {
-    try {
-      const payload = await this.jwtService.verifyAsync<JwtPayload>(
-        refreshToken,
-        {
-          secret: this.configService.get<string>('JWT_REFRESH_SECRET')!,
-        },
-      );
+    const payload = await this.decodeRefreshToken(refreshToken);
 
-      const tokenHash = hashRefreshToken(refreshToken);
+    if (!payload) {
+      throw this.refreshFailed();
+    }
 
-      const storedToken = await this.prisma.refreshToken.findFirst({
+    const tokenHash = hashRefreshToken(refreshToken);
+
+    const user = await this.usersService.findById(payload.sub);
+
+    if (!user) {
+      throw this.refreshFailed(payload.sub);
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const revoked = await tx.refreshToken.updateMany({
         where: {
           userId: payload.sub,
           tokenHash,
           revokedAt: null,
           expiresAt: { gt: new Date() },
         },
-      });
-
-      if (!storedToken) {
-        throw new UnauthorizedException('Invalid refresh token');
-      }
-
-      await this.prisma.refreshToken.update({
-        where: { id: storedToken.id },
         data: { revokedAt: new Date() },
       });
 
-      const user = await this.usersService.findById(payload.sub);
-
-      if (!user) {
-        throw new UnauthorizedException('Invalid refresh token');
+      if (revoked.count === 0) {
+        throw this.refreshFailed(payload.sub);
       }
 
-      return await this.issueTokens(user);
+      return this.issueTokens(user, tx);
+    });
+  }
+
+  private async decodeRefreshToken(
+    refreshToken: string,
+  ): Promise<JwtPayload | null> {
+    try {
+      return await this.jwtService.verifyAsync<JwtPayload>(refreshToken, {
+        secret: this.configService.get<string>('JWT_REFRESH_SECRET')!,
+      });
     } catch (error) {
       this.logger.warn(
         {
           error: error instanceof Error ? error.message : String(error),
         },
-        'Refresh failed',
+        'Refresh token verification failed',
       );
 
-      throw new UnauthorizedException('Invalid refresh token');
+      return null;
     }
+  }
+
+  private refreshFailed(userId?: string): UnauthorizedException {
+    this.logger.warn({ userId }, 'Refresh failed');
+
+    return new UnauthorizedException('Invalid refresh token');
   }
 
   async logout(refreshToken: string): Promise<{ message: string }> {
@@ -163,11 +176,14 @@ export class AuthService {
     return { message: 'Logged out successfully' };
   }
 
-  private async issueTokens(user: {
-    id: string;
-    email: string;
-    role: Role;
-  }): Promise<{
+  private async issueTokens(
+    user: {
+      id: string;
+      email: string;
+      role: Role;
+    },
+    client: PrismaTransactionClient = this.prisma,
+  ): Promise<{
     accessToken: string;
     refreshToken: string;
   }> {
@@ -212,7 +228,7 @@ export class AuthService {
 
     const expiresAt = new Date(Date.now() + ms(refreshExpiry));
 
-    await this.prisma.refreshToken.create({
+    await client.refreshToken.create({
       data: {
         userId: user.id,
         tokenHash,
