@@ -83,6 +83,17 @@ enum Demand {
   HIGH
 }
 
+enum ResourceCostStatus {
+  FREE
+  PAID
+  UNKNOWN
+}
+
+enum ResourceStatus {
+  ACTIVE
+  WITHDRAWN
+}
+
 model User {
   id           String   @id @default(uuid())
   email        String   @unique
@@ -246,13 +257,19 @@ model PathwayStepSkill {
 }
 
 model Resource {
-  id          String       @id @default(uuid())
-  title       String
-  description String?
-  url         String
-  type        ResourceType
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  id                String             @id @default(uuid())
+  title             String
+  description       String?
+  url               String
+  type              ResourceType
+  provider          String
+  costStatus        ResourceCostStatus @default(UNKNOWN)
+  certificationCost Decimal?
+  curationRationale String
+  lastCheckedDate   DateTime
+  status            ResourceStatus     @default(ACTIVE)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
 
   pathwaySteps PathwayStepResource[]
   skills       ResourceSkill[]
