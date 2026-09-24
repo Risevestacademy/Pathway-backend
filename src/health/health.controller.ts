@@ -1,7 +1,9 @@
 import { Controller, Get, HttpStatus, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { HealthReport, HealthService } from './health.service';
+import { SkipRateLimit } from '../common/throttler';
 
+@SkipRateLimit()
 @Controller('health')
 export class HealthController {
   constructor(private readonly healthService: HealthService) {}

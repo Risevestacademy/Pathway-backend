@@ -148,4 +148,18 @@ describe('validateEnv', () => {
       }),
     ).toThrow(/NODE_ENV[\s\S]*PORT[\s\S]*DATABASE_URL[\s\S]*API_VERSION/);
   });
+
+  it('applies default rate limits when absent', () => {
+    const config = validateEnv(validEnv);
+
+    expect(config.THROTTLE_TTL_MS).toBe(60000);
+    expect(config.THROTTLE_LIMIT).toBe(100);
+    expect(config.THROTTLE_AUTH_LIMIT).toBe(10);
+  });
+
+  it('throws when THROTTLE_LIMIT is not a positive integer', () => {
+    expect(() => validateEnv({ ...validEnv, THROTTLE_LIMIT: '0' })).toThrow(
+      /THROTTLE_LIMIT/,
+    );
+  });
 });
