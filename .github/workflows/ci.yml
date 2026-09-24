@@ -124,4 +124,5 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Trigger Render deploy
+        if: github.event_name == 'push'
         run: curl -X POST "${{ secrets.DEPLOY_HOOK_URL }}"
