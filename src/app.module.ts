@@ -10,6 +10,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { throttlerOptionsFactory } from './common/throttler';
+import { CareersModule } from './catalog/careers/careers.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { throttlerOptionsFactory } from './common/throttler';
       inject: [ConfigService],
       useFactory: throttlerOptionsFactory,
     }),
+    CareersModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
