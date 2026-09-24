@@ -11,18 +11,19 @@ import {
 } from '@nestjs/common';
 import { type Request, type Response } from 'express';
 import { ConfigService } from '@nestjs/config';
+import { ApiHeader, ApiOperation, ApiResponse } from '@nestjs/swagger';
 
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { type AuthenticatedUser } from './interfaces/authenticated-user.interface';
-import { ApiHeader, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import {
-  RegisterResponseDto,
   AuthTokensResponseDto,
+  AuthResponseDto,
   LoginDto,
   RefreshTokenDto,
   RegisterDto,
+  UserResponseDto,
 } from './dto';
 import {
   CLIENT_PLATFORM_API_HEADER,
@@ -53,14 +54,38 @@ export class AuthController {
   @ApiOperation({ summary: 'Register a new user' })
   @ApiResponse({
     status: 201,
-    description: 'User registered successfully',
-    type: RegisterResponseDto,
+    description:
+      'User registered successfully. Sets a refresh token cookie for web clients.',
+    type: AuthResponseDto,
+    headers: {
+      'Set-Cookie': {
+        description: 'HttpOnly refresh token cookie for web clients',
+        schema: {
+          type: 'string',
+          example:
+            'refreshToken=eyJhbGciOiJIUzI1Ni...; Path=/api/v1/auth; HttpOnly; SameSite=Lax',
+        },
+      },
+    },
   })
   @ApiResponse({ status: 409, description: 'Email already registered' })
+  @ApiResponse({
+    status: 400,
+    description: 'Unsupported X-Client-Platform value',
+  })
+  @ApiHeader(CLIENT_PLATFORM_API_HEADER)
   @AuthThrottle()
   @Post('register')
-  async register(@Body() dto: RegisterDto) {
-    return this.authService.register(dto);
+  async register(
+    @Body() dto: RegisterDto,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const platform = resolveClientPlatform(request);
+
+    const { user, tokens } = await this.authService.register(dto);
+
+    return this.deliverTokens(response, platform, tokens, user);
   }
 
   @ApiOperation({ summary: 'Login a user' })
@@ -68,7 +93,7 @@ export class AuthController {
     status: 200,
     description:
       'User logged in successfully. Sets a refresh token cookie for web clients.',
-    type: AuthTokensResponseDto,
+    type: AuthResponseDto,
     headers: {
       'Set-Cookie': {
         description: 'HttpOnly refresh token cookie for web clients',
@@ -96,9 +121,9 @@ export class AuthController {
   ) {
     const platform = resolveClientPlatform(request);
 
-    const tokens = await this.authService.login(dto);
+    const { user, tokens } = await this.authService.login(dto);
 
-    return this.deliverTokens(response, platform, tokens);
+    return this.deliverTokens(response, platform, tokens, user);
   }
 
   @ApiOperation({ summary: 'Refresh access token using refresh token' })
@@ -200,14 +225,22 @@ export class AuthController {
     response: Response,
     platform: ClientPlatform,
     tokens: { accessToken: string; refreshToken: string },
-  ): AuthTokensResponseDto {
+    user?: UserResponseDto,
+  ): AuthTokensResponseDto | AuthResponseDto {
     if (platform === 'mobile') {
-      return tokens;
+      return {
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+        ...(user && { user }),
+      };
     }
 
     this.setRefreshTokenCookie(response, tokens.refreshToken);
 
-    return { accessToken: tokens.accessToken };
+    return {
+      accessToken: tokens.accessToken,
+      ...(user && { user }),
+    };
   }
 
   private setRefreshTokenCookie(response: Response, refreshToken: string) {

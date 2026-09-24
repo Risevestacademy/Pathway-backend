@@ -68,7 +68,7 @@ describe('AuthService', () => {
       ).rejects.toThrow(ConflictException);
     });
 
-    it('should create user and return user object', async () => {
+    it('should create user, issue tokens, and return user object with tokens', async () => {
       const mockPublicUser = {
         id: '1',
         email: 'test@test.com',
@@ -82,8 +82,15 @@ describe('AuthService', () => {
         password: 'password123',
       });
 
-      expect(result).toEqual(mockPublicUser);
+      expect(result).toEqual({
+        user: mockPublicUser,
+        tokens: {
+          accessToken: 'mock-token',
+          refreshToken: 'mock-token',
+        },
+      });
       expect(mockUsersService.create).toHaveBeenCalled();
+      expect(mockPrismaService.refreshToken.create).toHaveBeenCalled();
     });
   });
 
@@ -102,7 +109,7 @@ describe('AuthService', () => {
       ).rejects.toThrow(UnauthorizedException);
     });
 
-    it('should return tokens on valid credentials', async () => {
+    it('should return user payload and tokens on valid credentials', async () => {
       const password = 'password123';
       const hashedPassword = await bcrypt.hash(password, 10);
       const mockUser = {
@@ -120,8 +127,15 @@ describe('AuthService', () => {
       });
 
       expect(result).toEqual({
-        accessToken: 'mock-token',
-        refreshToken: 'mock-token',
+        user: {
+          id: mockUser.id,
+          email: mockUser.email,
+          role: mockUser.role,
+        },
+        tokens: {
+          accessToken: 'mock-token',
+          refreshToken: 'mock-token',
+        },
       });
       expect(mockPrismaService.refreshToken.create).toHaveBeenCalled();
     });

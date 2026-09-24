@@ -49,7 +49,7 @@ describe('AuthController (e2e)', () => {
     await app.close();
   });
 
-  it('/auth/register (POST) - success', async () => {
+  it('/auth/register (POST) - success (web client)', async () => {
     const response = await request(app.getHttpServer())
       .post(`${apiPrefix}/auth/register`)
       .send(testUser)
@@ -57,11 +57,29 @@ describe('AuthController (e2e)', () => {
 
     expect(response.body).toBeDefined();
     expect(response.body.data).toBeUndefined();
-    expect(response.body.email).toBe(testUser.email);
 
-    // Password hash should never be returned to the client.
+    // Verify token & user structure
+    expect(response.body.accessToken).toBeDefined();
+    expect(response.body.refreshToken).toBeUndefined();
+    expect(response.body.user).toBeDefined();
+    expect(response.body.user.email).toBe(testUser.email);
+    expect(response.body.user.id).toBeDefined();
+    expect(response.body.user.role).toBeDefined();
+
+    // Password hash should never be returned to the client
     expect(response.body.passwordHash).toBeUndefined();
     expect(response.body.password).toBeUndefined();
+
+    // Web client receives HttpOnly refresh token cookie on registration
+    const cookies = response.headers['set-cookie'];
+    expect(cookies).toBeDefined();
+
+    const refreshCookie = cookies.find((cookie: string) =>
+      cookie.startsWith('refreshToken='),
+    );
+
+    expect(refreshCookie).toBeDefined();
+    expect(refreshCookie).toContain(`Path=${apiPrefix}/auth`);
   });
 
   it('/auth/register (POST) - duplicate email', async () => {
@@ -90,6 +108,8 @@ describe('AuthController (e2e)', () => {
     expect(response.body.data).toBeUndefined();
     expect(response.body.accessToken).toBeDefined();
     expect(response.body.refreshToken).toBeUndefined();
+    expect(response.body.user).toBeDefined();
+    expect(response.body.user.email).toBe(testUser.email);
 
     accessToken = response.body.accessToken;
 
@@ -246,18 +266,25 @@ describe('AuthController (e2e)', () => {
     let mobileRefreshToken: string;
 
     beforeAll(async () => {
-      await request(app.getHttpServer())
+      const regResponse = await request(app.getHttpServer())
         .post(`${apiPrefix}/auth/register`)
+        .set('X-Client-Platform', 'mobile')
         .send(mobileUser)
         .expect(201);
 
-      const response = await request(app.getHttpServer())
+      expect(regResponse.body.accessToken).toBeDefined();
+      expect(regResponse.body.refreshToken).toBeDefined();
+      expect(regResponse.body.user).toBeDefined();
+      expect(regResponse.headers['set-cookie']).toBeUndefined();
+
+      const loginResponse = await request(app.getHttpServer())
         .post(`${apiPrefix}/auth/login`)
         .set('X-Client-Platform', 'mobile')
         .send(mobileUser)
         .expect(200);
 
-      mobileRefreshToken = response.body.refreshToken;
+      expect(loginResponse.body.user).toBeDefined();
+      mobileRefreshToken = loginResponse.body.refreshToken;
     });
 
     it('logs in without a refresh cookie', async () => {
@@ -268,6 +295,7 @@ describe('AuthController (e2e)', () => {
         .expect(200);
 
       expect(response.body.refreshToken).toBeDefined();
+      expect(response.body.user).toBeDefined();
       expect(response.headers['set-cookie']).toBeUndefined();
     });
 
