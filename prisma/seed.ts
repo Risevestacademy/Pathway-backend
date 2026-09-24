@@ -36,11 +36,40 @@ async function main() {
   // 2. Seed Career
   const backendCareer = await prisma.career.upsert({
     where: { id: 'career-backend-engineer' },
-    update: {},
+    update: {
+      description: 'Builds scalable server-side applications and APIs.',
+      roleSummary:
+        'Designs, builds, and maintains server-side applications, APIs, and services that power software products.',
+      exampleActivities: [
+        'Design and build REST APIs',
+        'Implement business logic and backend services',
+        'Design and query databases',
+        'Write automated tests',
+        'Monitor and troubleshoot backend systems',
+      ],
+      entryConsiderations:
+        'Requires foundational programming knowledge, problem-solving skills, and familiarity with backend development concepts.',
+      targetLevels: ['Junior', 'Mid-level', 'Senior'],
+      status: 'PUBLISHED',
+      category: 'Software Engineering',
+    },
     create: {
       id: 'career-backend-engineer',
       title: 'Backend Engineer',
       description: 'Builds scalable server-side applications and APIs.',
+      roleSummary:
+        'Designs, builds, and maintains server-side applications, APIs, and services that power software products.',
+      exampleActivities: [
+        'Design and build REST APIs',
+        'Implement business logic and backend services',
+        'Design and query databases',
+        'Write automated tests',
+        'Monitor and troubleshoot backend systems',
+      ],
+      entryConsiderations:
+        'Requires foundational programming knowledge, problem-solving skills, and familiarity with backend development concepts.',
+      targetLevels: ['Junior', 'Mid-level', 'Senior'],
+      status: 'PUBLISHED',
       category: 'Software Engineering',
       skills: {
         create: [
