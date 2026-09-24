@@ -3,11 +3,13 @@ import { HttpException, HttpStatus, NotFoundException } from '@nestjs/common';
 import type { ArgumentsHost } from '@nestjs/common';
 import type { Request } from 'express';
 import { HttpExceptionFilter } from './http-exception.filter';
+import { ValidationException } from '../exceptions/validation.exception';
 
 type ErrorResponseBody = {
   statusCode: number;
   message: string | string[];
   error: string;
+  fields?: Record<string, string>;
   path: string;
   timestamp: string;
 };
@@ -70,11 +72,11 @@ describe('HttpExceptionFilter', () => {
     );
   });
 
-  it('should format validation errors with VALIDATION_ERROR code', () => {
-    const exception = new HttpException(
-      { message: ['email must be an email'] },
-      HttpStatus.BAD_REQUEST,
-    );
+  it('should format validation errors with a per-field map', () => {
+    const exception = new ValidationException({
+      email: 'must be an email',
+      password: 'must be longer than or equal to 8 characters',
+    });
 
     filter.catch(exception, mockHost);
 
@@ -82,9 +84,32 @@ describe('HttpExceptionFilter', () => {
     expect(mockResponse.json).toHaveBeenCalledWith(
       expect.objectContaining({
         statusCode: 400,
-        message: ['email must be an email'],
+        message: 'Validation failed',
         error: 'VALIDATION_ERROR',
+        fields: {
+          email: 'must be an email',
+          password: 'must be longer than or equal to 8 characters',
+        },
+        path: '/test',
       }),
+    );
+  });
+
+  it('should not add fields to non-validation errors', () => {
+    filter.catch(new NotFoundException('User not found'), mockHost);
+
+    const body = mockResponse.json.mock.calls[0][0];
+    expect(body.fields).toBeUndefined();
+  });
+
+  it('should treat a 400 with a plain message array as BAD_REQUEST', () => {
+    filter.catch(
+      new HttpException({ message: ['something'] }, HttpStatus.BAD_REQUEST),
+      mockHost,
+    );
+
+    expect(mockResponse.json).toHaveBeenCalledWith(
+      expect.objectContaining({ error: 'BAD_REQUEST' }),
     );
   });
 
