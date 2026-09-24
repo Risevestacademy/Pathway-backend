@@ -108,6 +108,7 @@ jobs:
           tags: |
             type=ref,event=branch
             type=sha,prefix=,format=short
+            type=raw,value=latest
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -122,5 +123,9 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # --- Hosting-specific step. This is the ONLY part tied to Render.
+      # If hosting changes, only this step needs to change — the image
+      # above is already built, tagged predictably (:latest, :dev, :<sha>)
+      # and pushed regardless of where it gets deployed to.
       - name: Trigger Render deploy
         run: curl -X POST "${{ secrets.DEPLOY_HOOK_URL }}"
