@@ -1,6 +1,7 @@
 import { ArgumentMetadata, BadRequestException } from '@nestjs/common';
 import { IsInt, IsString, Min } from 'class-validator';
 import { createValidationPipe } from './validation.pipe';
+import { ValidationException } from '../exceptions/validation.exception';
 
 class SampleDto {
   @IsString()
@@ -45,20 +46,32 @@ describe('createValidationPipe', () => {
     ).rejects.toThrow(BadRequestException);
   });
 
-  it('reports every failing property as a list of messages', async () => {
-    expect.assertions(3);
+  it('reports every failing property in a field map', async () => {
+    const error = await pipe
+      .transform({ title: 42, rating: 'high' }, metadata)
+      .catch((e: unknown) => e);
 
-    try {
-      await pipe.transform({ title: 42, rating: 'high' }, metadata);
-    } catch (error) {
-      const response = (error as BadRequestException).getResponse() as {
-        message: string[];
-      };
+    expect(error).toBeInstanceOf(ValidationException);
 
-      expect(Array.isArray(response.message)).toBe(true);
-      expect(response.message).toContain('title must be a string');
-      expect(response.message.some((m) => m.startsWith('rating'))).toBe(true);
-    }
+    const { fields } = error as ValidationException;
+    expect(Object.keys(fields).sort()).toEqual(['rating', 'title']);
+
+    expect(fields.title).toBe('must be a string');
+
+    expect(Array.isArray(fields.rating)).toBe(true);
+
+    const ratingErrors = fields.rating as string[];
+
+    expect(ratingErrors).toEqual(
+      expect.arrayContaining([
+        'must be an integer number',
+        'must not be less than 1',
+      ]),
+    );
+
+    ratingErrors.forEach((msg) => {
+      expect(msg).not.toMatch(/^rating /);
+    });
   });
 
   it('leaves values without a dto untouched', async () => {
