@@ -84,7 +84,6 @@ model Skill {
   userSkills        UserSkill[]
 }
 
-
 model Career {
   id                  String       @id @default(uuid())
   title               String       @unique
@@ -98,10 +97,10 @@ model Career {
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
 
-  skills              CareerSkill[]
-  outlook              OutlookData?
-  pathway             Pathway?
-  userPathways        UserPathway[]
+  skills       CareerSkill[]
+  outlook      OutlookData?
+  pathway      Pathway?
+  userPathways UserPathway[]
 }
 
 model CareerSkill {
@@ -115,15 +114,25 @@ model CareerSkill {
 }
 
 model OutlookData {
-  id         String   @id @default(uuid())
-  careerId   String   @unique
-  salaryMin  Decimal?
-  salaryMax  Decimal?
-  currency   String?
+  id       String @id @default(uuid())
+  careerId String @unique
+
+  salaryMin       Decimal?
+  salaryMax       Decimal?
+  currency        String?
+  payPeriod       String?
+  experienceLevel String?
+  grossOrNet      String?
+
   demand     String?
   growthRate Decimal?
-  source     String?
-  updatedAt  DateTime @updatedAt
+
+  source    String?
+  sourceUrl String?
+  period    String?
+  geography String?
+
+  updatedAt DateTime @updatedAt
 
   career Career @relation(fields: [careerId], references: [id], onDelete: Cascade)
 }
