@@ -6,6 +6,10 @@ import { PrismaModule } from './prisma';
 import { UsersModule } from './users';
 import { AppLoggerModule } from './logger';
 import { AuthModule } from './auth';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { throttlerOptionsFactory } from './common/throttler';
 
 @Module({
   imports: [
@@ -16,6 +20,12 @@ import { AuthModule } from './auth';
     HealthModule,
     UsersModule,
     AuthModule,
+    ThrottlerModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: throttlerOptionsFactory,
+    }),
   ],
+  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}
