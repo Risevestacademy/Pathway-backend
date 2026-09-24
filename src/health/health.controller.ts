@@ -6,6 +6,12 @@ import { HealthReport, HealthService } from './health.service';
 export class HealthController {
   constructor(private readonly healthService: HealthService) {}
 
+  // Tempory endpoint for testing the health check without authentication
+  @Get('ping')
+  ping() {
+    return { status: 'ok' };
+  }
+
   @Get()
   async check(
     @Res({ passthrough: true }) response: Response,
@@ -17,11 +23,5 @@ export class HealthController {
     );
 
     return report;
-  }
-
-  // Tempory endpoint for testing the health check without authentication
-  @Get('ping')
-  ping() {
-    return { status: 'ok' };
   }
 }

@@ -22,6 +22,18 @@ type PrismaTransactionClient = Pick<PrismaService, 'refreshToken'>;
 const hashRefreshToken = (token: string) =>
   createHash('sha256').update(token).digest('hex');
 
+export interface AuthResult {
+  user: {
+    id: string;
+    email: string;
+    role: Role;
+  };
+  tokens: {
+    accessToken: string;
+    refreshToken: string;
+  };
+}
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -36,11 +48,8 @@ export class AuthService {
     private readonly prisma: PrismaService,
   ) {}
 
-  async register(dto: RegisterDto): Promise<{
-    id: string;
-    email: string;
-    role: Role;
-  }> {
+  // Register a new user
+  async register(dto: RegisterDto): Promise<AuthResult> {
     const existingUser = await this.usersService.findByEmail(dto.email);
 
     if (existingUser) {
@@ -49,24 +58,29 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(dto.password, 12);
 
-    const user = await this.usersService.create({
+    const createdUser = await this.usersService.create({
       email: dto.email,
       passwordHash,
     });
 
+    const user = {
+      id: createdUser.id,
+      email: createdUser.email,
+      role: createdUser.role,
+    };
+
+    const tokens = await this.issueTokens(user);
+
     this.logger.log({ userId: user.id }, 'User registered');
 
     return {
-      id: user.id,
-      email: user.email,
-      role: user.role,
+      user,
+      tokens,
     };
   }
 
-  async login(dto: LoginDto): Promise<{
-    accessToken: string;
-    refreshToken: string;
-  }> {
+  // Login a user
+  async login(dto: LoginDto): Promise<AuthResult> {
     const user = await this.usersService.findByEmail(dto.email);
 
     const passwordHash = user?.passwordHash || this.DUMMY_HASH;
@@ -81,9 +95,21 @@ export class AuthService {
 
     this.logger.log({ userId: user.id }, 'Login succeeded');
 
-    return this.issueTokens(user);
+    const userPayload = {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+    };
+
+    const tokens = await this.issueTokens(userPayload);
+
+    return {
+      user: userPayload,
+      tokens,
+    };
   }
 
+  // Refresh access token using refresh token
   async refresh(refreshToken: string): Promise<{
     accessToken: string;
     refreshToken: string;
@@ -146,6 +172,7 @@ export class AuthService {
     return new UnauthorizedException('Invalid refresh token');
   }
 
+  // Logout a user
   async logout(refreshToken: string): Promise<void> {
     const payload = await this.decodeRefreshToken(refreshToken);
 
