@@ -36,6 +36,12 @@ enum AssessmentStatus {
   COMPLETED
 }
 
+enum CareerStatus {
+  DRAFT
+  PUBLISHED
+  RETIRED
+}
+
 model User {
   id           String   @id @default(uuid())
   email        String   @unique
@@ -78,18 +84,24 @@ model Skill {
   userSkills        UserSkill[]
 }
 
-model Career {
-  id          String   @id @default(uuid())
-  title       String   @unique
-  description String?
-  category    String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
 
-  skills       CareerSkill[]
-  outlook      OutlookData?
-  pathway      Pathway?
-  userPathways UserPathway[]
+model Career {
+  id                  String       @id @default(uuid())
+  title               String       @unique
+  description         String?
+  roleSummary         String?
+  exampleActivities   String[]
+  entryConsiderations String?
+  targetLevels        String[]
+  status              CareerStatus @default(DRAFT)
+  category            String?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  skills              CareerSkill[]
+  outlook              OutlookData?
+  pathway             Pathway?
+  userPathways        UserPathway[]
 }
 
 model CareerSkill {
