@@ -174,12 +174,23 @@ async function main() {
           {
             title: 'Learn TypeScript Basics',
             description: 'Understand types, interfaces, and generics.',
+            learningObjective:
+              'Use TypeScript types, interfaces and generics to write type-safe code.',
+            prerequisites: null,
+            expectedActivity:
+              'Complete a small exercise that models data with interfaces and a generic helper function.',
             order: 1,
             skills: { create: [{ skill: { connect: { id: tsSkill.id } } }] },
           },
           {
             title: 'Build an API with NestJS',
             description: 'Create controllers, services, and modules.',
+            learningObjective:
+              'Build a REST API with NestJS using controllers, services and modules.',
+            prerequisites:
+              'Comfortable with TypeScript basics (types, interfaces, generics).',
+            expectedActivity:
+              'Build a small CRUD API with at least one module, controller and service.',
             order: 2,
             skills: { create: [{ skill: { connect: { id: nestSkill.id } } }] },
           },

@@ -218,13 +218,16 @@ model Pathway {
 }
 
 model PathwayStep {
-  id          String   @id @default(uuid())
-  pathwayId   String
-  title       String
-  description String?
-  order       Int
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                String   @id @default(uuid())
+  pathwayId         String
+  title             String
+  description       String?
+  learningObjective String
+  prerequisites     String?
+  expectedActivity  String
+  order             Int
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   pathway     Pathway               @relation(fields: [pathwayId], references: [id], onDelete: Cascade)
   skills      PathwayStepSkill[]
