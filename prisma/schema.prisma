@@ -80,7 +80,7 @@ model Skill {
 
 model Career {
   id          String   @id @default(uuid())
-  title       String
+  title       String   @unique
   description String?
   category    String?
   createdAt   DateTime @default(now())
