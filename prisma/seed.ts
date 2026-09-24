@@ -1,5 +1,12 @@
 import 'dotenv/config';
-import { PrismaClient, Role } from '../src/generated/prisma/client';
+import {
+  PrismaClient,
+  Role,
+  TargetLevel,
+  CareerStatus,
+  OutlookType,
+  Demand,
+} from '../src/generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import * as bcrypt from 'bcrypt';
 
@@ -14,7 +21,17 @@ const prisma = new PrismaClient({ adapter });
 async function main() {
   console.log('Starting seed...');
 
-  // 1. Seed Skills
+  // 1. Seed Fields
+  const softwareEngField = await prisma.field.upsert({
+    where: { slug: 'software-engineering' },
+    update: {},
+    create: {
+      name: 'Software Engineering',
+      slug: 'software-engineering',
+    },
+  });
+
+  // 2. Seed Skills
   const tsSkill = await prisma.skill.upsert({
     where: { name: 'TypeScript' },
     update: {},
@@ -33,9 +50,9 @@ async function main() {
     create: { name: 'Prisma', description: 'Next-generation ORM' },
   });
 
-  // 2. Seed Career
+  // 3. Seed Career
   const backendCareer = await prisma.career.upsert({
-    where: { id: 'career-backend-engineer' },
+    where: { slug: 'backend-engineer' }, // Using slug for uniqueness
     update: {
       description: 'Builds scalable server-side applications and APIs.',
       roleSummary:
@@ -47,14 +64,16 @@ async function main() {
         'Write automated tests',
         'Monitor and troubleshoot backend systems',
       ],
-      entryConsiderations:
-        'Requires foundational programming knowledge, problem-solving skills, and familiarity with backend development concepts.',
-      targetLevels: ['Junior', 'Mid-level', 'Senior'],
-      status: 'PUBLISHED',
-      category: 'Software Engineering',
+      typicalEducationNote:
+        'Degree in computing, related field, or equivalent bootcamp/self-study experience.',
+      certificationsNote:
+        'Rarely required. A strong portfolio and practical experience matter more.',
+      targetLevels: [TargetLevel.RECENT_GRAD, TargetLevel.EARLY_CAREER], // Updated to new enum
+      status: CareerStatus.PUBLISHED,
+      fieldId: softwareEngField.id,
     },
     create: {
-      id: 'career-backend-engineer',
+      slug: 'backend-engineer',
       title: 'Backend Engineer',
       description: 'Builds scalable server-side applications and APIs.',
       roleSummary:
@@ -66,22 +85,82 @@ async function main() {
         'Write automated tests',
         'Monitor and troubleshoot backend systems',
       ],
-      entryConsiderations:
-        'Requires foundational programming knowledge, problem-solving skills, and familiarity with backend development concepts.',
-      targetLevels: ['Junior', 'Mid-level', 'Senior'],
-      status: 'PUBLISHED',
-      category: 'Software Engineering',
+      typicalEducationNote:
+        'Degree in computing, related field, or equivalent bootcamp/self-study experience.',
+      certificationsNote:
+        'Rarely required. A strong portfolio and practical experience matter more.',
+      targetLevels: [TargetLevel.RECENT_GRAD, TargetLevel.EARLY_CAREER],
+      status: CareerStatus.PUBLISHED,
+      field: { connect: { id: softwareEngField.id } },
       skills: {
         create: [
-          { skillId: tsSkill.id },
-          { skillId: nestSkill.id },
-          { skillId: prismaSkill.id },
+          { skill: { connect: { id: tsSkill.id } } },
+          { skill: { connect: { id: nestSkill.id } } },
+          { skill: { connect: { id: prismaSkill.id } } },
         ],
       },
     },
   });
 
-  // 3. Seed Pathway for the Career
+  // 4. Seed Outlook Data (Idempotent: clear existing to avoid duplicates on re-seed)
+  await prisma.outlookData.deleteMany({
+    where: { careerId: backendCareer.id },
+  });
+
+  await prisma.outlookData.createMany({
+    data: [
+      {
+        careerId: backendCareer.id,
+        type: OutlookType.SALARY,
+        geography: 'United States',
+        source: 'US Bureau of Labor Statistics',
+        sourceUrl: 'https://www.bls.gov/ooh/',
+        period: 'May 2024',
+        // OQ-10: Decimal fields passed as strings to preserve precision
+        median: '95000.00',
+        percentile25: '75000.00',
+        percentile75: '120000.00',
+        currency: 'USD',
+        payPeriod: 'year',
+        grossOrNet: 'gross',
+        experienceLevel: 'all experience levels',
+      },
+      {
+        careerId: backendCareer.id,
+        type: OutlookType.SALARY,
+        geography: 'Lagos, Nigeria',
+        source: 'Local Tech Salary Survey',
+        period: 'Q2 2025',
+        median: '45000.00', // String for Decimal
+        currency: 'NGN',
+        payPeriod: 'year',
+        grossOrNet: 'gross',
+        experienceLevel: 'entry-level',
+      },
+      {
+        careerId: backendCareer.id,
+        type: OutlookType.EMPLOYMENT_GROWTH,
+        geography: 'United States',
+        source: 'US Bureau of Labor Statistics',
+        period: '2023–2033',
+        baseYear: 2023,
+        baseValue: 208,
+        projectedYear: 2033,
+        projectedValue: 225,
+        growthPercent: '8.00', // String for Decimal
+      },
+      {
+        careerId: backendCareer.id,
+        type: OutlookType.DEMAND,
+        geography: 'Lagos, Nigeria',
+        source: 'Local Tech Ecosystem Report',
+        period: '2025',
+        demandLevel: Demand.HIGH,
+      },
+    ],
+  });
+
+  // 5. Seed Pathway for the Career
   await prisma.pathway.upsert({
     where: { careerId: backendCareer.id },
     update: {},
@@ -89,26 +168,27 @@ async function main() {
       careerId: backendCareer.id,
       title: 'Backend Engineering Fundamentals',
       description: 'Core steps to become a proficient backend engineer.',
+      // Note: If your Step/StepSkill models have changed, adjust the nested create below accordingly
       steps: {
         create: [
           {
             title: 'Learn TypeScript Basics',
             description: 'Understand types, interfaces, and generics.',
             order: 1,
-            skills: { create: [{ skillId: tsSkill.id }] },
+            skills: { create: [{ skill: { connect: { id: tsSkill.id } } }] },
           },
           {
             title: 'Build an API with NestJS',
             description: 'Create controllers, services, and modules.',
             order: 2,
-            skills: { create: [{ skillId: nestSkill.id }] },
+            skills: { create: [{ skill: { connect: { id: nestSkill.id } } }] },
           },
         ],
       },
     },
   });
 
-  // 4. Seed a Development User
+  // 6. Seed a Development User
   const hashedPassword = await bcrypt.hash('password123', 10);
   await prisma.user.upsert({
     where: { email: 'dev@example.com' },
@@ -120,12 +200,12 @@ async function main() {
     },
   });
 
-  console.log('Seed completed successfully!');
+  console.log('✅ Seed completed successfully!');
 }
 
 main()
   .catch((e) => {
-    console.error('Seed failed:', e);
+    console.error('❌ Seed failed:', e);
     process.exit(1);
   })
   .finally(async () => {

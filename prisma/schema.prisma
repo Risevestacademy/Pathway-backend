@@ -42,6 +42,47 @@ enum CareerStatus {
   RETIRED
 }
 
+enum TargetLevel {
+  STUDENT
+  RECENT_GRAD
+  EARLY_CAREER
+}
+
+enum EducationLevel {
+  SECONDARY_SCHOOL
+  DIPLOMA
+  BACHELOR_IN_PROGRESS
+  BACHELOR
+  MASTERS
+  OTHER
+}
+
+enum InternshipCount {
+  NONE
+  ONE
+  TWO
+  THREE_PLUS
+}
+
+enum ExperienceYears {
+  ZERO
+  UNDER_ONE
+  ONE_TO_TWO
+  THREE_PLUS
+}
+
+enum OutlookType {
+  SALARY
+  EMPLOYMENT_GROWTH
+  DEMAND
+}
+
+enum Demand {
+  LOW
+  MEDIUM
+  HIGH
+}
+
 model User {
   id           String   @id @default(uuid())
   email        String   @unique
@@ -84,21 +125,39 @@ model Skill {
   userSkills        UserSkill[]
 }
 
+model Field {
+  id   String @id @default(uuid())
+  name String @unique
+  slug String @unique
+
+  careers Career[]
+}
+
 model Career {
-  id                  String       @id @default(uuid())
-  title               String       @unique
-  description         String?
-  roleSummary         String?
-  exampleActivities   String[]
-  entryConsiderations String?
-  targetLevels        String[]
-  status              CareerStatus @default(DRAFT)
-  category            String?
-  createdAt           DateTime     @default(now())
-  updatedAt           DateTime     @updatedAt
+  id                   String   @id @default(uuid())
+  slug                 String   @unique
+  title                String
+  description          String // card summary
+  roleSummary          String // "What the role involves"
+  exampleActivities    String[] // "Example work activities"
+  typicalEducationNote String? // "Degree in computing... or bootcamps/self-study"
+  certificationsNote   String? // "Rarely required. Portfolio matters more."
+
+  fieldId      String
+  field        Field         @relation(fields: [fieldId], references: [id])
+  targetLevels TargetLevel[]
+
+  status      CareerStatus @default(DRAFT)
+  publishedAt DateTime?
+  reviewedBy  String?
+  reviewedAt  DateTime?
+  version     Int          @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   skills       CareerSkill[]
-  outlook      OutlookData?
+  outlook      OutlookData[]
   pathway      Pathway?
   userPathways UserPathway[]
 }
@@ -115,26 +174,35 @@ model CareerSkill {
 
 model OutlookData {
   id       String @id @default(uuid())
-  careerId String @unique
+  careerId String
+  career   Career @relation(fields: [careerId], references: [id], onDelete: Cascade)
 
-  salaryMin       Decimal?
-  salaryMax       Decimal?
-  currency        String?
-  payPeriod       String?
-  experienceLevel String?
-  grossOrNet      String?
-
-  demand     String?
-  growthRate Decimal?
-
-  source    String?
+  type      OutlookType
+  geography String // "United States", "Lagos, Nigeria"
+  source    String
   sourceUrl String?
-  period    String?
-  geography String?
+  period    String // "May 2024", "2023–2033", "Q2 2025"
 
+  median          Decimal? @db.Decimal(15, 2)
+  percentile25    Decimal? @db.Decimal(15, 2)
+  percentile75    Decimal? @db.Decimal(15, 2)
+  currency        String?
+  payPeriod       String? // "year" | "month"
+  grossOrNet      String? // "gross" | "net" | "unspecified"
+  experienceLevel String? // "entry-level", "all experience levels"
+
+  // EMPLOYMENT_GROWTH fields
+  baseYear       Int?
+  baseValue      Int? // e.g. 208 (thousands of jobs)
+  projectedYear  Int?
+  projectedValue Int? // e.g. 225
+  growthPercent  Decimal? @db.Decimal(5, 2) // e.g., 8.00 for +8%
+
+  // DEMAND fields
+  demandLevel Demand?
+
+  createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  career Career @relation(fields: [careerId], references: [id], onDelete: Cascade)
 }
 
 model Pathway {
