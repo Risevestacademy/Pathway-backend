@@ -4,11 +4,12 @@ import {
   type ValidationFields,
 } from './validation.exception';
 
-// "email must be an email" -> "must be an email"
-const stripFieldName = (property: string, message: string): string =>
-  message.startsWith(`${property} `)
+const stripFieldName = (property: string, message: string): string => {
+  if (!property) return message;
+  return message.startsWith(`${property} `)
     ? message.slice(property.length + 1)
     : message;
+};
 
 const collectFields = (
   errors: ValidationError[],
@@ -20,9 +21,12 @@ const collectFields = (
       ? `${parentPath}.${error.property}`
       : error.property;
 
-    const [firstMessage] = Object.values(error.constraints ?? {});
-    if (firstMessage) {
-      fields[path] = stripFieldName(error.property, firstMessage);
+    const messages = Object.values(error.constraints ?? {}).map((msg) =>
+      stripFieldName(error.property, msg),
+    );
+
+    if (messages.length > 0) {
+      fields[path] = messages.length === 1 ? messages[0] : messages;
     }
 
     if (error.children?.length) {

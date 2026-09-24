@@ -55,8 +55,23 @@ describe('createValidationPipe', () => {
 
     const { fields } = error as ValidationException;
     expect(Object.keys(fields).sort()).toEqual(['rating', 'title']);
+
     expect(fields.title).toBe('must be a string');
-    expect(fields.rating).not.toMatch(/^rating /);
+
+    expect(Array.isArray(fields.rating)).toBe(true);
+
+    const ratingErrors = fields.rating as string[];
+
+    expect(ratingErrors).toEqual(
+      expect.arrayContaining([
+        'must be an integer number',
+        'must not be less than 1',
+      ]),
+    );
+
+    ratingErrors.forEach((msg) => {
+      expect(msg).not.toMatch(/^rating /);
+    });
   });
 
   it('leaves values without a dto untouched', async () => {

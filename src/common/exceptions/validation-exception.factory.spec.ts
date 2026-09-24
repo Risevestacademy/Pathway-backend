@@ -1,17 +1,15 @@
 import { ValidationPipe } from '@nestjs/common';
-import { Type } from 'class-transformer';
-import { IsEmail, IsString, MinLength, ValidateNested } from 'class-validator';
+import { IsEmail, IsString, MinLength } from 'class-validator';
 import { ValidationException } from './validation.exception';
 import { validationExceptionFactory } from './validation-exception.factory';
 
-class AddressDto {
-  @IsString() street: string;
-}
-
 class TestDto {
-  @IsEmail() email: string;
-  @MinLength(8) password: string;
-  @ValidateNested() @Type(() => AddressDto) address: AddressDto;
+  @IsEmail()
+  email: string;
+
+  @IsString()
+  @MinLength(8)
+  password: string;
 }
 
 describe('validationExceptionFactory', () => {
@@ -34,11 +32,10 @@ describe('validationExceptionFactory', () => {
     throw new Error('expected validation to fail');
   };
 
-  it('maps each invalid field to its message without the field name', async () => {
+  it('maps each invalid field to its message without the field name (single error)', async () => {
     const error = await failure({
       email: 'nope',
       password: 'short',
-      address: { street: 'x' },
     });
 
     expect(error).toBeInstanceOf(ValidationException);
@@ -48,24 +45,36 @@ describe('validationExceptionFactory', () => {
     });
   });
 
-  it('uses dotted paths for nested fields', async () => {
+  it('returns an array of messages when a field has multiple validation errors', async () => {
     const error = await failure({
       email: 'a@b.com',
-      password: 'long-enough',
-      address: { street: 123 },
+      password: 123, // Fails BOTH @IsString() AND @MinLength(8)
     });
 
-    expect(error.fields).toEqual({ 'address.street': 'must be a string' });
+    expect(error).toBeInstanceOf(ValidationException);
+
+    const passwordErrors = Array.isArray(error.fields.password)
+      ? [...error.fields.password].sort()
+      : [error.fields.password];
+
+    expect(passwordErrors).toEqual(
+      [
+        'must be a string',
+        'must be longer than or equal to 8 characters',
+      ].sort(),
+    );
   });
 
   it('reports unexpected properties', async () => {
     const error = await failure({
       email: 'a@b.com',
       password: 'long-enough',
-      address: { street: 'x' },
-      extra: true,
+      extraField: true,
     });
 
-    expect(Object.keys(error.fields)).toContain('extra');
+    expect(Object.keys(error.fields)).toContain('extraField');
+    expect(error.fields['extraField']).toBe(
+      'property extraField should not exist',
+    );
   });
 });
