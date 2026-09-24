@@ -58,6 +58,21 @@ export class EnvironmentVariables {
   @IsOptional()
   @IsString()
   SENTRY_ENVIRONMENT: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  THROTTLE_TTL_MS: number = 60000;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  THROTTLE_LIMIT: number = 100;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  THROTTLE_AUTH_LIMIT: number = 10;
 }
 
 export function validateEnv(
