@@ -154,6 +154,9 @@ model PathwayStep {
   pathwayId   String
   title       String
   description String?
+  learningObjective String
+  prerequisites     String?
+  expectedActivity  String
   order       Int
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
