@@ -31,6 +31,7 @@ import {
 } from './utils/client-platform';
 import { apiPrefix } from '../common';
 import { type EnvironmentVariables } from '../config';
+import { AuthThrottle } from '../common/throttler';
 
 interface RequestWithCookies extends Request {
   cookies: {
@@ -56,6 +57,7 @@ export class AuthController {
     type: RegisterResponseDto,
   })
   @ApiResponse({ status: 409, description: 'Email already registered' })
+  @AuthThrottle()
   @Post('register')
   async register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
@@ -84,6 +86,7 @@ export class AuthController {
     description: 'Unsupported X-Client-Platform value',
   })
   @ApiHeader(CLIENT_PLATFORM_API_HEADER)
+  @AuthThrottle()
   @Post('login')
   @HttpCode(200)
   async login(
@@ -124,6 +127,7 @@ export class AuthController {
     description: 'Refresh token required or invalid',
   })
   @ApiHeader(CLIENT_PLATFORM_API_HEADER)
+  @AuthThrottle()
   @Post('refresh')
   @HttpCode(200)
   async refresh(
