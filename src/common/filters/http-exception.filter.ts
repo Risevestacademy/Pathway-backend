@@ -12,6 +12,10 @@ import type {
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import * as Sentry from '@sentry/node';
+import {
+  ValidationException,
+  ValidationFields,
+} from '../exceptions/validation.exception';
 
 type RequestWithId = Request & {
   id?: string;
@@ -40,8 +44,14 @@ export class HttpExceptionFilter implements ExceptionFilter {
     let statusCode: number;
     let message: string | string[];
     let errorCode: string;
+    let fields: ValidationFields | undefined;
 
-    if (exception instanceof HttpException) {
+    if (exception instanceof ValidationException) {
+      statusCode = HttpStatus.BAD_REQUEST;
+      message = 'Validation failed';
+      errorCode = 'VALIDATION_ERROR';
+      fields = exception.fields;
+    } else if (exception instanceof HttpException) {
       statusCode = exception.getStatus();
       const exceptionResponse = exception.getResponse();
 
@@ -54,11 +64,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
         message = exception.message;
       }
 
-      if (statusCode === HttpStatus.BAD_REQUEST && Array.isArray(message)) {
-        errorCode = 'VALIDATION_ERROR';
-      } else {
-        errorCode = this.getErrorCode(statusCode);
-      }
+      errorCode = this.getErrorCode(statusCode);
     } else {
       statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
       message = 'Internal server error';
@@ -82,6 +88,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       statusCode,
       message,
       error: errorCode,
+      ...(fields && { fields }),
       path: request.url,
       timestamp: new Date().toISOString(),
     };
