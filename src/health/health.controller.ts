@@ -18,4 +18,10 @@ export class HealthController {
 
     return report;
   }
+
+  // Tempory endpoint for testing the health check without authentication
+  @Get('ping')
+  ping() {
+    return { status: 'ok' };
+  }
 }
