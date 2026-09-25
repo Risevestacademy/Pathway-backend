@@ -1,5 +1,5 @@
 import { ConfigService } from '@nestjs/config';
-import { type EnvironmentVariables } from '../../config/env.validation';
+import { type EnvironmentVariables } from '../../config';
 
 export function apiPrefix(
   configService: ConfigService<EnvironmentVariables, true>,

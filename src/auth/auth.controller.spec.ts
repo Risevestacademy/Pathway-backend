@@ -41,6 +41,7 @@ describe('AuthController', () => {
     get: jest.fn((key: string) => {
       if (key === 'API_VERSION') return 'v1';
       if (key === 'NODE_ENV') return 'test';
+      if (key === 'JWT_REFRESH_EXPIRY') return '30d';
       return undefined;
     }),
   };
@@ -98,6 +99,25 @@ describe('AuthController', () => {
         accessToken: 'access-token',
         user: mockUser,
       });
+    });
+
+    it('sets the refresh cookie lifetime from JWT_REFRESH_EXPIRY', async () => {
+      mockAuthService.register.mockResolvedValue({
+        user: mockUser,
+        tokens: { accessToken: 'access-token', refreshToken: 'refresh-token' },
+      });
+
+      await controller.register(
+        registerDto,
+        requestWith() as unknown as RegisterRequest,
+        mockResponse as unknown as Response,
+      );
+
+      expect(mockResponse.cookie).toHaveBeenCalledWith(
+        'refreshToken',
+        'refresh-token',
+        expect.objectContaining({ maxAge: 30 * 24 * 60 * 60 * 1000 }),
+      );
     });
 
     it('returns both tokens and user without setting cookie for mobile client', async () => {

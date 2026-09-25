@@ -75,21 +75,23 @@ export class HttpExceptionFilter implements ExceptionFilter {
           err: exception,
           requestId: request.id,
           method: request.method,
-          route: request.url,
+          route: request.originalUrl,
           statusCode,
         },
         'Unexpected error',
       );
     }
 
-    Sentry.captureException(exception);
+    if (statusCode >= HttpStatus.INTERNAL_SERVER_ERROR) {
+      Sentry.captureException(exception);
+    }
 
     const errorResponse = {
       statusCode,
       message,
       error: errorCode,
       ...(fields && { fields }),
-      path: request.url,
+      path: request.originalUrl,
       timestamp: new Date().toISOString(),
     };
 

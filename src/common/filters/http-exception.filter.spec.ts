@@ -2,8 +2,12 @@ import { jest } from '@jest/globals';
 import { HttpException, HttpStatus, NotFoundException } from '@nestjs/common';
 import type { ArgumentsHost } from '@nestjs/common';
 import type { Request } from 'express';
-import { HttpExceptionFilter } from './http-exception.filter';
 import { ValidationException } from '../exceptions/validation.exception';
+
+const captureException = jest.fn();
+jest.unstable_mockModule('@sentry/node', () => ({ captureException }));
+
+const { HttpExceptionFilter } = await import('./http-exception.filter');
 
 type ErrorResponseBody = {
   statusCode: number;
@@ -20,15 +24,17 @@ type MockResponse = {
 };
 
 describe('HttpExceptionFilter', () => {
-  let filter: HttpExceptionFilter;
+  let filter: InstanceType<typeof HttpExceptionFilter>;
   let mockResponse: MockResponse;
-  let mockRequest: Pick<Request, 'url' | 'method' | 'id'>;
+  let mockRequest: Pick<Request, 'url' | 'originalUrl' | 'method' | 'id'>;
   let mockLogger: {
     error: jest.Mock;
   };
   let mockHost: ArgumentsHost;
 
   beforeEach(() => {
+    captureException.mockClear();
+
     mockLogger = {
       error: jest.fn(),
     };
@@ -44,6 +50,7 @@ describe('HttpExceptionFilter', () => {
 
     mockRequest = {
       url: '/test',
+      originalUrl: '/test',
       method: 'GET',
       id: 'test-request-id',
     };
@@ -179,5 +186,44 @@ describe('HttpExceptionFilter', () => {
     filter.catch(exception, mockHost);
 
     expect(mockLogger.error).not.toHaveBeenCalled();
+  });
+
+  it('reports the full request path when a mounted router strips its prefix', () => {
+    mockRequest.url = '/does-not-exist';
+    mockRequest.originalUrl = '/api/v1/does-not-exist';
+
+    filter.catch(new NotFoundException(), mockHost);
+
+    const [[response]] = mockResponse.json.mock.calls;
+    expect(response.path).toBe('/api/v1/does-not-exist');
+  });
+
+  it('reports unexpected errors to Sentry', () => {
+    const exception = new Error('Database connection failed');
+
+    filter.catch(exception, mockHost);
+
+    expect(captureException).toHaveBeenCalledWith(exception);
+  });
+
+  it('reports 5xx HTTP exceptions to Sentry', () => {
+    const exception = new HttpException(
+      'Database unavailable',
+      HttpStatus.SERVICE_UNAVAILABLE,
+    );
+
+    filter.catch(exception, mockHost);
+
+    expect(captureException).toHaveBeenCalledWith(exception);
+  });
+
+  it.each([
+    new NotFoundException('User not found'),
+    new ValidationException({ email: 'must be an email' }),
+    new HttpException('Too Many Requests', HttpStatus.TOO_MANY_REQUESTS),
+  ])('does not report client errors to Sentry (%p)', (exception) => {
+    filter.catch(exception, mockHost);
+
+    expect(captureException).not.toHaveBeenCalled();
   });
 });

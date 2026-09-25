@@ -3,10 +3,9 @@ import { Logger as NestLogger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { Logger as PinoLogger } from 'nestjs-pino';
-import cookieParser from 'cookie-parser';
 
 import { AppModule } from './app.module';
-import { apiPrefix } from './common';
+import { configureApp } from './common';
 import { EnvironmentVariables } from './config';
 import { setupSwagger } from './swagger/swagger.config';
 
@@ -15,17 +14,13 @@ async function bootstrap() {
     bufferLogs: true,
   });
 
-  app.use(cookieParser());
+  configureApp(app);
 
   const pinoLogger = app.get(PinoLogger);
   app.useLogger(pinoLogger);
 
   const config =
     app.get<ConfigService<EnvironmentVariables, true>>(ConfigService);
-
-  app.setGlobalPrefix(apiPrefix(config), {
-    exclude: ['health'],
-  });
 
   setupSwagger(app);
 
