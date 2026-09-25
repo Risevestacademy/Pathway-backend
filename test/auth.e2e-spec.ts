@@ -134,8 +134,11 @@ describe('AuthController (e2e)', () => {
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
 
-    expect(response.body.data).toBeUndefined();
-    expect(response.body.email).toBe(testUser.email);
+    expect(response.body).toEqual({
+      id: expect.any(String),
+      email: testUser.email,
+      role: 'USER',
+    });
   });
 
   it('/auth/me (GET) - no access token', async () => {
