@@ -1,6 +1,7 @@
 import {
   Injectable,
   ConflictException,
+  NotFoundException,
   UnauthorizedException,
   Logger,
 } from '@nestjs/common';
@@ -122,7 +123,15 @@ export class AuthService {
 
     const tokenHash = hashRefreshToken(refreshToken);
 
-    const user = await this.usersService.findById(payload.sub);
+    const user = await this.usersService
+      .findById(payload.sub)
+      .catch((error: unknown) => {
+        if (error instanceof NotFoundException) {
+          return null;
+        }
+
+        throw error;
+      });
 
     if (!user) {
       throw this.refreshFailed(payload.sub);

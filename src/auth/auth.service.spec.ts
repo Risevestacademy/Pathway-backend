@@ -4,7 +4,11 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { UsersService } from '../users';
-import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import {
+  ConflictException,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma';
 import { Role } from '../generated/prisma/enums';
 import * as bcrypt from 'bcrypt';
@@ -142,6 +146,29 @@ describe('AuthService', () => {
   });
 
   describe('refresh', () => {
+    it('rejects a token whose user no longer exists with UnauthorizedException', async () => {
+      mockJwtService.verifyAsync.mockResolvedValue({ sub: 'deleted-user' });
+      mockUsersService.findById.mockRejectedValue(
+        new NotFoundException('User not found'),
+      );
+
+      await expect(service.refresh('orphaned-token')).rejects.toThrow(
+        UnauthorizedException,
+      );
+
+      expect(mockPrismaService.refreshToken.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('propagates user lookup failures other than not-found', async () => {
+      const failure = new Error('connection lost');
+      mockJwtService.verifyAsync.mockResolvedValue({ sub: 'user-1' });
+      mockUsersService.findById.mockRejectedValue(failure);
+
+      await expect(service.refresh('valid-refresh-token')).rejects.toBe(
+        failure,
+      );
+    });
+
     it('should issue new tokens if refresh token is valid and found in DB', async () => {
       mockJwtService.verifyAsync.mockResolvedValue({ sub: 'user-1' });
       mockPrismaService.refreshToken.updateMany.mockResolvedValue({ count: 1 });
