@@ -1,10 +1,16 @@
-// src/careers/careers.controller.ts
-import { Controller, Get, Query } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiTags, ApiQuery } from '@nestjs/swagger';
+import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
+import {
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+  ApiQuery,
+  ApiParam,
+} from '@nestjs/swagger';
 import { CareersService } from './careers.service';
 import { CareerListItemDto } from './dto/list-careers.dto';
 import { GetCareersQueryDto } from './dto/get-careers-query.dto';
 import { TargetLevel } from '../../generated/prisma/client';
+import { CareerDetailDto } from './dto/career-detail.dto';
 
 @ApiTags('Careers')
 @Controller('careers')
@@ -12,8 +18,14 @@ export class CareersController {
   constructor(private readonly careersService: CareersService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Get a public catalogue of published careers' })
-  @ApiQuery({ name: 'level', required: false, enum: TargetLevel })
+  @ApiOperation({
+    summary: 'Get a public catalogue of published careers',
+  })
+  @ApiQuery({
+    name: 'level',
+    required: false,
+    enum: TargetLevel,
+  })
   @ApiQuery({
     name: 'interest',
     required: false,
@@ -30,5 +42,29 @@ export class CareersController {
     @Query() query: GetCareersQueryDto,
   ): Promise<CareerListItemDto[]> {
     return this.careersService.getPublicCareers(query);
+  }
+
+  @Get(':id')
+  @ApiOperation({
+    summary: 'Get details for a published career',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Career UUID',
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Career details including field, skills, outlook data, and a summary of the associated pathway.',
+    type: CareerDetailDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Career does not exist, or exists but is not PUBLISHED.',
+  })
+  async getCareerById(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<CareerDetailDto> {
+    return this.careersService.getPublishedCareerById(id);
   }
 }

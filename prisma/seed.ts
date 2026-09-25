@@ -168,7 +168,6 @@ async function main() {
       careerId: backendCareer.id,
       title: 'Backend Engineering Fundamentals',
       description: 'Core steps to become a proficient backend engineer.',
-      // Note: If your Step/StepSkill models have changed, adjust the nested create below accordingly
       steps: {
         create: [
           {
