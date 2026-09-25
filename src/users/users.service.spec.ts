@@ -1,7 +1,7 @@
-import { NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { jest } from '@jest/globals';
-import { Role } from '../generated/prisma/client';
+import { Prisma, Role } from '../generated/prisma/client';
 import { UsersService } from './users.service';
 import { PrismaService } from '../prisma';
 
@@ -104,6 +104,28 @@ describe('UsersService', () => {
         }),
       );
       expect(result).not.toHaveProperty('passwordHash');
+    });
+
+    it('throws ConflictException when the email is already taken', async () => {
+      create.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+          code: 'P2002',
+          clientVersion: 'test',
+        }),
+      );
+
+      await expect(
+        service.create({ email: 'dev@example.com', passwordHash: 'hashed' }),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('propagates other database errors', async () => {
+      const failure = new Error('connection lost');
+      create.mockRejectedValue(failure);
+
+      await expect(
+        service.create({ email: 'dev@example.com', passwordHash: 'hashed' }),
+      ).rejects.toBe(failure);
     });
   });
 });
