@@ -9,6 +9,7 @@ import {
 } from '../src/generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import * as bcrypt from 'bcrypt';
+import { seedCatalog } from './seed-catalog';
 
 // 1. Initialize the adapter exactly like your PrismaService does
 const adapter = new PrismaPg({
@@ -161,7 +162,7 @@ async function main() {
   });
 
   // 5. Seed Pathway for the Career
-  await prisma.pathway.upsert({
+  const backendPathway = await prisma.pathway.upsert({
     where: { careerId: backendCareer.id },
     update: {},
     create: {
@@ -197,6 +198,8 @@ async function main() {
       },
     },
   });
+
+  await seedCatalog(prisma, backendPathway.id);
 
   // 6. Seed a Development User
   const hashedPassword = await bcrypt.hash('password123', 10);
