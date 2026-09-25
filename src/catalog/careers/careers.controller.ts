@@ -11,11 +11,16 @@ import { CareerListItemDto } from './dto/list-careers.dto';
 import { GetCareersQueryDto } from './dto/get-careers-query.dto';
 import { TargetLevel } from '../../generated/prisma/client';
 import { CareerDetailDto } from './dto/career-detail.dto';
+import { CareerPathwayResponseDto } from './pathways/dto/career-pathway.dto';
+import { PathwaysService } from './pathways/pathways.service';
 
 @ApiTags('Careers')
 @Controller('careers')
 export class CareersController {
-  constructor(private readonly careersService: CareersService) {}
+  constructor(
+    private readonly careersService: CareersService,
+    private readonly pathwaysService: PathwaysService,
+  ) {}
 
   @Get()
   @ApiOperation({
@@ -66,5 +71,27 @@ export class CareersController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<CareerDetailDto> {
     return this.careersService.getPublishedCareerById(id);
+  }
+
+  @Get(':careerId/pathway')
+  @ApiOperation({
+    summary: "Get a published career's complete ordered pathway",
+  })
+  @ApiParam({ name: 'careerId', description: 'Career UUID' })
+  @ApiResponse({
+    status: 200,
+    description:
+      "The career's pathway, wrapped as { pathway }. pathway is null if the " +
+      'career has no pathway yet.',
+    type: CareerPathwayResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Career does not exist, or exists but is not PUBLISHED.',
+  })
+  async getCareerPathway(
+    @Param('careerId', ParseUUIDPipe) careerId: string,
+  ): Promise<CareerPathwayResponseDto> {
+    return this.pathwaysService.getCareerPathway(careerId);
   }
 }

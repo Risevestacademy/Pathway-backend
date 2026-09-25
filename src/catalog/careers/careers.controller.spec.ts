@@ -2,6 +2,7 @@ import { jest } from '@jest/globals';
 import { Test, TestingModule } from '@nestjs/testing';
 import { CareersController } from './careers.controller';
 import { CareersService } from './careers.service';
+import { PathwaysService } from './pathways/pathways.service';
 import { GetCareersQueryDto } from './dto/get-careers-query.dto';
 import {
   CareerStatus,
@@ -11,6 +12,7 @@ import {
 } from '../../generated/prisma/client';
 import { CareerDetailDto } from './dto/career-detail.dto';
 import { CareerListItemDto } from './dto/list-careers.dto';
+import { CareerPathwayResponseDto } from './pathways/dto/career-pathway.dto';
 
 describe('CareersController', () => {
   let controller: CareersController;
@@ -18,6 +20,11 @@ describe('CareersController', () => {
   const mockCareersService = {
     getPublicCareers: jest.fn<() => Promise<CareerListItemDto[]>>(),
     getPublishedCareerById: jest.fn<(id: string) => Promise<CareerDetailDto>>(),
+  };
+
+  const mockPathwaysService = {
+    getCareerPathway:
+      jest.fn<(id: string) => Promise<CareerPathwayResponseDto>>(),
   };
 
   beforeEach(async () => {
@@ -29,6 +36,10 @@ describe('CareersController', () => {
         {
           provide: CareersService,
           useValue: mockCareersService,
+        },
+        {
+          provide: PathwaysService,
+          useValue: mockPathwaysService,
         },
       ],
     }).compile();
@@ -180,6 +191,45 @@ describe('CareersController', () => {
       expect(mockCareersService.getPublishedCareerById).toHaveBeenCalledWith(
         'career-1',
       );
+    });
+  });
+
+  describe('getCareerPathway', () => {
+    it('should delegate the career id to pathwaysService.getCareerPathway', async () => {
+      const mockResult = {
+        pathway: {
+          id: 'pathway-1',
+          careerId: 'career-1',
+          title: 'Backend Roadmap',
+          description: 'From fundamentals to production APIs.',
+          steps: [],
+        },
+      } as CareerPathwayResponseDto;
+
+      mockPathwaysService.getCareerPathway.mockResolvedValue(mockResult);
+
+      const result = await controller.getCareerPathway('career-1');
+
+      expect(mockPathwaysService.getCareerPathway).toHaveBeenCalledTimes(1);
+      expect(mockPathwaysService.getCareerPathway).toHaveBeenCalledWith(
+        'career-1',
+      );
+      expect(result).toEqual(mockResult);
+    });
+
+    it('should return { pathway: null } when the service returns no pathway', async () => {
+      const mockResult: CareerPathwayResponseDto = {
+        pathway: null,
+      };
+
+      mockPathwaysService.getCareerPathway.mockResolvedValue(mockResult);
+
+      const result = await controller.getCareerPathway('career-1');
+
+      expect(mockPathwaysService.getCareerPathway).toHaveBeenCalledWith(
+        'career-1',
+      );
+      expect(result).toEqual(mockResult);
     });
   });
 });

@@ -4,9 +4,9 @@ import { CareersService } from './careers.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   CareerStatus,
-  TargetLevel,
-  OutlookType,
   Demand,
+  OutlookType,
+  TargetLevel,
 } from '../../generated/prisma/client';
 import { GetCareersQueryDto } from './dto/get-careers-query.dto';
 import { NotFoundException } from '@nestjs/common';

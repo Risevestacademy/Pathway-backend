@@ -2,8 +2,9 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { GetCareersQueryDto } from './dto/get-careers-query.dto';
 import { CareerListItemDto } from './dto/list-careers.dto';
-import { CareerStatus } from '../../generated/prisma/client';
-import { CareerDetailDto, OutlookDataDto } from './dto/career-detail.dto';
+import { CareerStatus, ResourceStatus } from '../../generated/prisma/client';
+import { CareerDetailDto } from './dto/career-detail.dto';
+import { CareerPathwayResponseDto } from './pathways/dto/career-pathway.dto';
 
 const decimalToString = (
   value: { toString(): string } | null,
@@ -159,5 +160,16 @@ export class CareersService {
           }
         : null,
     };
+  }
+
+  private async assertCareerIsPublished(careerId: string): Promise<void> {
+    const career = await this.prisma.career.findFirst({
+      where: { id: careerId, status: CareerStatus.PUBLISHED },
+      select: { id: true },
+    });
+
+    if (!career) {
+      throw new NotFoundException('Career not found');
+    }
   }
 }
