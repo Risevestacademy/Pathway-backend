@@ -1,10 +1,16 @@
-// src/careers/careers.controller.ts
-import { Controller, Get, Query } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiTags, ApiQuery } from '@nestjs/swagger';
+import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
+import {
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+  ApiQuery,
+  ApiParam,
+} from '@nestjs/swagger';
 import { CareersService } from './careers.service';
 import { CareerListItemDto } from './dto/list-careers.dto';
 import { GetCareersQueryDto } from './dto/get-careers-query.dto';
 import { TargetLevel } from '../../generated/prisma/client';
+import { CareerDetailDto } from './dto/career-detail.dto';
 
 @ApiTags('Careers')
 @Controller('careers')
@@ -30,5 +36,23 @@ export class CareersController {
     @Query() query: GetCareersQueryDto,
   ): Promise<CareerListItemDto[]> {
     return this.careersService.getPublicCareers(query);
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Get the full detail page for a published career' })
+  @ApiParam({ name: 'id', description: 'Career UUID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Full detail for a published career, including outlook data.',
+    type: CareerDetailDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Career does not exist, or exists but is not PUBLISHED.',
+  })
+  async getCareerById(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<CareerDetailDto> {
+    return this.careersService.getPublishedCareerById(id);
   }
 }
