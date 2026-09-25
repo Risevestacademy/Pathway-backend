@@ -2,9 +2,15 @@ import { jest } from '@jest/globals';
 import { Test, TestingModule } from '@nestjs/testing';
 import { CareersService } from './careers.service';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CareerStatus, TargetLevel } from '../../generated/prisma/client';
+import {
+  CareerStatus,
+  ResourceCostStatus,
+  ResourceStatus,
+  TargetLevel,
+} from '../../generated/prisma/client';
 import { GetCareersQueryDto } from './dto/get-careers-query.dto';
 import { NotFoundException } from '@nestjs/common';
+import { ResourceType } from '@prisma/client';
 
 describe('CareersService', () => {
   let service: CareersService;
@@ -22,6 +28,9 @@ describe('CareersService', () => {
         >
       >(),
       findFirst: jest.fn<(args: unknown) => Promise<unknown>>(),
+    },
+    pathway: {
+      findUnique: jest.fn<(args: unknown) => Promise<unknown>>(),
     },
   };
 
@@ -216,6 +225,130 @@ describe('CareersService', () => {
       await expect(
         service.getPublishedCareerById('missing-career'),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('getCareerPathway', () => {
+    const mockPublishedCareer = { id: 'career-1' };
+
+    const mockDbPathway = {
+      id: 'pathway-1',
+      careerId: 'career-1',
+      title: 'Backend Roadmap',
+      description: 'From fundamentals to production APIs.',
+      steps: [
+        {
+          id: 'step-2',
+          title: 'Build an API',
+          description: null,
+          learningObjective: 'Build a REST API.',
+          prerequisites: 'TypeScript basics.',
+          expectedActivity: 'Build a CRUD API.',
+          order: 2,
+          skills: [{ skill: { id: 'skill-nest', name: 'NestJS' } }],
+          resources: [
+            {
+              resource: {
+                id: 'resource-1',
+                title: 'NestJS Docs',
+                description: null,
+                url: 'https://nestjs.com',
+                type: ResourceType.ARTICLE,
+                provider: 'NestJS',
+                costStatus: ResourceCostStatus.FREE,
+                certificationCost: null,
+                curationRationale: 'Official docs.',
+                lastCheckedDate: new Date('2026-01-01'),
+                skills: [{ skill: { id: 'skill-nest', name: 'NestJS' } }],
+              },
+            },
+          ],
+        },
+        {
+          id: 'step-1',
+          title: 'Learn TypeScript',
+          description: null,
+          learningObjective: 'Use TypeScript basics.',
+          prerequisites: null,
+          expectedActivity: 'Complete an exercise.',
+          order: 1,
+          skills: [{ skill: { id: 'skill-ts', name: 'TypeScript' } }],
+          resources: [],
+        },
+      ],
+    };
+
+    it('returns the pathway with steps in the order the query gives them', async () => {
+      mockPrismaService.career.findFirst.mockResolvedValue(mockPublishedCareer);
+      mockPrismaService.pathway.findUnique.mockResolvedValue(mockDbPathway);
+
+      const result = await service.getCareerPathway('career-1');
+
+      expect(mockPrismaService.career.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'career-1', status: CareerStatus.PUBLISHED },
+        }),
+      );
+      expect(mockPrismaService.pathway.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { careerId: 'career-1' } }),
+      );
+      expect(result.pathway?.steps.map((s) => s.order)).toEqual([2, 1]);
+    });
+
+    it("maps each step's skills and resources, and each resource's skills", async () => {
+      mockPrismaService.career.findFirst.mockResolvedValue(mockPublishedCareer);
+      mockPrismaService.pathway.findUnique.mockResolvedValue(mockDbPathway);
+
+      const result = await service.getCareerPathway('career-1');
+
+      const stepTwo = result.pathway?.steps.find((s) => s.order === 2);
+      expect(stepTwo?.skills).toEqual([{ id: 'skill-nest', name: 'NestJS' }]);
+      expect(stepTwo?.resources).toEqual([
+        expect.objectContaining({
+          id: 'resource-1',
+          skills: [{ id: 'skill-nest', name: 'NestJS' }],
+        }),
+      ]);
+    });
+
+    it('only requests ACTIVE resources from the database', async () => {
+      mockPrismaService.career.findFirst.mockResolvedValue(mockPublishedCareer);
+      mockPrismaService.pathway.findUnique.mockResolvedValue(mockDbPathway);
+
+      await service.getCareerPathway('career-1');
+
+      const call = mockPrismaService.pathway.findUnique.mock.calls[0][0] as {
+        select: { steps: { select: { resources: { where: unknown } } } };
+      };
+      expect(call.select.steps.select.resources.where).toEqual({
+        resource: { status: ResourceStatus.ACTIVE },
+      });
+    });
+
+    it('returns { pathway: null } when the career has no pathway yet', async () => {
+      mockPrismaService.career.findFirst.mockResolvedValue(mockPublishedCareer);
+      mockPrismaService.pathway.findUnique.mockResolvedValue(null);
+
+      const result = await service.getCareerPathway('career-1');
+
+      expect(result).toEqual({ pathway: null });
+    });
+
+    it('throws NotFoundException for a nonexistent career', async () => {
+      mockPrismaService.career.findFirst.mockResolvedValue(null);
+
+      await expect(service.getCareerPathway('missing')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(mockPrismaService.pathway.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException for a DRAFT or RETIRED career', async () => {
+      mockPrismaService.career.findFirst.mockResolvedValue(null);
+
+      await expect(service.getCareerPathway('draft-career')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 });

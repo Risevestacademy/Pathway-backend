@@ -6,6 +6,7 @@ import { GetCareersQueryDto } from './dto/get-careers-query.dto';
 import { TargetLevel } from '../../generated/prisma/client';
 import { CareerDetailDto } from './dto/career-detail.dto';
 import { CareerListItemDto } from './dto/list-careers.dto';
+import { CareerPathwayResponseDto } from './dto/career-pathway.dto';
 
 describe('CareersController', () => {
   let controller: CareersController;
@@ -13,6 +14,8 @@ describe('CareersController', () => {
   const mockCareersService = {
     getPublicCareers: jest.fn<() => Promise<CareerListItemDto[]>>(),
     getPublishedCareerById: jest.fn<(id: string) => Promise<CareerDetailDto>>(),
+    getCareerPathway:
+      jest.fn<(id: string) => Promise<CareerPathwayResponseDto>>(),
   };
 
   beforeEach(async () => {
@@ -73,6 +76,30 @@ describe('CareersController', () => {
         'career-1',
       );
       expect(result).toEqual(mockResult);
+    });
+  });
+
+  describe('getCareerPathway', () => {
+    it('delegates to careersService.getCareerPathway', async () => {
+      const mockResult = {
+        pathway: { id: 'pathway-1', steps: [] },
+      } as unknown as CareerPathwayResponseDto;
+      mockCareersService.getCareerPathway.mockResolvedValue(mockResult);
+
+      const result = await controller.getCareerPathway('career-1');
+
+      expect(mockCareersService.getCareerPathway).toHaveBeenCalledWith(
+        'career-1',
+      );
+      expect(result).toEqual(mockResult);
+    });
+
+    it('returns { pathway: null } when the career has no pathway', async () => {
+      mockCareersService.getCareerPathway.mockResolvedValue({ pathway: null });
+
+      const result = await controller.getCareerPathway('career-1');
+
+      expect(result).toEqual({ pathway: null });
     });
   });
 });
