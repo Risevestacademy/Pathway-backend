@@ -3,7 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { GetCareersQueryDto } from './dto/get-careers-query.dto';
 import { CareerListItemDto } from './dto/list-careers.dto';
 import { CareerStatus, ResourceStatus } from '../../generated/prisma/client';
-import { CareerDetailDto, OutlookDataDto } from './dto/career-detail.dto';
+import { CareerDetailDto } from './dto/career-detail.dto';
 import { CareerPathwayResponseDto } from './dto/career-pathway.dto';
 
 const decimalToString = (
