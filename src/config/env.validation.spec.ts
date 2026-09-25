@@ -162,4 +162,44 @@ describe('validateEnv', () => {
       /THROTTLE_LIMIT/,
     );
   });
+
+  it.each(['JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET'])(
+    'throws when %s is empty',
+    (variable) => {
+      expect(() => validateEnv({ ...validEnv, [variable]: '' })).toThrow(
+        new RegExp(variable),
+      );
+    },
+  );
+
+  it('throws when the refresh secret matches the access secret', () => {
+    expect(() =>
+      validateEnv({
+        ...validEnv,
+        JWT_REFRESH_SECRET: validEnv.JWT_ACCESS_SECRET,
+      }),
+    ).toThrow(/JWT_REFRESH_SECRET must differ from JWT_ACCESS_SECRET/);
+  });
+
+  it.each([
+    ['JWT_ACCESS_EXPIRY', 'soon'],
+    ['JWT_REFRESH_EXPIRY', ''],
+    ['JWT_REFRESH_EXPIRY', '-7d'],
+  ])('throws when %s is %j', (variable, value) => {
+    expect(() => validateEnv({ ...validEnv, [variable]: value })).toThrow(
+      new RegExp(`${variable} must be a duration`),
+    );
+  });
+
+  it('accepts durations written in words', () => {
+    const config = validateEnv({ ...validEnv, JWT_REFRESH_EXPIRY: '30 days' });
+
+    expect(config.JWT_REFRESH_EXPIRY).toBe('30 days');
+  });
+
+  it('throws when LOG_LEVEL is not a pino level', () => {
+    expect(() => validateEnv({ ...validEnv, LOG_LEVEL: 'verbose' })).toThrow(
+      /LOG_LEVEL/,
+    );
+  });
 });

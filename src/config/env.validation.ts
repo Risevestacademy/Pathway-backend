@@ -1,14 +1,17 @@
 import { plainToInstance, Type } from 'class-transformer';
 import {
   IsEnum,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
   Max,
   Min,
+  ValidateBy,
   validateSync,
 } from 'class-validator';
+import ms, { type StringValue } from 'ms';
 
 export enum NodeEnv {
   Development = 'development',
@@ -16,6 +19,46 @@ export enum NodeEnv {
   Staging = 'staging',
   Production = 'production',
 }
+
+const LOG_LEVELS = [
+  'fatal',
+  'error',
+  'warn',
+  'info',
+  'debug',
+  'trace',
+  'silent',
+];
+
+const isPositiveDuration = (value: unknown): boolean => {
+  try {
+    return typeof value === 'string' && ms(value as StringValue) > 0;
+  } catch {
+    return false;
+  }
+};
+
+const IsDuration = () =>
+  ValidateBy({
+    name: 'isDuration',
+    validator: {
+      validate: isPositiveDuration,
+      defaultMessage: (args) =>
+        `${args?.property} must be a duration such as 15m or 7d`,
+    },
+  });
+
+const DiffersFrom = (property: keyof EnvironmentVariables) =>
+  ValidateBy({
+    name: 'differsFrom',
+    constraints: [property],
+    validator: {
+      validate: (value, args) =>
+        value !== (args?.object as EnvironmentVariables)[property],
+      defaultMessage: (args) =>
+        `${args?.property} must differ from ${property}`,
+    },
+  });
 
 export class EnvironmentVariables {
   @IsEnum(NodeEnv)
@@ -32,7 +75,7 @@ export class EnvironmentVariables {
   DATABASE_URL: string;
 
   @IsOptional()
-  @IsString()
+  @IsIn(LOG_LEVELS)
   LOG_LEVEL = 'info';
 
   @IsString()
@@ -40,15 +83,18 @@ export class EnvironmentVariables {
   API_VERSION = 'v1';
 
   @IsString()
+  @IsNotEmpty()
   JWT_ACCESS_SECRET: string;
 
-  @IsString()
+  @IsDuration()
   JWT_ACCESS_EXPIRY: string;
 
   @IsString()
+  @IsNotEmpty()
+  @DiffersFrom('JWT_ACCESS_SECRET')
   JWT_REFRESH_SECRET: string;
 
-  @IsString()
+  @IsDuration()
   JWT_REFRESH_EXPIRY: string;
 
   @IsOptional()
