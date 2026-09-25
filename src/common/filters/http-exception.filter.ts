@@ -82,7 +82,9 @@ export class HttpExceptionFilter implements ExceptionFilter {
       );
     }
 
-    Sentry.captureException(exception);
+    if (statusCode >= HttpStatus.INTERNAL_SERVER_ERROR) {
+      Sentry.captureException(exception);
+    }
 
     const errorResponse = {
       statusCode,
