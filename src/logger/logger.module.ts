@@ -22,6 +22,7 @@ import { generateRequestId } from '../common';
           redact: [
             'req.headers.authorization',
             'req.headers.cookie',
+            'res.headers["set-cookie"]',
             '*.password',
             '*.token',
             '*.accessToken',
