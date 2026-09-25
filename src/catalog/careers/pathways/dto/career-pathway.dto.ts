@@ -2,8 +2,8 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   ResourceCostStatus,
   ResourceType,
-} from '../../../generated/prisma/client';
-import { CareerSkillDto } from './career-detail.dto';
+} from '../../../../generated/prisma/client';
+import { CareerSkillDto } from '../../dto/career-detail.dto';
 
 export class PathwayResourceDto {
   @ApiProperty()

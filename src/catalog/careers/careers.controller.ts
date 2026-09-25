@@ -11,12 +11,16 @@ import { CareerListItemDto } from './dto/list-careers.dto';
 import { GetCareersQueryDto } from './dto/get-careers-query.dto';
 import { TargetLevel } from '../../generated/prisma/client';
 import { CareerDetailDto } from './dto/career-detail.dto';
-import { CareerPathwayResponseDto } from './dto/career-pathway.dto';
+import { CareerPathwayResponseDto } from './pathways/dto/career-pathway.dto';
+import { PathwaysService } from './pathways/pathways.service';
 
 @ApiTags('Careers')
 @Controller('careers')
 export class CareersController {
-  constructor(private readonly careersService: CareersService) {}
+  constructor(
+    private readonly careersService: CareersService,
+    private readonly pathwaysService: PathwaysService,
+  ) {}
 
   @Get()
   @ApiOperation({
@@ -88,6 +92,6 @@ export class CareersController {
   async getCareerPathway(
     @Param('careerId', ParseUUIDPipe) careerId: string,
   ): Promise<CareerPathwayResponseDto> {
-    return this.careersService.getCareerPathway(careerId);
+    return this.pathwaysService.getCareerPathway(careerId);
   }
 }

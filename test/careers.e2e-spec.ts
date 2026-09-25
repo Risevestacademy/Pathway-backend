@@ -7,6 +7,7 @@ import {
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { CareersService } from '../src/catalog/careers';
+import { PathwaysService } from '../src/catalog/careers/pathways/pathways.service';
 
 describe('Careers (e2e)', () => {
   let app: INestApplication;
@@ -85,14 +86,19 @@ describe('Careers (e2e)', () => {
     getCareerPathway: jest.fn(),
   };
 
+  const mockPathwaysService = {
+    getCareerPathway: jest.fn(),
+  };
+
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
       .overrideProvider(CareersService)
       .useValue(mockCareersService)
+      .overrideProvider(PathwaysService)
+      .useValue(mockPathwaysService)
       .compile();
-
     app = moduleFixture.createNestApplication();
 
     app.useGlobalPipes(
@@ -211,7 +217,7 @@ describe('Careers (e2e)', () => {
     };
 
     it('should return 200 OK with the ordered pathway', async () => {
-      mockCareersService.getCareerPathway.mockResolvedValue(
+      mockPathwaysService.getCareerPathway.mockResolvedValue(
         mockPathwayResponse,
       );
 
@@ -220,13 +226,13 @@ describe('Careers (e2e)', () => {
         .expect(200);
 
       expect(response.body).toEqual(mockPathwayResponse);
-      expect(mockCareersService.getCareerPathway).toHaveBeenCalledWith(
+      expect(mockPathwaysService.getCareerPathway).toHaveBeenCalledWith(
         careerId,
       );
     });
 
     it('should return { pathway: null } when the career has no pathway yet', async () => {
-      mockCareersService.getCareerPathway.mockResolvedValue({ pathway: null });
+      mockPathwaysService.getCareerPathway.mockResolvedValue({ pathway: null });
 
       const response = await request(app.getHttpServer())
         .get(`/careers/${careerId}/pathway`)
@@ -236,7 +242,7 @@ describe('Careers (e2e)', () => {
     });
 
     it('should return 404 when the career does not exist or is not published', async () => {
-      mockCareersService.getCareerPathway.mockRejectedValue(
+      mockPathwaysService.getCareerPathway.mockRejectedValue(
         new NotFoundException('Career not found'),
       );
 
