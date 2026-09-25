@@ -10,6 +10,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { type Request, type Response } from 'express';
+import ms, { type StringValue } from 'ms';
 import { ConfigService } from '@nestjs/config';
 import { ApiHeader, ApiOperation, ApiResponse } from '@nestjs/swagger';
 
@@ -43,12 +44,16 @@ interface RequestWithCookies extends Request {
 @Controller('auth')
 export class AuthController {
   private readonly refreshTokenCookiePath: string;
+  private readonly refreshTokenMaxAge: number;
 
   constructor(
     private readonly authService: AuthService,
     configService: ConfigService<EnvironmentVariables, true>,
   ) {
     this.refreshTokenCookiePath = `/${apiPrefix(configService)}/auth`;
+    this.refreshTokenMaxAge = ms(
+      configService.get('JWT_REFRESH_EXPIRY', { infer: true }) as StringValue,
+    );
   }
 
   @ApiOperation({ summary: 'Register a new user' })
@@ -248,7 +253,7 @@ export class AuthController {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
+      maxAge: this.refreshTokenMaxAge,
       path: this.refreshTokenCookiePath,
     });
   }
