@@ -19,8 +19,14 @@ export class CareersController {
   constructor(private readonly careersService: CareersService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Get a public catalogue of published careers' })
-  @ApiQuery({ name: 'level', required: false, enum: TargetLevel })
+  @ApiOperation({
+    summary: 'Get a public catalogue of published careers',
+  })
+  @ApiQuery({
+    name: 'level',
+    required: false,
+    enum: TargetLevel,
+  })
   @ApiQuery({
     name: 'interest',
     required: false,
@@ -40,11 +46,17 @@ export class CareersController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get the full detail page for a published career' })
-  @ApiParam({ name: 'id', description: 'Career UUID' })
+  @ApiOperation({
+    summary: 'Get details for a published career',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Career UUID',
+  })
   @ApiResponse({
     status: 200,
-    description: 'Full detail for a published career, including outlook data.',
+    description:
+      'Career details including field, skills, outlook data, and a summary of the associated pathway.',
     type: CareerDetailDto,
   })
   @ApiResponse({

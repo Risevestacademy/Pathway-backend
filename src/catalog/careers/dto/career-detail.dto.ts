@@ -7,10 +7,14 @@ import {
 } from '../../../generated/prisma/client';
 
 export class CareerFieldDto {
-  @ApiProperty({ description: 'Name of the field/category' })
+  @ApiProperty({
+    description: 'Name of the field/category',
+  })
   name: string;
 
-  @ApiProperty({ description: 'URL-friendly slug for the field' })
+  @ApiProperty({
+    description: 'URL-friendly slug for the field',
+  })
   slug: string;
 }
 
@@ -23,13 +27,19 @@ export class CareerSkillDto {
 }
 
 export class CareerPathwaySummaryDto {
-  @ApiProperty()
+  @ApiProperty({
+    description: 'Pathway UUID',
+  })
   id: string;
 
-  @ApiProperty()
+  @ApiProperty({
+    description: 'Pathway title',
+  })
   title: string;
 
-  @ApiProperty({ description: 'Number of steps in the pathway' })
+  @ApiProperty({
+    description: 'Number of steps in the pathway',
+  })
   stepCount: number;
 }
 
@@ -37,7 +47,9 @@ export class OutlookDataDto {
   @ApiProperty()
   id: string;
 
-  @ApiProperty({ enum: OutlookType })
+  @ApiProperty({
+    enum: OutlookType,
+  })
   type: OutlookType;
 
   @ApiProperty()
@@ -52,13 +64,19 @@ export class OutlookDataDto {
   @ApiProperty()
   period: string;
 
-  @ApiPropertyOptional({ description: 'Decimal serialized as a string' })
+  @ApiPropertyOptional({
+    description: 'Decimal serialized as a string',
+  })
   median: string | null;
 
-  @ApiPropertyOptional({ description: 'Decimal serialized as a string' })
+  @ApiPropertyOptional({
+    description: 'Decimal serialized as a string',
+  })
   percentile25: string | null;
 
-  @ApiPropertyOptional({ description: 'Decimal serialized as a string' })
+  @ApiPropertyOptional({
+    description: 'Decimal serialized as a string',
+  })
   percentile75: string | null;
 
   @ApiPropertyOptional()
@@ -85,10 +103,14 @@ export class OutlookDataDto {
   @ApiPropertyOptional()
   projectedValue: number | null;
 
-  @ApiPropertyOptional({ description: 'Decimal serialized as a string' })
+  @ApiPropertyOptional({
+    description: 'Decimal serialized as a string',
+  })
   growthPercent: string | null;
 
-  @ApiPropertyOptional({ enum: Demand })
+  @ApiPropertyOptional({
+    enum: Demand,
+  })
   demandLevel: Demand | null;
 
   @ApiProperty()
@@ -111,7 +133,9 @@ export class CareerDetailDto {
   @ApiProperty()
   roleSummary: string;
 
-  @ApiProperty({ type: [String] })
+  @ApiProperty({
+    type: [String],
+  })
   exampleActivities: string[];
 
   @ApiPropertyOptional()
@@ -120,13 +144,20 @@ export class CareerDetailDto {
   @ApiPropertyOptional()
   certificationsNote: string | null;
 
-  @ApiProperty({ type: CareerFieldDto })
+  @ApiProperty({
+    type: CareerFieldDto,
+  })
   field: CareerFieldDto;
 
-  @ApiProperty({ enum: TargetLevel, isArray: true })
+  @ApiProperty({
+    enum: TargetLevel,
+    isArray: true,
+  })
   targetLevels: TargetLevel[];
 
-  @ApiProperty({ enum: CareerStatus })
+  @ApiProperty({
+    enum: CareerStatus,
+  })
   status: CareerStatus;
 
   @ApiPropertyOptional()
@@ -135,12 +166,21 @@ export class CareerDetailDto {
   @ApiProperty()
   updatedAt: Date;
 
-  @ApiProperty({ type: [CareerSkillDto] })
+  @ApiProperty({
+    type: [CareerSkillDto],
+  })
   skills: CareerSkillDto[];
 
-  @ApiProperty({ type: [OutlookDataDto] })
+  @ApiProperty({
+    type: [OutlookDataDto],
+  })
   outlook: OutlookDataDto[];
 
-  @ApiPropertyOptional({ type: CareerPathwaySummaryDto, nullable: true })
+  @ApiPropertyOptional({
+    type: CareerPathwaySummaryDto,
+    nullable: true,
+    description:
+      'Summary of the associated pathway. Use the pathway ID to retrieve the full pathway.',
+  })
   pathway: CareerPathwaySummaryDto | null;
 }

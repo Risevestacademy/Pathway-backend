@@ -48,7 +48,10 @@ export class CareersService {
 
   async getPublishedCareerById(id: string): Promise<CareerDetailDto> {
     const career = await this.prisma.career.findFirst({
-      where: { id, status: CareerStatus.PUBLISHED },
+      where: {
+        id,
+        status: CareerStatus.PUBLISHED,
+      },
       select: {
         id: true,
         slug: true,
@@ -62,8 +65,25 @@ export class CareersService {
         status: true,
         publishedAt: true,
         updatedAt: true,
-        field: { select: { name: true, slug: true } },
-        skills: { select: { skill: { select: { id: true, name: true } } } },
+
+        field: {
+          select: {
+            name: true,
+            slug: true,
+          },
+        },
+
+        skills: {
+          select: {
+            skill: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+
         outlook: {
           select: {
             id: true,
@@ -92,7 +112,11 @@ export class CareersService {
           select: {
             id: true,
             title: true,
-            _count: { select: { steps: true } },
+            _count: {
+              select: {
+                steps: true,
+              },
+            },
           },
         },
       },
@@ -101,14 +125,6 @@ export class CareersService {
     if (!career) {
       throw new NotFoundException('Career not found');
     }
-
-    const outlook: OutlookDataDto[] = career.outlook.map((entry) => ({
-      ...entry,
-      median: decimalToString(entry.median),
-      percentile25: decimalToString(entry.percentile25),
-      percentile75: decimalToString(entry.percentile75),
-      growthPercent: decimalToString(entry.growthPercent),
-    }));
 
     return {
       id: career.id,
@@ -119,13 +135,23 @@ export class CareersService {
       exampleActivities: career.exampleActivities,
       typicalEducationNote: career.typicalEducationNote,
       certificationsNote: career.certificationsNote,
-      field: career.field,
       targetLevels: career.targetLevels,
       status: career.status,
       publishedAt: career.publishedAt,
       updatedAt: career.updatedAt,
+
+      field: career.field,
+
       skills: career.skills.map(({ skill }) => skill),
-      outlook,
+
+      outlook: career.outlook.map((entry) => ({
+        ...entry,
+        median: decimalToString(entry.median),
+        percentile25: decimalToString(entry.percentile25),
+        percentile75: decimalToString(entry.percentile75),
+        growthPercent: decimalToString(entry.growthPercent),
+      })),
+
       pathway: career.pathway
         ? {
             id: career.pathway.id,
