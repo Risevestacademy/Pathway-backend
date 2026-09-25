@@ -1,11 +1,15 @@
 import { INestApplication } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module';
+import { apiPrefix as resolveApiPrefix, configureApp } from './../src/common';
+import { EnvironmentVariables } from './../src/config';
 
 describe('Health (e2e)', () => {
   let app: INestApplication<App>;
+  let apiPrefix: string;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -13,6 +17,10 @@ describe('Health (e2e)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
+    configureApp(app);
+    apiPrefix = `/${resolveApiPrefix(
+      app.get<ConfigService<EnvironmentVariables, true>>(ConfigService),
+    )}`;
     await app.init();
   });
 
@@ -33,16 +41,16 @@ describe('Health (e2e)', () => {
     );
   });
 
-  it('returns the standard error envelope for an unknown route', async () => {
+  it('returns the standard error envelope for an unknown API route', async () => {
     const response = await request(app.getHttpServer())
-      .get('/does-not-exist')
+      .get(`${apiPrefix}/does-not-exist`)
       .expect(404);
 
     expect(response.body).toEqual(
       expect.objectContaining({
         statusCode: 404,
         error: 'NOT_FOUND',
-        path: '/does-not-exist',
+        path: `${apiPrefix}/does-not-exist`,
       }),
     );
   });

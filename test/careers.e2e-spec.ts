@@ -1,16 +1,16 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import {
-  INestApplication,
-  NotFoundException,
-  ValidationPipe,
-} from '@nestjs/common';
+import { INestApplication, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { CareersService } from '../src/catalog/careers';
 import { PathwaysService } from '../src/catalog/careers/pathways/pathways.service';
+import { apiPrefix as resolveApiPrefix, configureApp } from '../src/common';
+import { EnvironmentVariables } from '../src/config';
 
 describe('Careers (e2e)', () => {
   let app: INestApplication;
+  let apiPrefix: string;
 
   const mockCareersList = [
     {
@@ -101,12 +101,11 @@ describe('Careers (e2e)', () => {
       .compile();
     app = moduleFixture.createNestApplication();
 
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        transform: true,
-      }),
-    );
+    configureApp(app);
+
+    apiPrefix = `/${resolveApiPrefix(
+      app.get<ConfigService<EnvironmentVariables, true>>(ConfigService),
+    )}`;
 
     await app.init();
   });
@@ -122,7 +121,7 @@ describe('Careers (e2e)', () => {
   describe('GET /careers', () => {
     it('should return 200 OK with public careers list', async () => {
       const response = await request(app.getHttpServer())
-        .get('/careers')
+        .get(`${apiPrefix}/careers`)
         .expect(200);
 
       expect(response.body).toEqual(mockCareersList);
@@ -136,7 +135,7 @@ describe('Careers (e2e)', () => {
       };
 
       await request(app.getHttpServer())
-        .get('/careers')
+        .get(`${apiPrefix}/careers`)
         .query(queryParams)
         .expect(200);
 
@@ -151,7 +150,7 @@ describe('Careers (e2e)', () => {
       const careerId = '123e4567-e89b-12d3-a456-426614174000';
 
       const response = await request(app.getHttpServer())
-        .get(`/careers/${careerId}`)
+        .get(`${apiPrefix}/careers/${careerId}`)
         .expect(200);
 
       expect(response.body).toEqual(mockCareerDetail);
@@ -174,7 +173,7 @@ describe('Careers (e2e)', () => {
       const careerId = '123e4567-e89b-12d3-a456-426614174000';
 
       const response = await request(app.getHttpServer())
-        .get(`/careers/${careerId}`)
+        .get(`${apiPrefix}/careers/${careerId}`)
         .expect(200);
 
       expect(response.body.pathway).toBeNull();
@@ -185,7 +184,9 @@ describe('Careers (e2e)', () => {
     });
 
     it('should reject an invalid career UUID', async () => {
-      await request(app.getHttpServer()).get('/careers/not-a-uuid').expect(400);
+      await request(app.getHttpServer())
+        .get(`${apiPrefix}/careers/not-a-uuid`)
+        .expect(400);
 
       expect(mockCareersService.getPublishedCareerById).not.toHaveBeenCalled();
     });
@@ -222,7 +223,7 @@ describe('Careers (e2e)', () => {
       );
 
       const response = await request(app.getHttpServer())
-        .get(`/careers/${careerId}/pathway`)
+        .get(`${apiPrefix}/careers/${careerId}/pathway`)
         .expect(200);
 
       expect(response.body).toEqual(mockPathwayResponse);
@@ -235,7 +236,7 @@ describe('Careers (e2e)', () => {
       mockPathwaysService.getCareerPathway.mockResolvedValue({ pathway: null });
 
       const response = await request(app.getHttpServer())
-        .get(`/careers/${careerId}/pathway`)
+        .get(`${apiPrefix}/careers/${careerId}/pathway`)
         .expect(200);
 
       expect(response.body).toEqual({ pathway: null });
@@ -247,13 +248,13 @@ describe('Careers (e2e)', () => {
       );
 
       await request(app.getHttpServer())
-        .get(`/careers/${careerId}/pathway`)
+        .get(`${apiPrefix}/careers/${careerId}/pathway`)
         .expect(404);
     });
 
     it('should reject an invalid career UUID', async () => {
       await request(app.getHttpServer())
-        .get('/careers/not-a-uuid/pathway')
+        .get(`${apiPrefix}/careers/not-a-uuid/pathway`)
         .expect(400);
 
       expect(mockCareersService.getCareerPathway).not.toHaveBeenCalled();

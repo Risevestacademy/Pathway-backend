@@ -2,10 +2,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import cookieParser from 'cookie-parser';
 
 import { AppModule } from '../src/app.module';
-import { createValidationPipe } from '../src/common';
+import { apiPrefix as resolveApiPrefix, configureApp } from '../src/common';
 import { EnvironmentVariables } from '../src/config';
 
 describe('AuthController (e2e)', () => {
@@ -29,18 +28,12 @@ describe('AuthController (e2e)', () => {
 
     app = moduleFixture.createNestApplication();
 
-    app.use(cookieParser());
+    configureApp(app);
 
     const config =
       app.get<ConfigService<EnvironmentVariables, true>>(ConfigService);
 
-    const apiVersion = config.get('API_VERSION', { infer: true });
-
-    apiPrefix = `/api/${apiVersion}`;
-
-    app.setGlobalPrefix(apiPrefix);
-
-    app.useGlobalPipes(createValidationPipe());
+    apiPrefix = `/${resolveApiPrefix(config)}`;
 
     await app.init();
   });
