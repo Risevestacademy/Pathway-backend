@@ -4,15 +4,15 @@ import { CareersService } from './careers.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   CareerStatus,
+  Demand,
+  OutlookType,
   ResourceCostStatus,
   ResourceStatus,
+  ResourceType,
   TargetLevel,
-  OutlookType,
-  Demand,
 } from '../../generated/prisma/client';
 import { GetCareersQueryDto } from './dto/get-careers-query.dto';
 import { NotFoundException } from '@nestjs/common';
-import { ResourceType } from '@prisma/client';
 
 describe('CareersService', () => {
   let service: CareersService;
