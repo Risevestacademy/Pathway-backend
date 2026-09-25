@@ -4,12 +4,15 @@ import { CareersController } from './careers.controller';
 import { CareersService } from './careers.service';
 import { GetCareersQueryDto } from './dto/get-careers-query.dto';
 import { TargetLevel } from '../../generated/prisma/client';
+import { CareerDetailDto } from './dto/career-detail.dto';
+import { CareerListItemDto } from './dto/list-careers.dto';
 
 describe('CareersController', () => {
   let controller: CareersController;
 
   const mockCareersService = {
-    getPublicCareers: jest.fn(),
+    getPublicCareers: jest.fn<() => Promise<CareerListItemDto[]>>(),
+    getPublishedCareerById: jest.fn<(id: string) => Promise<CareerDetailDto>>(),
   };
 
   beforeEach(async () => {
@@ -45,13 +48,30 @@ describe('CareersController', () => {
       mockCareersService.getPublicCareers.mockResolvedValue(mockResult);
 
       const query: GetCareersQueryDto = {
-        level: TargetLevel.ENTRY,
+        level: TargetLevel.EARLY_CAREER,
         interest: 'software-engineering',
       };
 
       const result = await controller.getCareers(query);
 
       expect(mockCareersService.getPublicCareers).toHaveBeenCalledWith(query);
+      expect(result).toEqual(mockResult);
+    });
+  });
+
+  describe('getCareerById', () => {
+    it('delegates to careersService.getPublishedCareerById', async () => {
+      const mockResult = {
+        id: 'career-1',
+        title: 'Software Engineer',
+      } as unknown as CareerDetailDto;
+      mockCareersService.getPublishedCareerById.mockResolvedValue(mockResult);
+
+      const result = await controller.getCareerById('career-1');
+
+      expect(mockCareersService.getPublishedCareerById).toHaveBeenCalledWith(
+        'career-1',
+      );
       expect(result).toEqual(mockResult);
     });
   });
