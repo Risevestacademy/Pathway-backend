@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
+import { PrismaService } from '../../prisma';
 import { GetCareersQueryDto } from './dto/get-careers-query.dto';
 import { CareerListItemDto } from './dto/list-careers.dto';
 import { CareerStatus, ResourceStatus } from '../../generated/prisma/client';

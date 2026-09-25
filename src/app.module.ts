@@ -10,7 +10,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { throttlerOptionsFactory } from './common/throttler';
-import { CareersModule } from './catalog/careers/careers.module';
+import { CareersModule } from './catalog/careers';
 
 @Module({
   imports: [
