@@ -75,7 +75,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
           err: exception,
           requestId: request.id,
           method: request.method,
-          route: request.url,
+          route: request.originalUrl,
           statusCode,
         },
         'Unexpected error',
@@ -91,7 +91,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       message,
       error: errorCode,
       ...(fields && { fields }),
-      path: request.url,
+      path: request.originalUrl,
       timestamp: new Date().toISOString(),
     };
 

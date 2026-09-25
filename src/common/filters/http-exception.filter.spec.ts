@@ -26,7 +26,7 @@ type MockResponse = {
 describe('HttpExceptionFilter', () => {
   let filter: InstanceType<typeof HttpExceptionFilter>;
   let mockResponse: MockResponse;
-  let mockRequest: Pick<Request, 'url' | 'method' | 'id'>;
+  let mockRequest: Pick<Request, 'url' | 'originalUrl' | 'method' | 'id'>;
   let mockLogger: {
     error: jest.Mock;
   };
@@ -50,6 +50,7 @@ describe('HttpExceptionFilter', () => {
 
     mockRequest = {
       url: '/test',
+      originalUrl: '/test',
       method: 'GET',
       id: 'test-request-id',
     };
@@ -185,6 +186,16 @@ describe('HttpExceptionFilter', () => {
     filter.catch(exception, mockHost);
 
     expect(mockLogger.error).not.toHaveBeenCalled();
+  });
+
+  it('reports the full request path when a mounted router strips its prefix', () => {
+    mockRequest.url = '/does-not-exist';
+    mockRequest.originalUrl = '/api/v1/does-not-exist';
+
+    filter.catch(new NotFoundException(), mockHost);
+
+    const [[response]] = mockResponse.json.mock.calls;
+    expect(response.path).toBe('/api/v1/does-not-exist');
   });
 
   it('reports unexpected errors to Sentry', () => {
