@@ -1,5 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import {
+  INestApplication,
+  NotFoundException,
+  ValidationPipe,
+} from '@nestjs/common';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { CareersService } from '../src/catalog/careers';
@@ -78,6 +82,7 @@ describe('Careers (e2e)', () => {
   const mockCareersService = {
     getPublicCareers: jest.fn().mockResolvedValue(mockCareersList),
     getPublishedCareerById: jest.fn().mockResolvedValue(mockCareerDetail),
+    getCareerPathway: jest.fn(),
   };
 
   beforeAll(async () => {
@@ -177,6 +182,75 @@ describe('Careers (e2e)', () => {
       await request(app.getHttpServer()).get('/careers/not-a-uuid').expect(400);
 
       expect(mockCareersService.getPublishedCareerById).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('GET /careers/:careerId/pathway', () => {
+    const careerId = '123e4567-e89b-12d3-a456-426614174000';
+
+    const mockPathwayResponse = {
+      pathway: {
+        id: 'pathway-1',
+        careerId,
+        title: 'Backend Roadmap',
+        description: 'From fundamentals to production APIs.',
+        steps: [
+          {
+            id: 'step-1',
+            title: 'Learn TypeScript',
+            description: null,
+            learningObjective: 'Use TypeScript basics.',
+            prerequisites: null,
+            expectedActivity: 'Complete an exercise.',
+            order: 1,
+            skills: [{ id: 'skill-ts', name: 'TypeScript' }],
+            resources: [],
+          },
+        ],
+      },
+    };
+
+    it('should return 200 OK with the ordered pathway', async () => {
+      mockCareersService.getCareerPathway.mockResolvedValue(
+        mockPathwayResponse,
+      );
+
+      const response = await request(app.getHttpServer())
+        .get(`/careers/${careerId}/pathway`)
+        .expect(200);
+
+      expect(response.body).toEqual(mockPathwayResponse);
+      expect(mockCareersService.getCareerPathway).toHaveBeenCalledWith(
+        careerId,
+      );
+    });
+
+    it('should return { pathway: null } when the career has no pathway yet', async () => {
+      mockCareersService.getCareerPathway.mockResolvedValue({ pathway: null });
+
+      const response = await request(app.getHttpServer())
+        .get(`/careers/${careerId}/pathway`)
+        .expect(200);
+
+      expect(response.body).toEqual({ pathway: null });
+    });
+
+    it('should return 404 when the career does not exist or is not published', async () => {
+      mockCareersService.getCareerPathway.mockRejectedValue(
+        new NotFoundException('Career not found'),
+      );
+
+      await request(app.getHttpServer())
+        .get(`/careers/${careerId}/pathway`)
+        .expect(404);
+    });
+
+    it('should reject an invalid career UUID', async () => {
+      await request(app.getHttpServer())
+        .get('/careers/not-a-uuid/pathway')
+        .expect(400);
+
+      expect(mockCareersService.getCareerPathway).not.toHaveBeenCalled();
     });
   });
 });
