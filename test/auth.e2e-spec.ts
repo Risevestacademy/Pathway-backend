@@ -89,6 +89,22 @@ describe('AuthController (e2e)', () => {
       .expect(409);
   });
 
+  it('/auth/register (POST) - duplicate email in a different case', async () => {
+    await request(app.getHttpServer())
+      .post(`${apiPrefix}/auth/register`)
+      .send({ ...testUser, email: ` ${testUser.email.toUpperCase()} ` })
+      .expect(409);
+  });
+
+  it('/auth/login (POST) - email in a different case', async () => {
+    const response = await request(app.getHttpServer())
+      .post(`${apiPrefix}/auth/login`)
+      .send({ ...testUser, email: testUser.email.toUpperCase() })
+      .expect(200);
+
+    expect(response.body.user.email).toBe(testUser.email);
+  });
+
   it('/auth/login (POST) - wrong password', async () => {
     await request(app.getHttpServer())
       .post(`${apiPrefix}/auth/login`)
