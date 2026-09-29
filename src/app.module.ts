@@ -12,6 +12,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { throttlerOptionsFactory } from './common/throttler';
 import { CareersModule } from './catalog/careers';
 import { PathwayStepsModule } from './catalog/pathway-steps';
+import { SkillsModule } from './skills';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { PathwayStepsModule } from './catalog/pathway-steps';
     }),
     CareersModule,
     PathwayStepsModule,
+    SkillsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
