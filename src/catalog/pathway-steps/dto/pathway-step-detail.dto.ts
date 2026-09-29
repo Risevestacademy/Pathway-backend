@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty } from '@nestjs/swagger';
 import {
   ResourceCostStatus,
   ResourceType,
@@ -19,7 +19,7 @@ export class PathwayStepResourceDto {
   @ApiProperty()
   title: string;
 
-  @ApiPropertyOptional()
+  @ApiProperty({ type: String, nullable: true })
   description: string | null;
 
   @ApiProperty()
@@ -34,7 +34,11 @@ export class PathwayStepResourceDto {
   @ApiProperty({ enum: ResourceCostStatus })
   costStatus: ResourceCostStatus;
 
-  @ApiPropertyOptional({ description: 'Decimal serialized as a string' })
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'Decimal serialized as a string',
+  })
   certificationCost: string | null;
 
   @ApiProperty()
@@ -60,13 +64,13 @@ export class PathwayStepDetailDto {
   @ApiProperty()
   title: string;
 
-  @ApiPropertyOptional()
+  @ApiProperty({ type: String, nullable: true })
   description: string | null;
 
   @ApiProperty()
   learningObjective: string;
 
-  @ApiPropertyOptional()
+  @ApiProperty({ type: String, nullable: true })
   prerequisites: string | null;
 
   @ApiProperty()
