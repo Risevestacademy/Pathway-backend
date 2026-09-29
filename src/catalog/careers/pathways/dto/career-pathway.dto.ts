@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty } from '@nestjs/swagger';
 import {
   ResourceCostStatus,
   ResourceType,
@@ -12,7 +12,7 @@ export class PathwayResourceDto {
   @ApiProperty()
   title: string;
 
-  @ApiPropertyOptional()
+  @ApiProperty({ type: String, nullable: true })
   description: string | null;
 
   @ApiProperty()
@@ -27,7 +27,11 @@ export class PathwayResourceDto {
   @ApiProperty({ enum: ResourceCostStatus })
   costStatus: ResourceCostStatus;
 
-  @ApiPropertyOptional({ description: 'Decimal serialized as a string' })
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'Decimal serialized as a string',
+  })
   certificationCost: string | null;
 
   @ApiProperty()
@@ -47,13 +51,13 @@ export class PathwayStepDto {
   @ApiProperty()
   title: string;
 
-  @ApiPropertyOptional()
+  @ApiProperty({ type: String, nullable: true })
   description: string | null;
 
   @ApiProperty()
   learningObjective: string;
 
-  @ApiPropertyOptional()
+  @ApiProperty({ type: String, nullable: true })
   prerequisites: string | null;
 
   @ApiProperty()
@@ -79,7 +83,7 @@ export class CareerPathwayDto {
   @ApiProperty()
   title: string;
 
-  @ApiPropertyOptional()
+  @ApiProperty({ type: String, nullable: true })
   description: string | null;
 
   @ApiProperty({ type: [PathwayStepDto] })
@@ -87,6 +91,6 @@ export class CareerPathwayDto {
 }
 
 export class CareerPathwayResponseDto {
-  @ApiPropertyOptional({ type: CareerPathwayDto, nullable: true })
+  @ApiProperty({ type: CareerPathwayDto, nullable: true })
   pathway: CareerPathwayDto | null;
 }

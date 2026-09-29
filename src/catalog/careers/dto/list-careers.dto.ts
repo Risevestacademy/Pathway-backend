@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty } from '@nestjs/swagger';
 
 export class CareerListItemDto {
   @ApiProperty({ description: 'Unique identifier of the career' })
@@ -10,6 +10,6 @@ export class CareerListItemDto {
   @ApiProperty({ description: 'Title of the career' })
   title: string;
 
-  @ApiPropertyOptional({ description: 'Short description of the career' })
-  shortDescription: string | null;
+  @ApiProperty({ description: 'Short description of the career' })
+  shortDescription: string;
 }

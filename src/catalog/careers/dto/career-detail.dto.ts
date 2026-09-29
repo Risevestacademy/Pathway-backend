@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty } from '@nestjs/swagger';
 import {
   CareerStatus,
   Demand,
@@ -58,58 +58,67 @@ export class OutlookDataDto {
   @ApiProperty()
   source: string;
 
-  @ApiPropertyOptional()
+  @ApiProperty({ type: String, nullable: true })
   sourceUrl: string | null;
 
   @ApiProperty()
   period: string;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
+    type: String,
+    nullable: true,
     description: 'Decimal serialized as a string',
   })
   median: string | null;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
+    type: String,
+    nullable: true,
     description: 'Decimal serialized as a string',
   })
   percentile25: string | null;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
+    type: String,
+    nullable: true,
     description: 'Decimal serialized as a string',
   })
   percentile75: string | null;
 
-  @ApiPropertyOptional()
+  @ApiProperty({ type: String, nullable: true })
   currency: string | null;
 
-  @ApiPropertyOptional()
+  @ApiProperty({ type: String, nullable: true })
   payPeriod: string | null;
 
-  @ApiPropertyOptional()
+  @ApiProperty({ type: String, nullable: true })
   grossOrNet: string | null;
 
-  @ApiPropertyOptional()
+  @ApiProperty({ type: String, nullable: true })
   experienceLevel: string | null;
 
-  @ApiPropertyOptional()
+  @ApiProperty({ type: Number, nullable: true })
   baseYear: number | null;
 
-  @ApiPropertyOptional()
+  @ApiProperty({ type: Number, nullable: true })
   baseValue: number | null;
 
-  @ApiPropertyOptional()
+  @ApiProperty({ type: Number, nullable: true })
   projectedYear: number | null;
 
-  @ApiPropertyOptional()
+  @ApiProperty({ type: Number, nullable: true })
   projectedValue: number | null;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
+    type: String,
+    nullable: true,
     description: 'Decimal serialized as a string',
   })
   growthPercent: string | null;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     enum: Demand,
+    nullable: true,
   })
   demandLevel: Demand | null;
 
@@ -138,10 +147,10 @@ export class CareerDetailDto {
   })
   exampleActivities: string[];
 
-  @ApiPropertyOptional()
+  @ApiProperty({ type: String, nullable: true })
   typicalEducationNote: string | null;
 
-  @ApiPropertyOptional()
+  @ApiProperty({ type: String, nullable: true })
   certificationsNote: string | null;
 
   @ApiProperty({
@@ -160,7 +169,7 @@ export class CareerDetailDto {
   })
   status: CareerStatus;
 
-  @ApiPropertyOptional()
+  @ApiProperty({ type: Date, nullable: true })
   publishedAt: Date | null;
 
   @ApiProperty()
@@ -176,7 +185,7 @@ export class CareerDetailDto {
   })
   outlook: OutlookDataDto[];
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     type: CareerPathwaySummaryDto,
     nullable: true,
     description:
