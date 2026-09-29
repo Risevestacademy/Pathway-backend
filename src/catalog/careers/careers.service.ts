@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma';
 import { GetCareersQueryDto } from './dto/get-careers-query.dto';
 import { CareerListItemDto } from './dto/list-careers.dto';
-import { CareerStatus, ResourceStatus } from '../../generated/prisma/client';
+import { CareerStatus, TargetLevel } from '../../generated/prisma/client';
 import { CareerDetailDto } from './dto/career-detail.dto';
 import { CareerPathwayResponseDto } from './pathways/dto/career-pathway.dto';
 
@@ -160,6 +160,10 @@ export class CareersService {
           }
         : null,
     };
+  }
+
+  getTargetLevels(): TargetLevel[] {
+    return Object.values(TargetLevel);
   }
 
   private async assertCareerIsPublished(careerId: string): Promise<void> {

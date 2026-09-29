@@ -359,4 +359,19 @@ describe('CareersService', () => {
       ).rejects.toThrow(NotFoundException);
     });
   });
+
+  describe('getTargetLevels', () => {
+    it('should return every target level as its string value', () => {
+      const result = service.getTargetLevels();
+
+      expect(result).toEqual(['STUDENT', 'RECENT_GRAD', 'EARLY_CAREER']);
+    });
+
+    it('should not query the database', () => {
+      service.getTargetLevels();
+
+      expect(mockPrismaService.career.findMany).not.toHaveBeenCalled();
+      expect(mockPrismaService.career.findFirst).not.toHaveBeenCalled();
+    });
+  });
 });
