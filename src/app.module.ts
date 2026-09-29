@@ -10,6 +10,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { throttlerOptionsFactory } from './common/throttler';
+import { FieldsModule } from './fields';
 import { CareersModule } from './catalog/careers';
 import { PathwayStepsModule } from './catalog/pathway-steps';
 import { SkillsModule } from './skills';
@@ -28,6 +29,7 @@ import { SkillsModule } from './skills';
       inject: [ConfigService],
       useFactory: throttlerOptionsFactory,
     }),
+    FieldsModule,
     CareersModule,
     PathwayStepsModule,
     SkillsModule,
