@@ -5,10 +5,12 @@ import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { UsersService } from '../users';
 import {
+  BadRequestException,
   ConflictException,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { createHash } from 'crypto';
 import { PrismaService } from '../prisma';
 import { Role } from '../generated/prisma/enums';
 import * as bcrypt from 'bcrypt';
@@ -20,6 +22,7 @@ describe('AuthService', () => {
     findByEmail: jest.fn(),
     create: jest.fn(),
     findById: jest.fn(),
+    updatePasswordHash: jest.fn<(...args: unknown[]) => Promise<void>>(),
   };
 
   const mockJwtService = {
@@ -41,6 +44,10 @@ describe('AuthService', () => {
       findFirst: jest.fn(),
       update: jest.fn().mockResolvedValue({ id: 'token-1' }),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
+    passwordResetToken: {
+      findFirst: jest.fn<(args: unknown) => Promise<unknown>>(),
+      updateMany: jest.fn<(args: unknown) => Promise<unknown>>(),
     },
     $transaction: jest.fn((callback: (tx: unknown) => unknown) =>
       callback(mockPrismaService),
@@ -256,6 +263,109 @@ describe('AuthService', () => {
       await expect(service.logout('valid-token')).rejects.toThrow(
         'connection terminated',
       );
+    });
+  });
+
+  describe('confirmPasswordReset', () => {
+    const dto = { token: 'raw-reset-token', newPassword: 'NewPassword123!' };
+    const expectedHash = createHash('sha256')
+      .update('raw-reset-token')
+      .digest('hex');
+
+    beforeEach(() => {
+      mockPrismaService.passwordResetToken.findFirst.mockResolvedValue({
+        id: 'reset-1',
+        userId: 'user-1',
+      });
+      mockPrismaService.passwordResetToken.updateMany.mockResolvedValue({
+        count: 1,
+      });
+      mockPrismaService.refreshToken.updateMany.mockResolvedValue({
+        count: 2,
+      });
+      mockUsersService.updatePasswordHash.mockResolvedValue(undefined);
+    });
+
+    it('looks up an unused, unexpired token by the SHA-256 hash of the raw token', async () => {
+      await service.confirmPasswordReset(dto);
+
+      expect(
+        mockPrismaService.passwordResetToken.findFirst,
+      ).toHaveBeenCalledWith({
+        where: {
+          tokenHash: expectedHash,
+          usedAt: null,
+          expiresAt: { gt: expect.any(Date) },
+        },
+        select: { id: true, userId: true },
+      });
+    });
+
+    it('marks the token used only if it is still unused', async () => {
+      await service.confirmPasswordReset(dto);
+
+      expect(
+        mockPrismaService.passwordResetToken.updateMany,
+      ).toHaveBeenCalledWith({
+        where: { id: 'reset-1', usedAt: null },
+        data: { usedAt: expect.any(Date) },
+      });
+    });
+
+    it('stores a bcrypt hash of the new password through UsersService', async () => {
+      await service.confirmPasswordReset(dto);
+
+      const [userId, passwordHash, client] = mockUsersService.updatePasswordHash
+        .mock.calls[0] as [string, string, unknown];
+
+      expect(userId).toBe('user-1');
+      expect(passwordHash).not.toBe(dto.newPassword);
+      await expect(bcrypt.compare(dto.newPassword, passwordHash)).resolves.toBe(
+        true,
+      );
+      expect(client).toBe(mockPrismaService);
+    });
+
+    it("revokes the user's active refresh tokens", async () => {
+      await service.confirmPasswordReset(dto);
+
+      expect(mockPrismaService.refreshToken.updateMany).toHaveBeenCalledWith({
+        where: { userId: 'user-1', revokedAt: null },
+        data: { revokedAt: expect.any(Date) },
+      });
+    });
+
+    it('runs the whole reset in one transaction', async () => {
+      await service.confirmPasswordReset(dto);
+
+      expect(mockPrismaService.$transaction).toHaveBeenCalledTimes(1);
+    });
+
+    it('throws BadRequestException and changes nothing when no valid token matches', async () => {
+      mockPrismaService.passwordResetToken.findFirst.mockResolvedValue(null);
+
+      await expect(service.confirmPasswordReset(dto)).rejects.toThrow(
+        BadRequestException,
+      );
+
+      expect(
+        mockPrismaService.passwordResetToken.updateMany,
+      ).not.toHaveBeenCalled();
+      expect(mockUsersService.updatePasswordHash).not.toHaveBeenCalled();
+      expect(mockPrismaService.refreshToken.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when a concurrent request used the token first', async () => {
+      mockPrismaService.passwordResetToken.updateMany.mockResolvedValue({
+        count: 0,
+      });
+
+      await expect(service.confirmPasswordReset(dto)).rejects.toThrow(
+        BadRequestException,
+      );
+
+      expect(mockUsersService.updatePasswordHash).not.toHaveBeenCalled();
+      expect(mockPrismaService.refreshToken.updateMany).not.toHaveBeenCalled();
     });
   });
 });

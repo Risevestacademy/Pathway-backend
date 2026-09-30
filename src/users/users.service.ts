@@ -20,6 +20,8 @@ export type PublicUser = Pick<
   'id' | 'email' | 'role' | 'createdAt' | 'updatedAt'
 >;
 
+type UserClient = Pick<PrismaService, 'user'>;
+
 @Injectable()
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
@@ -57,5 +59,16 @@ export class UsersService {
 
       throw error;
     }
+  }
+
+  async updatePasswordHash(
+    id: string,
+    passwordHash: string,
+    client: UserClient = this.prisma,
+  ): Promise<void> {
+    await client.user.update({
+      where: { id },
+      data: { passwordHash },
+    });
   }
 }

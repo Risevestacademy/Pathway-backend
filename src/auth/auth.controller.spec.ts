@@ -35,6 +35,7 @@ describe('AuthController', () => {
     refresh:
       jest.fn<() => Promise<{ accessToken: string; refreshToken: string }>>(),
     logout: jest.fn<() => Promise<void>>(),
+    confirmPasswordReset: jest.fn<() => Promise<void>>(),
   };
 
   const mockConfigService = {
@@ -426,6 +427,19 @@ describe('AuthController', () => {
       ).resolves.toBeUndefined();
 
       expect(mockAuthService.logout).toHaveBeenCalledWith('refresh-token');
+    });
+  });
+
+  describe('confirmPasswordReset', () => {
+    it('delegates the reset to AuthService and returns no body', async () => {
+      mockAuthService.confirmPasswordReset.mockResolvedValue();
+
+      const dto = { token: 'raw-reset-token', newPassword: 'NewPassword123!' };
+
+      const result = await controller.confirmPasswordReset(dto);
+
+      expect(mockAuthService.confirmPasswordReset).toHaveBeenCalledWith(dto);
+      expect(result).toBeUndefined();
     });
   });
 
