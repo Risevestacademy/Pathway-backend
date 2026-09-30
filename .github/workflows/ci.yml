@@ -54,6 +54,8 @@ jobs:
       JWT_ACCESS_EXPIRY: 15m
       JWT_REFRESH_SECRET: refresh-secret
       JWT_REFRESH_EXPIRY: 7d
+      MAILERSEND_API_KEY: test-key
+      EMAIL_FROM_ADDRESS: noreply@pathway.dev
 
     steps:
       - uses: actions/checkout@v4
@@ -91,6 +93,8 @@ jobs:
       JWT_ACCESS_EXPIRY: 15m
       JWT_REFRESH_SECRET: refresh-secret
       JWT_REFRESH_EXPIRY: 7d
+      MAILERSEND_API_KEY: test-key
+      EMAIL_FROM_ADDRESS: noreply@pathway.dev
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
