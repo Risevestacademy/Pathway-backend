@@ -1,0 +1,50 @@
+import { jest } from '@jest/globals';
+import { Test, TestingModule } from '@nestjs/testing';
+import { NotificationService } from './notification.service';
+import {
+  EMAIL_PROVIDER,
+  type EmailProvider,
+} from './interfaces/email-provider.interface';
+
+describe('NotificationService', () => {
+  let service: NotificationService;
+  const mockProvider: { send: jest.Mock<EmailProvider['send']> } = {
+    send: jest.fn(),
+  };
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        NotificationService,
+        { provide: EMAIL_PROVIDER, useValue: mockProvider },
+      ],
+    }).compile();
+
+    service = module.get<NotificationService>(NotificationService);
+  });
+
+  it('should be defined', () => {
+    expect(service).toBeDefined();
+  });
+
+  it('renders the named template and delegates to the provider', async () => {
+    await service.send('dev@example.com', 'welcome', { name: 'Ada' });
+
+    expect(mockProvider.send).toHaveBeenCalledWith({
+      to: 'dev@example.com',
+      subject: 'Welcome to Pathway',
+      html: '<p>Hi Ada, welcome to Pathway!</p>',
+      text: 'Hi Ada, welcome to Pathway!',
+    });
+  });
+
+  it('throws for an unknown template', async () => {
+    await expect(
+      service.send('dev@example.com', 'does-not-exist' as never, {}),
+    ).rejects.toThrow('Unknown notification template');
+
+    expect(mockProvider.send).not.toHaveBeenCalled();
+  });
+});
