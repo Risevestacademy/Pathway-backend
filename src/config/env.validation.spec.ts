@@ -10,6 +10,8 @@ describe('validateEnv', () => {
     JWT_ACCESS_EXPIRY: '15m',
     JWT_REFRESH_SECRET: 'refresh-secret',
     JWT_REFRESH_EXPIRY: '7d',
+    MAILERSEND_API_KEY: 'test-key',
+    EMAIL_FROM_ADDRESS: 'noreply@pathway.dev',
   };
 
   it('returns the validated configuration', () => {
@@ -34,6 +36,8 @@ describe('validateEnv', () => {
       JWT_ACCESS_EXPIRY: validEnv.JWT_ACCESS_EXPIRY,
       JWT_REFRESH_SECRET: validEnv.JWT_REFRESH_SECRET,
       JWT_REFRESH_EXPIRY: validEnv.JWT_REFRESH_EXPIRY,
+      MAILERSEND_API_KEY: validEnv.MAILERSEND_API_KEY,
+      EMAIL_FROM_ADDRESS: validEnv.EMAIL_FROM_ADDRESS,
     });
 
     expect(config.NODE_ENV).toBe(NodeEnv.Development);
