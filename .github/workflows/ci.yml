@@ -81,10 +81,40 @@ jobs:
       - run: npx prisma generate
       - run: npm run build
 
+  openapi-breaking-check:
+    name: OpenAPI breaking-change check
+    runs-on: ubuntu-latest
+    env:
+      NODE_ENV: test
+      PORT: 3000
+      JWT_ACCESS_SECRET: access-secret
+      JWT_ACCESS_EXPIRY: 15m
+      JWT_REFRESH_SECRET: refresh-secret
+      JWT_REFRESH_EXPIRY: 7d
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npm run generate:openapi
+
+      - name: Install oasdiff
+        run: |
+          curl -fL -o /tmp/oasdiff.tar.gz https://github.com/oasdiff/oasdiff/releases/download/v1.32.1/oasdiff_1.32.1_linux_amd64.tar.gz
+          tar -xzf /tmp/oasdiff.tar.gz -C /tmp
+          sudo mv /tmp/oasdiff /usr/local/bin/oasdiff
+          oasdiff --version
+
+      - name: Compare against baseline for breaking changes
+        run: oasdiff breaking openapi/baseline.json openapi/current.json --fail-on ERR
+
   docker-build:
     name: Build and Push Docker Image
     runs-on: ubuntu-latest
-    needs: [lint, test, build]
+    needs: [lint, test, build, openapi-breaking-check]
     # Only build/push/deploy on push to dev — not PRs, not main
     if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
     permissions:
