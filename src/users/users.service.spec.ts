@@ -9,6 +9,7 @@ describe('UsersService', () => {
   let service: UsersService;
   let findUnique: jest.Mock<() => Promise<unknown>>;
   let create: jest.Mock<() => Promise<unknown>>;
+  let update: jest.Mock<() => Promise<unknown>>;
 
   const publicUser = {
     id: 'user-1',
@@ -21,11 +22,15 @@ describe('UsersService', () => {
   beforeEach(async () => {
     findUnique = jest.fn<() => Promise<unknown>>();
     create = jest.fn<() => Promise<unknown>>();
+    update = jest.fn<() => Promise<unknown>>();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UsersService,
-        { provide: PrismaService, useValue: { user: { findUnique, create } } },
+        {
+          provide: PrismaService,
+          useValue: { user: { findUnique, create, update } },
+        },
       ],
     }).compile();
 
@@ -126,6 +131,35 @@ describe('UsersService', () => {
       await expect(
         service.create({ email: 'dev@example.com', passwordHash: 'hashed' }),
       ).rejects.toBe(failure);
+    });
+  });
+
+  describe('updatePasswordHash', () => {
+    it('updates only the password hash of the given user', async () => {
+      update.mockResolvedValue(publicUser);
+
+      await expect(
+        service.updatePasswordHash('user-1', 'new-hash'),
+      ).resolves.toBeUndefined();
+
+      expect(update).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        data: { passwordHash: 'new-hash' },
+      });
+    });
+
+    it('uses the client it is given so callers can run it in a transaction', async () => {
+      const txUpdate = jest.fn<() => Promise<unknown>>();
+      txUpdate.mockResolvedValue(publicUser);
+      const tx = { user: { update: txUpdate } } as unknown as Pick<
+        PrismaService,
+        'user'
+      >;
+
+      await service.updatePasswordHash('user-1', 'new-hash', tx);
+
+      expect(txUpdate).toHaveBeenCalled();
+      expect(update).not.toHaveBeenCalled();
     });
   });
 });
