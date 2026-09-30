@@ -102,11 +102,12 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  refreshTokens   RefreshToken[]
-  assessments     Assessment[]
-  userSkills      UserSkill[]
-  pathways        UserPathway[]
-  pathwayProgress UserPathwayStep[]
+  refreshTokens       RefreshToken[]
+  passwordResetTokens PasswordResetToken[]
+  assessments         Assessment[]
+  userSkills          UserSkill[]
+  pathways            UserPathway[]
+  pathwayProgress     UserPathwayStep[]
 }
 
 model RefreshToken {
@@ -120,6 +121,19 @@ model RefreshToken {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, tokenHash])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Skill {
