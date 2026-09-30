@@ -4,6 +4,8 @@
 /build
 src/generated/
 *.tsbuildinfo
+dist-openapi/
+openapi/current.json
 
 # Logs
 logs

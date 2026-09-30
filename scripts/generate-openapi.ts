@@ -9,7 +9,7 @@ async function generate() {
   const document = buildSwaggerDocument(app);
 
   const outputDir = path.resolve(process.cwd(), 'openapi');
-  if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
+  fs.mkdirSync(outputDir, { recursive: true });
 
   fs.writeFileSync(
     path.join(outputDir, 'current.json'),
@@ -17,7 +17,6 @@ async function generate() {
   );
 
   await app.close();
-  process.exit(0);
 }
 
 generate().catch((err) => {

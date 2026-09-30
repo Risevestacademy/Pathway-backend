@@ -24,7 +24,8 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed",
     "db:reset": "prisma migrate reset --force && prisma db seed",
-    "prepare": "husky"
+    "prepare": "husky",
+    "generate:openapi": "tsc -p tsconfig.openapi.json && node dist-openapi/scripts/generate-openapi.js"
   },
   "lint-staged": {
     "*.{ts,tsx}": [
