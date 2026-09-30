@@ -21,6 +21,7 @@ import { type AuthenticatedUser } from './interfaces/authenticated-user.interfac
 import {
   AuthTokensResponseDto,
   AuthResponseDto,
+  ConfirmPasswordResetDto,
   LoginDto,
   RefreshTokenDto,
   RegisterDto,
@@ -218,6 +219,26 @@ export class AuthController {
       sameSite: 'lax',
       path: this.refreshTokenCookiePath,
     });
+  }
+
+  @ApiOperation({ summary: 'Set a new password using a password reset token' })
+  @ApiResponse({
+    status: 204,
+    description:
+      'Password updated. The reset token is marked used and all existing sessions are revoked.',
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Reset token is invalid, expired or already used, or the body failed validation',
+  })
+  @AuthThrottle()
+  @Post('password-reset/confirm')
+  @HttpCode(204)
+  async confirmPasswordReset(
+    @Body() dto: ConfirmPasswordResetDto,
+  ): Promise<void> {
+    await this.authService.confirmPasswordReset(dto);
   }
 
   @Get('me')

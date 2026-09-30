@@ -1,5 +1,6 @@
 import {
   Injectable,
+  BadRequestException,
   ConflictException,
   NotFoundException,
   UnauthorizedException,
@@ -15,12 +16,13 @@ import { UsersService } from '../users';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { ConfirmPasswordResetDto } from './dto/confirm-password-reset.dto';
 import { Role } from '../generated/prisma/enums';
 import { PrismaService } from '../prisma';
 
 type PrismaTransactionClient = Pick<PrismaService, 'refreshToken'>;
 
-const hashRefreshToken = (token: string) =>
+const hashToken = (token: string) =>
   createHash('sha256').update(token).digest('hex');
 
 export interface AuthResult {
@@ -121,7 +123,7 @@ export class AuthService {
       throw this.refreshFailed();
     }
 
-    const tokenHash = hashRefreshToken(refreshToken);
+    const tokenHash = hashToken(refreshToken);
 
     const user = await this.usersService
       .findById(payload.sub)
@@ -189,7 +191,7 @@ export class AuthService {
       return;
     }
 
-    const tokenHash = hashRefreshToken(refreshToken);
+    const tokenHash = hashToken(refreshToken);
 
     await this.prisma.refreshToken.updateMany({
       where: {
@@ -203,6 +205,57 @@ export class AuthService {
     });
 
     this.logger.log({ userId: payload.sub }, 'User logged out');
+  }
+
+  // Set a new password using a reset token
+  async confirmPasswordReset(dto: ConfirmPasswordResetDto): Promise<void> {
+    const tokenHash = hashToken(dto.token);
+
+    const userId = await this.prisma.$transaction(async (tx) => {
+      const now = new Date();
+
+      const resetToken = await tx.passwordResetToken.findFirst({
+        where: { tokenHash, usedAt: null, expiresAt: { gt: now } },
+        select: { id: true, userId: true },
+      });
+
+      if (!resetToken) {
+        throw this.passwordResetFailed();
+      }
+
+      const passwordHash = await bcrypt.hash(dto.newPassword, 12);
+
+      // Guard against two concurrent requests using the same token
+      const claimed = await tx.passwordResetToken.updateMany({
+        where: { id: resetToken.id, usedAt: null },
+        data: { usedAt: now },
+      });
+
+      if (claimed.count === 0) {
+        throw this.passwordResetFailed();
+      }
+
+      await this.usersService.updatePasswordHash(
+        resetToken.userId,
+        passwordHash,
+        tx,
+      );
+
+      await tx.refreshToken.updateMany({
+        where: { userId: resetToken.userId, revokedAt: null },
+        data: { revokedAt: now },
+      });
+
+      return resetToken.userId;
+    });
+
+    this.logger.log({ userId }, 'Password reset');
+  }
+
+  private passwordResetFailed(): BadRequestException {
+    this.logger.warn('Password reset failed');
+
+    return new BadRequestException('Invalid or expired reset token');
   }
 
   private async issueTokens(
@@ -253,7 +306,7 @@ export class AuthService {
       }),
     ]);
 
-    const tokenHash = hashRefreshToken(refreshToken);
+    const tokenHash = hashToken(refreshToken);
 
     const expiresAt = new Date(Date.now() + ms(refreshExpiry));
 
