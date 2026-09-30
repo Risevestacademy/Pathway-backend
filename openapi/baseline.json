@@ -1,0 +1,1317 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/health/ping": {
+      "get": {
+        "operationId": "HealthController_ping",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Health"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "HealthController_check",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Health"
+        ]
+      }
+    },
+    "/users/{id}": {
+      "get": {
+        "operationId": "UsersController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/auth/register": {
+      "post": {
+        "operationId": "AuthController_register",
+        "parameters": [
+          {
+            "name": "X-Client-Platform",
+            "in": "header",
+            "description": "'mobile' carries the refresh token in the request body; 'web' or an absent header carries it in the HttpOnly cookie. Any other value is rejected with 400.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "web",
+                "mobile"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "User registered successfully. Sets a refresh token cookie for web clients.",
+            "headers": {
+              "Set-Cookie": {
+                "description": "HttpOnly refresh token cookie for web clients",
+                "schema": {
+                  "type": "string",
+                  "example": "refreshToken=eyJhbGciOiJIUzI1Ni...; Path=/api/v1/auth; HttpOnly; SameSite=Lax"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unsupported X-Client-Platform value"
+          },
+          "409": {
+            "description": "Email already registered"
+          }
+        },
+        "summary": "Register a new user",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "operationId": "AuthController_login",
+        "parameters": [
+          {
+            "name": "X-Client-Platform",
+            "in": "header",
+            "description": "'mobile' carries the refresh token in the request body; 'web' or an absent header carries it in the HttpOnly cookie. Any other value is rejected with 400.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "web",
+                "mobile"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "User logged in successfully. Sets a refresh token cookie for web clients.",
+            "headers": {
+              "Set-Cookie": {
+                "description": "HttpOnly refresh token cookie for web clients",
+                "schema": {
+                  "type": "string",
+                  "example": "refreshToken=eyJhbGciOiJIUzI1Ni...; Path=/api/v1/auth; HttpOnly; SameSite=Lax"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unsupported X-Client-Platform value"
+          },
+          "401": {
+            "description": "Invalid Credentials"
+          }
+        },
+        "summary": "Login a user",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/auth/refresh": {
+      "post": {
+        "operationId": "AuthController_refresh",
+        "parameters": [
+          {
+            "name": "X-Client-Platform",
+            "in": "header",
+            "description": "'mobile' carries the refresh token in the request body; 'web' or an absent header carries it in the HttpOnly cookie. Any other value is rejected with 400.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "web",
+                "mobile"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshTokenDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Access token refreshed successfully. Sets a new refresh token cookie for web clients.",
+            "headers": {
+              "Set-Cookie": {
+                "description": "HttpOnly rotated refresh token cookie for web clients",
+                "schema": {
+                  "type": "string",
+                  "example": "refreshToken=eyJhbGciOiJIUzI1Ni...; Path=/api/v1/auth; HttpOnly; SameSite=Lax"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthTokensResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unsupported X-Client-Platform value"
+          },
+          "401": {
+            "description": "Refresh token required or invalid"
+          }
+        },
+        "summary": "Refresh access token using refresh token",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "operationId": "AuthController_logout",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshTokenDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Every refresh token presented is revoked and the web refresh token cookie is cleared.",
+            "headers": {
+              "Set-Cookie": {
+                "description": "Expired refresh token cookie for web clients",
+                "schema": {
+                  "type": "string",
+                  "example": "refreshToken=; Path=/api/v1/auth; Expires=Thu, 01 Jan 1970 00:00:00 GMT"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Logout a user",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "operationId": "AuthController_getMe",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/fields": {
+      "get": {
+        "operationId": "FieldsController_getFields",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "All career fields sorted by name. Returns an empty array if there are none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FieldListItemDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Get all career fields",
+        "tags": [
+          "Fields"
+        ]
+      }
+    },
+    "/careers": {
+      "get": {
+        "operationId": "CareersController_getCareers",
+        "parameters": [
+          {
+            "name": "level",
+            "required": false,
+            "in": "query",
+            "description": "Filter by target level",
+            "schema": {
+              "enum": [
+                "STUDENT",
+                "RECENT_GRAD",
+                "EARLY_CAREER"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "interest",
+            "required": false,
+            "in": "query",
+            "description": "Filter by field slug (e.g., \"software-engineering\")",
+            "schema": {
+              "example": "software-engineering",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of published careers. Returns an empty array if no matches are found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CareerListItemDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Get a public catalogue of published careers",
+        "tags": [
+          "Careers"
+        ]
+      }
+    },
+    "/careers/{id}": {
+      "get": {
+        "operationId": "CareersController_getCareerById",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Career UUID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Career details including field, skills, outlook data, and a summary of the associated pathway.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CareerDetailDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Career does not exist, or exists but is not PUBLISHED."
+          }
+        },
+        "summary": "Get details for a published career",
+        "tags": [
+          "Careers"
+        ]
+      }
+    },
+    "/careers/{careerId}/pathway": {
+      "get": {
+        "operationId": "CareersController_getCareerPathway",
+        "parameters": [
+          {
+            "name": "careerId",
+            "required": true,
+            "in": "path",
+            "description": "Career UUID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The career's pathway, wrapped as { pathway }. pathway is null if the career has no pathway yet.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CareerPathwayResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Career does not exist, or exists but is not PUBLISHED."
+          }
+        },
+        "summary": "Get a published career's complete ordered pathway",
+        "tags": [
+          "Careers"
+        ]
+      }
+    },
+    "/target-levels": {
+      "get": {
+        "operationId": "TargetLevelsController_getTargetLevels",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Target level values accepted by the level filter on GET /careers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "STUDENT",
+                      "RECENT_GRAD",
+                      "EARLY_CAREER"
+                    ]
+                  },
+                  "example": [
+                    "STUDENT",
+                    "RECENT_GRAD",
+                    "EARLY_CAREER"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "summary": "Get the target levels careers can be filtered by",
+        "tags": [
+          "Careers"
+        ]
+      }
+    },
+    "/pathway-steps/{stepId}": {
+      "get": {
+        "operationId": "PathwayStepsController_getPathwayStep",
+        "parameters": [
+          {
+            "name": "stepId",
+            "required": true,
+            "in": "path",
+            "description": "Pathway step UUID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The step with its skills and active resources, each resource with its skills.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PathwayStepDetailDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "stepId is not a valid UUID."
+          },
+          "404": {
+            "description": "Step does not exist, or belongs to a career that is not PUBLISHED."
+          }
+        },
+        "summary": "Get a single pathway step with its skills and resources",
+        "tags": [
+          "Pathway Steps"
+        ]
+      }
+    },
+    "/skills": {
+      "get": {
+        "operationId": "SkillsController_getSkills",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "All skills sorted by name. Returns an empty array if there are none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SkillListItemDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Get all skills",
+        "tags": [
+          "Skills"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "Pathways API",
+    "description": "API documentation for the Pathways backend",
+    "version": "1.0",
+    "contact": {}
+  },
+  "tags": [],
+  "servers": [],
+  "components": {
+    "schemas": {
+      "RegisterDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "example": "user@example.com",
+            "description": "User email address."
+          },
+          "password": {
+            "type": "string",
+            "example": "Password123!",
+            "description": "Account password. Must be at least 8 characters.",
+            "minLength": 8
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ]
+      },
+      "UserResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "123e4567-e89b-12d3-a456-426614174000"
+          },
+          "email": {
+            "type": "string",
+            "example": "user@example.com"
+          },
+          "role": {
+            "type": "string",
+            "example": "USER"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "role"
+        ]
+      },
+      "AuthResponseDto": {
+        "type": "object",
+        "properties": {
+          "accessToken": {
+            "type": "string",
+            "example": "eyJhbGciOiJIUzI1Ni..."
+          },
+          "refreshToken": {
+            "type": "string",
+            "example": "eyJhbGciOiJIUzI1Ni...",
+            "description": "Returned to mobile clients only. Web clients receive it as an HttpOnly cookie."
+          },
+          "user": {
+            "$ref": "#/components/schemas/UserResponseDto"
+          }
+        },
+        "required": [
+          "accessToken",
+          "user"
+        ]
+      },
+      "LoginDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "example": "user@example.com",
+            "description": "User email address."
+          },
+          "password": {
+            "type": "string",
+            "example": "Password123!",
+            "description": "Account password. Must be at least 8 characters."
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ]
+      },
+      "RefreshTokenDto": {
+        "type": "object",
+        "properties": {
+          "refreshToken": {
+            "type": "string",
+            "example": "eyJhbGciOiJIUzI1Ni...",
+            "description": "Required for mobile clients; web clients use the cookie."
+          }
+        }
+      },
+      "AuthTokensResponseDto": {
+        "type": "object",
+        "properties": {
+          "accessToken": {
+            "type": "string",
+            "example": "eyJhbGciOiJIUzI1Ni..."
+          },
+          "refreshToken": {
+            "type": "string",
+            "example": "eyJhbGciOiJIUzI1Ni...",
+            "description": "Returned to mobile clients only. Web clients receive it as an HttpOnly cookie."
+          }
+        },
+        "required": [
+          "accessToken"
+        ]
+      },
+      "FieldListItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier of the field"
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name of the field",
+            "example": "Software Engineering"
+          },
+          "slug": {
+            "type": "string",
+            "description": "Field slug, accepted by the interest filter on GET /careers",
+            "example": "software-engineering"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug"
+        ]
+      },
+      "CareerListItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier of the career"
+          },
+          "slug": {
+            "type": "string",
+            "description": "URL-friendly slug for the career"
+          },
+          "title": {
+            "type": "string",
+            "description": "Title of the career"
+          },
+          "shortDescription": {
+            "type": "string",
+            "description": "Short description of the career"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "title",
+          "shortDescription"
+        ]
+      },
+      "CareerFieldDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name of the field/category"
+          },
+          "slug": {
+            "type": "string",
+            "description": "URL-friendly slug for the field"
+          }
+        },
+        "required": [
+          "name",
+          "slug"
+        ]
+      },
+      "CareerSkillDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "OutlookDataDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "SALARY",
+              "EMPLOYMENT_GROWTH",
+              "DEMAND"
+            ]
+          },
+          "geography": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "sourceUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "period": {
+            "type": "string"
+          },
+          "median": {
+            "type": "string",
+            "nullable": true,
+            "description": "Decimal serialized as a string"
+          },
+          "percentile25": {
+            "type": "string",
+            "nullable": true,
+            "description": "Decimal serialized as a string"
+          },
+          "percentile75": {
+            "type": "string",
+            "nullable": true,
+            "description": "Decimal serialized as a string"
+          },
+          "currency": {
+            "type": "string",
+            "nullable": true
+          },
+          "payPeriod": {
+            "type": "string",
+            "nullable": true
+          },
+          "grossOrNet": {
+            "type": "string",
+            "nullable": true
+          },
+          "experienceLevel": {
+            "type": "string",
+            "nullable": true
+          },
+          "baseYear": {
+            "type": "number",
+            "nullable": true
+          },
+          "baseValue": {
+            "type": "number",
+            "nullable": true
+          },
+          "projectedYear": {
+            "type": "number",
+            "nullable": true
+          },
+          "projectedValue": {
+            "type": "number",
+            "nullable": true
+          },
+          "growthPercent": {
+            "type": "string",
+            "nullable": true,
+            "description": "Decimal serialized as a string"
+          },
+          "demandLevel": {
+            "type": "string",
+            "enum": [
+              "LOW",
+              "MEDIUM",
+              "HIGH"
+            ],
+            "nullable": true
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "geography",
+          "source",
+          "sourceUrl",
+          "period",
+          "median",
+          "percentile25",
+          "percentile75",
+          "currency",
+          "payPeriod",
+          "grossOrNet",
+          "experienceLevel",
+          "baseYear",
+          "baseValue",
+          "projectedYear",
+          "projectedValue",
+          "growthPercent",
+          "demandLevel",
+          "updatedAt"
+        ]
+      },
+      "CareerPathwaySummaryDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Pathway UUID"
+          },
+          "title": {
+            "type": "string",
+            "description": "Pathway title"
+          },
+          "stepCount": {
+            "type": "number",
+            "description": "Number of steps in the pathway"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "stepCount"
+        ]
+      },
+      "CareerDetailDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "roleSummary": {
+            "type": "string"
+          },
+          "exampleActivities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "typicalEducationNote": {
+            "type": "string",
+            "nullable": true
+          },
+          "certificationsNote": {
+            "type": "string",
+            "nullable": true
+          },
+          "field": {
+            "$ref": "#/components/schemas/CareerFieldDto"
+          },
+          "targetLevels": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "STUDENT",
+                "RECENT_GRAD",
+                "EARLY_CAREER"
+              ]
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "PUBLISHED",
+              "RETIRED"
+            ]
+          },
+          "publishedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CareerSkillDto"
+            }
+          },
+          "outlook": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OutlookDataDto"
+            }
+          },
+          "pathway": {
+            "nullable": true,
+            "description": "Summary of the associated pathway. Use the pathway ID to retrieve the full pathway.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CareerPathwaySummaryDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "title",
+          "description",
+          "roleSummary",
+          "exampleActivities",
+          "typicalEducationNote",
+          "certificationsNote",
+          "field",
+          "targetLevels",
+          "status",
+          "publishedAt",
+          "updatedAt",
+          "skills",
+          "outlook",
+          "pathway"
+        ]
+      },
+      "PathwayResourceDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "url": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "COURSE",
+              "CERTIFICATION",
+              "ARTICLE",
+              "VIDEO",
+              "BOOK"
+            ]
+          },
+          "provider": {
+            "type": "string"
+          },
+          "costStatus": {
+            "type": "string",
+            "enum": [
+              "FREE",
+              "PAID",
+              "UNKNOWN"
+            ]
+          },
+          "certificationCost": {
+            "type": "string",
+            "nullable": true,
+            "description": "Decimal serialized as a string"
+          },
+          "curationRationale": {
+            "type": "string"
+          },
+          "lastCheckedDate": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CareerSkillDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "description",
+          "url",
+          "type",
+          "provider",
+          "costStatus",
+          "certificationCost",
+          "curationRationale",
+          "lastCheckedDate",
+          "skills"
+        ]
+      },
+      "PathwayStepDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "learningObjective": {
+            "type": "string"
+          },
+          "prerequisites": {
+            "type": "string",
+            "nullable": true
+          },
+          "expectedActivity": {
+            "type": "string"
+          },
+          "order": {
+            "type": "number"
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CareerSkillDto"
+            }
+          },
+          "resources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PathwayResourceDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "description",
+          "learningObjective",
+          "prerequisites",
+          "expectedActivity",
+          "order",
+          "skills",
+          "resources"
+        ]
+      },
+      "CareerPathwayDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "careerId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PathwayStepDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "careerId",
+          "title",
+          "description",
+          "steps"
+        ]
+      },
+      "CareerPathwayResponseDto": {
+        "type": "object",
+        "properties": {
+          "pathway": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CareerPathwayDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "pathway"
+        ]
+      },
+      "PathwayStepSkillDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "PathwayStepResourceDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "url": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "COURSE",
+              "CERTIFICATION",
+              "ARTICLE",
+              "VIDEO",
+              "BOOK"
+            ]
+          },
+          "provider": {
+            "type": "string"
+          },
+          "costStatus": {
+            "type": "string",
+            "enum": [
+              "FREE",
+              "PAID",
+              "UNKNOWN"
+            ]
+          },
+          "certificationCost": {
+            "type": "string",
+            "nullable": true,
+            "description": "Decimal serialized as a string"
+          },
+          "curationRationale": {
+            "type": "string"
+          },
+          "lastCheckedDate": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PathwayStepSkillDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "description",
+          "url",
+          "type",
+          "provider",
+          "costStatus",
+          "certificationCost",
+          "curationRationale",
+          "lastCheckedDate",
+          "skills"
+        ]
+      },
+      "PathwayStepDetailDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "pathwayId": {
+            "type": "string",
+            "description": "Pathway the step belongs to"
+          },
+          "careerId": {
+            "type": "string",
+            "description": "Career the pathway belongs to"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "learningObjective": {
+            "type": "string"
+          },
+          "prerequisites": {
+            "type": "string",
+            "nullable": true
+          },
+          "expectedActivity": {
+            "type": "string"
+          },
+          "order": {
+            "type": "number",
+            "description": "Position of the step within its pathway"
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PathwayStepSkillDto"
+            }
+          },
+          "resources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PathwayStepResourceDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "pathwayId",
+          "careerId",
+          "title",
+          "description",
+          "learningObjective",
+          "prerequisites",
+          "expectedActivity",
+          "order",
+          "skills",
+          "resources"
+        ]
+      },
+      "SkillListItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier of the skill"
+          },
+          "name": {
+            "type": "string",
+            "description": "Name of the skill",
+            "example": "TypeScript"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "description": "Short description of the skill"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description"
+        ]
+      }
+    }
+  }
+}
