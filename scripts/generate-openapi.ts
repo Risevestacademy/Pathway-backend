@@ -1,11 +1,22 @@
-import { NestFactory } from '@nestjs/core';
+import { Test } from '@nestjs/testing';
 import * as fs from 'fs';
 import * as path from 'path';
 import { AppModule } from '../src/app.module';
+import { PrismaService } from '../src/prisma/prisma.service';
 import { buildSwaggerDocument } from '../src/swagger/swagger.config';
 
 async function generate() {
-  const app = await NestFactory.create(AppModule, { logger: false });
+  const moduleRef = await Test.createTestingModule({
+    imports: [AppModule],
+  })
+    .overrideProvider(PrismaService)
+    .useValue({})
+    .compile();
+
+  const app = moduleRef.createNestApplication();
+
+  await app.init();
+
   const document = buildSwaggerDocument(app);
 
   const outputDir = path.resolve(process.cwd(), 'openapi');
