@@ -119,6 +119,18 @@ export class EnvironmentVariables {
   @IsInt()
   @Min(1)
   THROTTLE_AUTH_LIMIT: number = 10;
+
+  @IsString()
+  @IsNotEmpty()
+  MAILERSEND_API_KEY: string;
+
+  @IsString()
+  @IsNotEmpty()
+  EMAIL_FROM_ADDRESS: string;
+
+  @IsOptional()
+  @IsString()
+  EMAIL_FROM_NAME = 'Pathway';
 }
 
 export function validateEnv(
