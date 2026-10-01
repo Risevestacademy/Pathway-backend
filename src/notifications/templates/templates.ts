@@ -19,6 +19,17 @@ export const NOTIFICATION_TEMPLATES: Record<string, NotificationTemplate> = {
       };
     },
   },
+  'password-reset': {
+    render: (data) => {
+      const resetUrl = data.resetUrl as string;
+      const expiresInMinutes = data.expiresInMinutes as number;
+      return {
+        subject: 'Reset your Pathway password',
+        html: `<p>Use this link to reset your Pathway password: <a href="${resetUrl}">${resetUrl}</a></p><p>The link expires in ${expiresInMinutes} minutes. If you did not request a reset, ignore this email.</p>`,
+        text: `Use this link to reset your Pathway password: ${resetUrl}\n\nThe link expires in ${expiresInMinutes} minutes. If you did not request a reset, ignore this email.`,
+      };
+    },
+  },
 };
 
 export type NotificationTemplateName = keyof typeof NOTIFICATION_TEMPLATES;
