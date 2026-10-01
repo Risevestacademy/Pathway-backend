@@ -36,6 +36,7 @@ describe('AuthController', () => {
       jest.fn<() => Promise<{ accessToken: string; refreshToken: string }>>(),
     logout: jest.fn<() => Promise<void>>(),
     confirmPasswordReset: jest.fn<() => Promise<void>>(),
+    requestPasswordReset: jest.fn<() => Promise<void>>(),
   };
 
   const mockConfigService = {
@@ -427,6 +428,19 @@ describe('AuthController', () => {
       ).resolves.toBeUndefined();
 
       expect(mockAuthService.logout).toHaveBeenCalledWith('refresh-token');
+    });
+  });
+
+  describe('requestPasswordReset', () => {
+    it('delegates the request to AuthService and returns no body', async () => {
+      mockAuthService.requestPasswordReset.mockResolvedValue();
+
+      const dto = { email: 'dev@example.com' };
+
+      const result = await controller.requestPasswordReset(dto);
+
+      expect(mockAuthService.requestPasswordReset).toHaveBeenCalledWith(dto);
+      expect(result).toBeUndefined();
     });
   });
 

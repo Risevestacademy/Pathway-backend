@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { PrismaService } from '../prisma';
+import { NotificationService } from '../notifications';
 import { Role } from '../generated/prisma/enums';
 import * as bcrypt from 'bcrypt';
 
@@ -34,6 +35,8 @@ describe('AuthService', () => {
     get: jest.fn((key: string) => {
       if (key === 'JWT_ACCESS_EXPIRY') return '15m';
       if (key === 'JWT_REFRESH_EXPIRY') return '7d';
+      if (key === 'PASSWORD_RESET_URL')
+        return 'http://localhost:5173/reset-password';
       return 'mock-secret';
     }),
   };
@@ -48,10 +51,16 @@ describe('AuthService', () => {
     passwordResetToken: {
       findFirst: jest.fn<(args: unknown) => Promise<unknown>>(),
       updateMany: jest.fn<(args: unknown) => Promise<unknown>>(),
+      deleteMany: jest.fn<(args: unknown) => Promise<unknown>>(),
+      create: jest.fn<(args: unknown) => Promise<unknown>>(),
     },
     $transaction: jest.fn((callback: (tx: unknown) => unknown) =>
       callback(mockPrismaService),
     ),
+  };
+
+  const mockNotificationService = {
+    send: jest.fn<(...args: unknown[]) => Promise<void>>(),
   };
 
   beforeEach(async () => {
@@ -64,6 +73,7 @@ describe('AuthService', () => {
         { provide: JwtService, useValue: mockJwtService },
         { provide: ConfigService, useValue: mockConfigService },
         { provide: PrismaService, useValue: mockPrismaService },
+        { provide: NotificationService, useValue: mockNotificationService },
       ],
     }).compile();
 
@@ -263,6 +273,110 @@ describe('AuthService', () => {
       await expect(service.logout('valid-token')).rejects.toThrow(
         'connection terminated',
       );
+    });
+  });
+
+  describe('requestPasswordReset', () => {
+    const user = {
+      id: 'user-1',
+      email: 'dev@example.com',
+      passwordHash: 'hash',
+      role: Role.USER,
+    };
+
+    const sentData = () =>
+      mockNotificationService.send.mock.calls[0][2] as {
+        resetUrl: string;
+        expiresInMinutes: number;
+      };
+
+    beforeEach(() => {
+      mockUsersService.findByEmail.mockResolvedValue(user);
+      mockPrismaService.passwordResetToken.deleteMany.mockResolvedValue({
+        count: 0,
+      });
+      mockPrismaService.passwordResetToken.create.mockResolvedValue({
+        id: 'reset-1',
+      });
+      mockNotificationService.send.mockResolvedValue(undefined);
+    });
+
+    it('does nothing for an unknown email and still resolves', async () => {
+      mockUsersService.findByEmail.mockResolvedValue(null);
+
+      await expect(
+        service.requestPasswordReset({ email: 'nobody@example.com' }),
+      ).resolves.toBeUndefined();
+
+      expect(mockPrismaService.$transaction).not.toHaveBeenCalled();
+      expect(mockNotificationService.send).not.toHaveBeenCalled();
+    });
+
+    it("deletes the user's unused reset tokens and stores a new one in one transaction", async () => {
+      await service.requestPasswordReset({ email: user.email });
+
+      expect(mockPrismaService.$transaction).toHaveBeenCalledTimes(1);
+      expect(
+        mockPrismaService.passwordResetToken.deleteMany,
+      ).toHaveBeenCalledWith({
+        where: { userId: 'user-1', usedAt: null },
+      });
+      expect(mockPrismaService.passwordResetToken.create).toHaveBeenCalledWith({
+        data: {
+          userId: 'user-1',
+          tokenHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+          expiresAt: expect.any(Date),
+        },
+      });
+    });
+
+    it('sets the token to expire in 60 minutes', async () => {
+      const before = Date.now();
+
+      await service.requestPasswordReset({ email: user.email });
+
+      const { data } = mockPrismaService.passwordResetToken.create.mock
+        .calls[0][0] as { data: { expiresAt: Date } };
+      const ttl = data.expiresAt.getTime() - before;
+
+      expect(ttl).toBeGreaterThanOrEqual(60 * 60 * 1000);
+      expect(ttl).toBeLessThan(60 * 60 * 1000 + 5000);
+    });
+
+    it('emails a reset link whose token hashes to the stored hash', async () => {
+      await service.requestPasswordReset({ email: user.email });
+
+      expect(mockNotificationService.send).toHaveBeenCalledWith(
+        'dev@example.com',
+        'password-reset',
+        expect.objectContaining({ expiresInMinutes: 60 }),
+      );
+
+      const resetUrl = new URL(sentData().resetUrl);
+      const token = resetUrl.searchParams.get('token')!;
+      const { data } = mockPrismaService.passwordResetToken.create.mock
+        .calls[0][0] as { data: { tokenHash: string } };
+
+      expect(resetUrl.origin + resetUrl.pathname).toBe(
+        'http://localhost:5173/reset-password',
+      );
+      expect(token).toMatch(/^[0-9a-f]{64}$/);
+      expect(data.tokenHash).not.toBe(token);
+      expect(data.tokenHash).toBe(
+        createHash('sha256').update(token).digest('hex'),
+      );
+    });
+
+    it('still resolves when the email fails to send', async () => {
+      mockNotificationService.send.mockRejectedValue(new Error('smtp down'));
+
+      await expect(
+        service.requestPasswordReset({ email: user.email }),
+      ).resolves.toBeUndefined();
+
+      await new Promise(process.nextTick);
+
+      expect(mockNotificationService.send).toHaveBeenCalled();
     });
   });
 
