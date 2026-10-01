@@ -25,6 +25,7 @@ import {
   LoginDto,
   RefreshTokenDto,
   RegisterDto,
+  RequestPasswordResetDto,
   UserResponseDto,
 } from './dto';
 import {
@@ -219,6 +220,22 @@ export class AuthController {
       sameSite: 'lax',
       path: this.refreshTokenCookiePath,
     });
+  }
+
+  @ApiOperation({ summary: 'Request a password reset email' })
+  @ApiResponse({
+    status: 204,
+    description:
+      'Always returned for a valid email, whether or not an account exists. A reset link is emailed only when one does.',
+  })
+  @ApiResponse({ status: 400, description: 'Email is missing or invalid' })
+  @AuthThrottle()
+  @Post('password-reset/request')
+  @HttpCode(204)
+  async requestPasswordReset(
+    @Body() dto: RequestPasswordResetDto,
+  ): Promise<void> {
+    await this.authService.requestPasswordReset(dto);
   }
 
   @ApiOperation({ summary: 'Set a new password using a password reset token' })

@@ -9,7 +9,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
-import { createHash, randomUUID } from 'crypto';
+import { createHash, randomBytes, randomUUID } from 'crypto';
 import { StringValue } from 'ms';
 import ms from 'ms';
 import { UsersService } from '../users';
@@ -17,10 +17,14 @@ import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ConfirmPasswordResetDto } from './dto/confirm-password-reset.dto';
+import { RequestPasswordResetDto } from './dto/request-password-reset.dto';
 import { Role } from '../generated/prisma/enums';
 import { PrismaService } from '../prisma';
+import { NotificationService } from '../notifications';
 
 type PrismaTransactionClient = Pick<PrismaService, 'refreshToken'>;
+
+const PASSWORD_RESET_TOKEN_TTL_MINUTES = 60;
 
 const hashToken = (token: string) =>
   createHash('sha256').update(token).digest('hex');
@@ -49,6 +53,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   // Register a new user
@@ -205,6 +210,60 @@ export class AuthService {
     });
 
     this.logger.log({ userId: payload.sub }, 'User logged out');
+  }
+
+  // Email a password reset link if the account exists
+  async requestPasswordReset(dto: RequestPasswordResetDto): Promise<void> {
+    const user = await this.usersService.findByEmail(dto.email);
+
+    if (!user) {
+      this.logger.log('Password reset requested for an unknown email');
+
+      return;
+    }
+
+    const token = randomBytes(32).toString('hex');
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.passwordResetToken.deleteMany({
+        where: { userId: user.id, usedAt: null },
+      });
+
+      await tx.passwordResetToken.create({
+        data: {
+          userId: user.id,
+          tokenHash: hashToken(token),
+          expiresAt: new Date(
+            Date.now() + PASSWORD_RESET_TOKEN_TTL_MINUTES * 60 * 1000,
+          ),
+        },
+      });
+    });
+
+    // Send without awaiting to keep response time uniform
+    void this.sendPasswordResetEmail(user.id, user.email, token);
+  }
+
+  private async sendPasswordResetEmail(
+    userId: string,
+    email: string,
+    token: string,
+  ): Promise<void> {
+    try {
+      const resetUrl = new URL(
+        this.configService.get<string>('PASSWORD_RESET_URL')!,
+      );
+      resetUrl.searchParams.set('token', token);
+
+      await this.notificationService.send(email, 'password-reset', {
+        resetUrl: resetUrl.toString(),
+        expiresInMinutes: PASSWORD_RESET_TOKEN_TTL_MINUTES,
+      });
+
+      this.logger.log({ userId }, 'Password reset email sent');
+    } catch (error) {
+      this.logger.error({ userId, err: error }, 'Password reset email failed');
+    }
   }
 
   // Set a new password using a reset token
