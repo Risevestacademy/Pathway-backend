@@ -40,6 +40,24 @@ describe('NotificationService', () => {
     });
   });
 
+  it('renders the password-reset template with the reset link and expiry', async () => {
+    const resetUrl = 'http://localhost:5173/reset-password?token=abc123';
+
+    await service.send('dev@example.com', 'password-reset', {
+      resetUrl,
+      expiresInMinutes: 60,
+    });
+
+    const [message] = mockProvider.send.mock.calls[0];
+
+    expect(message.to).toBe('dev@example.com');
+    expect(message.subject).toBe('Reset your Pathway password');
+    expect(message.html).toContain(`href="${resetUrl}"`);
+    expect(message.html).toContain('60 minutes');
+    expect(message.text).toContain(resetUrl);
+    expect(message.text).toContain('60 minutes');
+  });
+
   it('throws for an unknown template', async () => {
     await expect(
       service.send('dev@example.com', 'does-not-exist' as never, {}),
