@@ -6,6 +6,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsUrl,
   Max,
   Min,
   ValidateBy,
@@ -131,6 +132,14 @@ export class EnvironmentVariables {
   @IsOptional()
   @IsString()
   EMAIL_FROM_NAME = 'Pathway';
+
+  @IsOptional()
+  @IsUrl({
+    require_tld: false,
+    require_protocol: true,
+    protocols: ['http', 'https'],
+  })
+  PASSWORD_RESET_URL = 'http://localhost:5173/reset-password';
 }
 
 export function validateEnv(

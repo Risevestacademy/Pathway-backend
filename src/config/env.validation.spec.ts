@@ -206,4 +206,29 @@ describe('validateEnv', () => {
       /LOG_LEVEL/,
     );
   });
+
+  it('defaults PASSWORD_RESET_URL to the local frontend reset page', () => {
+    const config = validateEnv(validEnv);
+
+    expect(config.PASSWORD_RESET_URL).toBe(
+      'http://localhost:5173/reset-password',
+    );
+  });
+
+  it('accepts a deployed PASSWORD_RESET_URL', () => {
+    const config = validateEnv({
+      ...validEnv,
+      PASSWORD_RESET_URL: 'https://pathway.example.com/reset-password',
+    });
+
+    expect(config.PASSWORD_RESET_URL).toBe(
+      'https://pathway.example.com/reset-password',
+    );
+  });
+
+  it('throws when PASSWORD_RESET_URL is not a URL', () => {
+    expect(() =>
+      validateEnv({ ...validEnv, PASSWORD_RESET_URL: 'reset-password' }),
+    ).toThrow(/PASSWORD_RESET_URL/);
+  });
 });

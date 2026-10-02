@@ -6,6 +6,7 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { UsersModule } from '../users';
+import { NotificationsModule } from '../notifications';
 import { StringValue } from 'ms';
 
 @Module({
@@ -27,6 +28,7 @@ import { StringValue } from 'ms';
     }),
 
     UsersModule,
+    NotificationsModule,
   ],
 
   controllers: [AuthController],
