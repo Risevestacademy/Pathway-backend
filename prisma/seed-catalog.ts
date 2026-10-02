@@ -141,6 +141,7 @@ const SKILLS = [
 ];
 
 const RESOURCE = {
+  // Existing
   typescriptHandbook: '730b06cc-81dd-41b4-93f9-f51280efc942',
   nestFirstSteps: '8351e136-5b98-4c54-920d-b5153d63bdfd',
   prismaGettingStarted: 'b446ca08-6baf-4fdd-a289-a039664a6221',
@@ -162,6 +163,62 @@ const RESOURCE = {
   linuxCommandLine: '0e937659-eb10-44dc-8bef-80809cf2e67e',
   dockerGetStarted: '10b50908-9fbc-40a2-b142-7d5b3e5a403f',
   awsCloudPractitioner: '1cd28269-192a-4edf-b0db-4b79d63c9fb3',
+
+  // Frontend
+  webDevLearnHtml: '266572b7-33d8-4273-9d88-333b0e37823f',
+  webDevLearnCss: '578f4b56-ea24-4932-aec7-ffae134dec90',
+  flexboxGuide: 'a499f6a1-5461-45d3-8c0a-5f03a9fee762',
+  flexboxFroggy: 'bebd1080-ef2e-4893-b244-c2c657f9fe2c',
+  javascriptInfo: '5b60c8f0-d619-4367-9abe-4fb25ade3e31',
+  mdnFetchApi: 'bcc34612-383e-4797-aed9-0e8f18318f58',
+  eloquentJs: '2a490b75-9202-4d2b-899b-409dd3f17c10',
+  githubSkills: '32b49616-ae67-44e3-a66f-a8ce0f11d706',
+  reactTypescriptCheatsheets: '8be80d23-3086-4942-8657-9699cdb011df',
+  viteGuide: 'ca416fb9-23e6-4eeb-9283-bcb3ad8c67ba',
+
+  // Data
+  exceljet: 'a3485f36-d262-4fe9-af35-790c7583fede',
+  excelEasy: '21efb39f-45d2-446c-ab09-a4ed169ffa3c',
+  sqlZoo: 'c9d7ecd5-9cfe-41ba-811c-a39bb85cc16f',
+  kaggleIntroSql: 'f80229d3-2ddf-4c00-8099-e9befe6b44af',
+  kaggleIntroPython: 'c7335123-3da8-4274-9ecb-6c8a76014300',
+  kaggleDataViz: '590b234b-9a28-4dc3-add8-424a269d53a0',
+  dataToViz: 'f2f20c04-4921-41e9-a752-3b8ab171d7a4',
+  powerBiGuidedLearning: 'b91bc5b7-ee8a-4544-8c5b-7ab532c6563e',
+
+  // Design
+  nngHeuristics: 'f5d0aa54-fcb8-45c4-95b3-717b76eff951',
+  material3: 'cde4b13f-1bd8-41c4-ae60-48d5ce07d740',
+  usabilityTesting101: '79aa741d-7390-4a15-affc-3792c873359e',
+  designKitFieldGuide: '03b5f4b7-b931-4a82-b0dc-b92613b525e6',
+  figmaPrototyping: '4e153f12-15b3-4f18-9469-9d8cb6b2b969',
+  googleUxCertificate: '80fb3cd5-65e3-414f-b603-cc41193d8c99',
+
+  // QA
+  guru99Testing: 'a5a98cda-656d-42d8-8cac-d0d5f266bd96',
+  ministryOfTesting: 'd6dfffbb-5cfa-4556-a241-8403ef030ff8',
+  playwrightBestPractices: '404e1172-d1fa-44dd-a9a3-22b39f6a1ffd',
+  testAutomationUniversity: '096db6bc-bfb7-46a2-9a18-f10d3a7461f1',
+  mdnHttpOverview: '75a8d933-c644-4570-95e2-c548262d5a4c',
+  mdnHttpStatus: '0e7de679-7f67-4bea-be3b-3cd6779fe26a',
+  postmanTestScripts: 'e5bf032e-df46-4901-b258-bef914a23d8c',
+
+  // Cloud
+  linuxJourney: '88529053-d8c3-432d-81ae-90fe3976f703',
+  overTheWireBandit: 'e87c5ccf-2a00-4d64-92ab-3c507abfd41f',
+  dockerCompose: '5762a92b-3469-447b-9297-bccabedff7c9',
+  dockerfileBestPractices: '96fe5228-5237-4def-97b7-c4a133b71bb6',
+  playWithDocker: '152c7248-1c9f-4b51-93c8-aee9bf290919',
+  awsCloudPractitionerTraining: 'b675af32-978a-42c2-80eb-dabf04104827',
+  awsPricingCalculator: '9c50ae9a-1b74-4ba1-99d7-e1dc5c933799',
+  awsWellArchitected: '9191cf0a-1b23-411e-b3eb-6db8e3e42fe9',
+
+  // Backend (pathway seeded elsewhere)
+  typescriptIn5Minutes: '6450a5b5-0c5e-4100-959c-7bdfd201afb2',
+  nestControllers: 'a1535003-a119-4b1a-833b-d8d21fee254c',
+  nestProviders: 'bfb6d7b4-b9c5-46ba-af0d-8107b94ee523',
+  prismaSchema: 'e84e0fd9-951a-4930-bb1a-46853d4d25fb',
+  prismaCrud: 'fc6ffb27-1e5e-4c2b-b09b-d70f7c25a75b',
 };
 
 const RESOURCES: ResourceSeed[] = [
@@ -460,11 +517,659 @@ const RESOURCES: ResourceSeed[] = [
     status: ResourceStatus.ACTIVE,
     skills: ['Cloud Fundamentals'],
   },
+
+  // ---------------------------------------------------------------------
+  // Frontend Engineer
+  // ---------------------------------------------------------------------
+  {
+    id: RESOURCE.webDevLearnHtml,
+    title: 'web.dev: Learn HTML',
+    description: 'A free course on semantic HTML, forms, tables and media.',
+    url: 'https://web.dev/learn/html',
+    type: ResourceType.COURSE,
+    provider: 'Google (web.dev)',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'Short, modular lessons that stress semantics and accessibility from the start.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['HTML & CSS'],
+  },
+  {
+    id: RESOURCE.webDevLearnCss,
+    title: 'web.dev: Learn CSS',
+    description: 'A course on the cascade, the box model, layout and theming.',
+    url: 'https://web.dev/learn/css',
+    type: ResourceType.COURSE,
+    provider: 'Google (web.dev)',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'Explains how CSS actually works, which makes layout bugs easier to diagnose.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['HTML & CSS'],
+  },
+  {
+    id: RESOURCE.flexboxGuide,
+    title: 'A Complete Guide to Flexbox',
+    description: 'A visual reference for every flexbox property.',
+    url: 'https://css-tricks.com/snippets/css/a-guide-to-flexbox/',
+    type: ResourceType.ARTICLE,
+    provider: 'CSS-Tricks',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'The reference most developers keep open while building responsive layouts.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['HTML & CSS'],
+  },
+  {
+    id: RESOURCE.flexboxFroggy,
+    title: 'Flexbox Froggy',
+    description: 'A game that teaches flexbox by moving frogs onto lily pads.',
+    url: 'https://flexboxfroggy.com/',
+    type: ResourceType.COURSE,
+    provider: 'Codepip',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'A quick, playful way to practise the layout properties the step uses.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['HTML & CSS'],
+  },
+  {
+    id: RESOURCE.javascriptInfo,
+    title: 'The Modern JavaScript Tutorial',
+    description: 'A thorough tutorial from language basics to the browser.',
+    url: 'https://javascript.info/',
+    type: ResourceType.COURSE,
+    provider: 'javascript.info',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'Clear explanations with tasks, covering both the language and DOM events.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['JavaScript'],
+  },
+  {
+    id: RESOURCE.mdnFetchApi,
+    title: 'MDN: Using the Fetch API',
+    description: 'Making requests and handling responses with fetch().',
+    url: 'https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch',
+    type: ResourceType.ARTICLE,
+    provider: 'MDN Web Docs',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'Directly supports the step activity of loading data from a public API.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['JavaScript'],
+  },
+  {
+    id: RESOURCE.eloquentJs,
+    title: 'Eloquent JavaScript',
+    description: 'A book on programming with JavaScript, free to read online.',
+    url: 'https://eloquentjavascript.net/',
+    type: ResourceType.BOOK,
+    provider: 'Marijn Haverbeke',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'A deeper read for learners who want to understand the language, not just use it.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['JavaScript'],
+  },
+  {
+    id: RESOURCE.githubSkills,
+    title: 'GitHub Skills',
+    description: 'Hands-on courses that run as repositories on GitHub.',
+    url: 'https://skills.github.com/',
+    type: ResourceType.COURSE,
+    provider: 'GitHub',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'Practise commits, branches and pull requests in a real repository.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['Git'],
+  },
+  {
+    id: RESOURCE.reactTypescriptCheatsheets,
+    title: 'React TypeScript Cheatsheets',
+    description: 'Patterns for typing components, props, hooks and events.',
+    url: 'https://react-typescript-cheatsheet.netlify.app/',
+    type: ResourceType.ARTICLE,
+    provider: 'React TypeScript Cheatsheet community',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'Bridges the gap between the React docs and the TypeScript Handbook.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['React', 'TypeScript'],
+  },
+  {
+    id: RESOURCE.viteGuide,
+    title: 'Vite: Getting Started',
+    description: 'Scaffolding and running a modern frontend project with Vite.',
+    url: 'https://vite.dev/guide/',
+    type: ResourceType.ARTICLE,
+    provider: 'Vite',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'A current replacement for Create React App for starting a new React project.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['React', 'JavaScript'],
+  },
+
+  // ---------------------------------------------------------------------
+  // Data Analyst
+  // ---------------------------------------------------------------------
+  {
+    id: RESOURCE.exceljet,
+    title: 'Exceljet',
+    description: 'Formula examples, tutorials and shortcuts for Excel.',
+    url: 'https://exceljet.net/',
+    type: ResourceType.ARTICLE,
+    provider: 'Exceljet',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'Concise, example-led pages for lookups, pivot tables and data cleaning.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['Excel'],
+  },
+  {
+    id: RESOURCE.excelEasy,
+    title: 'Excel Easy',
+    description: 'A beginner tutorial from basic formulas to charts.',
+    url: 'https://www.excel-easy.com/',
+    type: ResourceType.COURSE,
+    provider: 'Excel Easy',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'Short step-by-step lessons suited to learners new to spreadsheets.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['Excel'],
+  },
+  {
+    id: RESOURCE.sqlZoo,
+    title: 'SQLZoo',
+    description: 'Interactive SQL exercises on real example datasets.',
+    url: 'https://sqlzoo.net/',
+    type: ResourceType.COURSE,
+    provider: 'SQLZoo',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'More practice on joins and aggregation after the SQLBolt basics.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['SQL'],
+  },
+  {
+    id: RESOURCE.kaggleIntroSql,
+    title: 'Kaggle Learn: Intro to SQL',
+    description: 'Short SQL lessons using BigQuery on real datasets.',
+    url: 'https://www.kaggle.com/learn/intro-to-sql',
+    type: ResourceType.COURSE,
+    provider: 'Kaggle',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'Hands-on exercises in the browser, ending with joins and aggregation.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['SQL'],
+  },
+  {
+    id: RESOURCE.kaggleIntroPython,
+    title: 'Kaggle Learn: Python',
+    description: 'A compact Python course aimed at data work.',
+    url: 'https://www.kaggle.com/learn/python',
+    type: ResourceType.COURSE,
+    provider: 'Kaggle',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'A fast, practical way to learn the Python an analyst needs.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['Python'],
+  },
+  {
+    id: RESOURCE.kaggleDataViz,
+    title: 'Kaggle Learn: Data Visualization',
+    description: 'Building charts in Python with seaborn.',
+    url: 'https://www.kaggle.com/learn/data-visualization',
+    type: ResourceType.COURSE,
+    provider: 'Kaggle',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'Practical exercises for picking and building the right chart for a question.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['Data Visualization', 'Python'],
+  },
+  {
+    id: RESOURCE.dataToViz,
+    title: 'From Data to Viz',
+    description: 'A decision tree that helps you choose a chart type.',
+    url: 'https://www.data-to-viz.com/',
+    type: ResourceType.ARTICLE,
+    provider: 'Data to Viz',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'Maps the shape of your data to suitable charts and common pitfalls.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['Data Visualization'],
+  },
+  {
+    id: RESOURCE.powerBiGuidedLearning,
+    title: 'Power BI Guided Learning',
+    description: 'Microsoft lessons on building reports and dashboards.',
+    url: 'https://learn.microsoft.com/en-us/power-bi/guided-learning/',
+    type: ResourceType.COURSE,
+    provider: 'Microsoft',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'Introduces a widely used dashboard tool for the one-page dashboard activity.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['Data Visualization'],
+  },
+
+  // ---------------------------------------------------------------------
+  // UI/UX Designer
+  // ---------------------------------------------------------------------
+  {
+    id: RESOURCE.nngHeuristics,
+    title: '10 Usability Heuristics for User Interface Design',
+    description: "Nielsen's ten general principles for interaction design.",
+    url: 'https://www.nngroup.com/articles/ten-usability-heuristics/',
+    type: ResourceType.ARTICLE,
+    provider: 'Nielsen Norman Group',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'The standard checklist for auditing an interface, which the step activity needs.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['UX Principles'],
+  },
+  {
+    id: RESOURCE.material3,
+    title: 'Material Design 3',
+    description: "Google's design system guidelines and components.",
+    url: 'https://m3.material.io/',
+    type: ResourceType.ARTICLE,
+    provider: 'Google',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'Shows how UX principles become concrete components, layout and behaviour.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['UX Principles'],
+  },
+  {
+    id: RESOURCE.usabilityTesting101,
+    title: 'Usability Testing 101',
+    description: 'What usability testing is and how to run a basic study.',
+    url: 'https://www.nngroup.com/articles/usability-testing-101/',
+    type: ResourceType.ARTICLE,
+    provider: 'Nielsen Norman Group',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'Extends interview skills into observing people use a design.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['User Research'],
+  },
+  {
+    id: RESOURCE.designKitFieldGuide,
+    title: 'The Field Guide to Human-Centered Design',
+    description: 'IDEO.org methods for understanding and designing for people.',
+    url: 'https://www.designkit.org/resources/1.html',
+    type: ResourceType.BOOK,
+    provider: 'IDEO.org',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'A practical method library covering interviews, synthesis and ideation.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['User Research'],
+  },
+  {
+    id: RESOURCE.figmaPrototyping,
+    title: 'Guide to Prototyping in Figma',
+    description:
+      'Connecting frames, triggers and transitions into a prototype.',
+    url: 'https://help.figma.com/hc/en-us/articles/360040314193-Guide-to-prototyping-in-Figma',
+    type: ResourceType.ARTICLE,
+    provider: 'Figma',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'Covers exactly the clickable-flow work the step asks for.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['Figma', 'Prototyping'],
+  },
+  {
+    id: RESOURCE.googleUxCertificate,
+    title: 'Google UX Design Professional Certificate',
+    description: 'A multi-course programme covering research to prototyping.',
+    url: 'https://www.coursera.org/professional-certificates/google-ux-design',
+    type: ResourceType.CERTIFICATION,
+    provider: 'Google (Coursera)',
+    costStatus: ResourceCostStatus.PAID,
+    certificationCost: null,
+    curationRationale:
+      'A structured, portfolio-oriented option for learners who want guided projects.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['Figma', 'User Research', 'Prototyping'],
+  },
+
+  // ---------------------------------------------------------------------
+  // QA Engineer
+  // ---------------------------------------------------------------------
+  {
+    id: RESOURCE.guru99Testing,
+    title: 'Software Testing Tutorial',
+    description:
+      'A beginner introduction to testing types, levels and process.',
+    url: 'https://www.guru99.com/software-testing.html',
+    type: ResourceType.ARTICLE,
+    provider: 'Guru99',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'A readable overview that eases learners into the ISTQB vocabulary.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['Test Design'],
+  },
+  {
+    id: RESOURCE.ministryOfTesting,
+    title: 'Ministry of Testing',
+    description: 'A testing community with articles, guides and courses.',
+    url: 'https://www.ministryoftesting.com/',
+    type: ResourceType.ARTICLE,
+    provider: 'Ministry of Testing',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'Practitioner-written content that shows how testing is done on real teams.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['Test Design'],
+  },
+  {
+    id: RESOURCE.playwrightBestPractices,
+    title: 'Playwright: Best Practices',
+    description: 'Writing reliable, maintainable end-to-end tests.',
+    url: 'https://playwright.dev/docs/best-practices',
+    type: ResourceType.ARTICLE,
+    provider: 'Playwright',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'Helps avoid flaky tests, the most common problem in browser automation.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['Test Automation'],
+  },
+  {
+    id: RESOURCE.testAutomationUniversity,
+    title: 'Test Automation University',
+    description: 'Free video courses on automation tools and techniques.',
+    url: 'https://testautomationu.applitools.com/',
+    type: ResourceType.COURSE,
+    provider: 'Applitools',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'Free, tool-focused courses taught by working automation engineers.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['Test Automation', 'JavaScript'],
+  },
+  {
+    id: RESOURCE.postmanTestScripts,
+    title: 'Postman: Write Test Scripts',
+    description:
+      'Adding assertions to requests and running them in collections.',
+    url: 'https://learning.postman.com/docs/tests-and-scripts/write-scripts/test-scripts/',
+    type: ResourceType.ARTICLE,
+    provider: 'Postman',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'Turns manual requests into the automated checks the step activity requires.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['API Testing'],
+  },
+  {
+    id: RESOURCE.mdnHttpOverview,
+    title: 'MDN: An Overview of HTTP',
+    description: 'How requests, responses and headers work.',
+    url: 'https://developer.mozilla.org/en-US/docs/Web/HTTP/Overview',
+    type: ResourceType.ARTICLE,
+    provider: 'MDN Web Docs',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'Covers the HTTP knowledge the step lists as a prerequisite.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['API Testing'],
+  },
+  {
+    id: RESOURCE.mdnHttpStatus,
+    title: 'MDN: HTTP Response Status Codes',
+    description: 'A reference to every standard status code and its meaning.',
+    url: 'https://developer.mozilla.org/en-US/docs/Web/HTTP/Status',
+    type: ResourceType.ARTICLE,
+    provider: 'MDN Web Docs',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'A dependable reference when deciding what an API should return in error cases.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['API Testing'],
+  },
+
+  // ---------------------------------------------------------------------
+  // Cloud Engineer
+  // ---------------------------------------------------------------------
+  {
+    id: RESOURCE.linuxJourney,
+    title: 'Linux Journey',
+    description: 'Beginner-friendly lessons on Linux, from basics to services.',
+    url: 'https://linuxjourney.com/',
+    type: ResourceType.COURSE,
+    provider: 'Linux Journey',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'Short, graded lessons that complement the longer Linux Command Line book.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['Linux'],
+  },
+  {
+    id: RESOURCE.overTheWireBandit,
+    title: 'OverTheWire: Bandit',
+    description: 'A command-line wargame that teaches Linux through puzzles.',
+    url: 'https://overthewire.org/wargames/bandit/',
+    type: ResourceType.COURSE,
+    provider: 'OverTheWire',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'Builds real shell fluency on a remote server, which is how cloud work is done.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['Linux'],
+  },
+  {
+    id: RESOURCE.dockerCompose,
+    title: 'Docker Compose Overview',
+    description: 'Defining and running multi-container applications.',
+    url: 'https://docs.docker.com/compose/',
+    type: ResourceType.ARTICLE,
+    provider: 'Docker',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'Covers the Compose file the step activity asks learners to write.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['Docker'],
+  },
+  {
+    id: RESOURCE.dockerfileBestPractices,
+    title: 'Docker: Building Best Practices',
+    description: 'Writing small, fast and secure Dockerfiles.',
+    url: 'https://docs.docker.com/build/building/best-practices/',
+    type: ResourceType.ARTICLE,
+    provider: 'Docker',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'Moves learners from a working image to a well-built one.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['Docker'],
+  },
+  {
+    id: RESOURCE.playWithDocker,
+    title: 'Play with Docker',
+    description: 'A free browser-based Docker playground and lab environment.',
+    url: 'https://labs.play-with-docker.com/',
+    type: ResourceType.COURSE,
+    provider: 'Docker',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'Lets learners practise containers without installing anything locally.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['Docker'],
+  },
+  {
+    id: RESOURCE.awsCloudPractitionerTraining,
+    title: 'AWS Cloud Practitioner Learning Path',
+    description: 'Free AWS training that prepares for the foundational exam.',
+    url: 'https://aws.amazon.com/training/learn-about/cloud-practitioner/',
+    type: ResourceType.COURSE,
+    provider: 'Amazon Web Services',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'The official preparation route for the certification listed in this step.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['Cloud Fundamentals'],
+  },
+  {
+    id: RESOURCE.awsPricingCalculator,
+    title: 'AWS Pricing Calculator',
+    description: 'A tool to estimate the monthly cost of AWS services.',
+    url: 'https://calculator.aws/',
+    type: ResourceType.ARTICLE,
+    provider: 'Amazon Web Services',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'Directly supports the step activity of estimating a monthly cost.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['Cloud Fundamentals'],
+  },
+  {
+    id: RESOURCE.awsWellArchitected,
+    title: 'AWS Well-Architected Framework',
+    description: 'Best practices for secure, reliable and cost-aware systems.',
+    url: 'https://aws.amazon.com/architecture/well-architected/',
+    type: ResourceType.ARTICLE,
+    provider: 'Amazon Web Services',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'Gives learners a vocabulary for judging a deployment plan.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['Cloud Fundamentals'],
+  },
+
+  // ---------------------------------------------------------------------
+  // Backend (pathway seeded elsewhere)
+  // ---------------------------------------------------------------------
+  {
+    id: RESOURCE.typescriptIn5Minutes,
+    title: 'TypeScript for JavaScript Programmers',
+    description:
+      'A short introduction to TypeScript for JavaScript developers.',
+    url: 'https://www.typescriptlang.org/docs/handbook/typescript-in-5-minutes.html',
+    type: ResourceType.ARTICLE,
+    provider: 'Microsoft',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale: 'A quick on-ramp before the full handbook.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['TypeScript'],
+  },
+  {
+    id: RESOURCE.nestControllers,
+    title: 'NestJS Documentation: Controllers',
+    description: 'Routing requests and shaping responses in NestJS.',
+    url: 'https://docs.nestjs.com/controllers',
+    type: ResourceType.ARTICLE,
+    provider: 'NestJS',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale: 'Goes deeper on the routing layer of a CRUD API.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['NestJS', 'TypeScript'],
+  },
+  {
+    id: RESOURCE.nestProviders,
+    title: 'NestJS Documentation: Providers',
+    description: 'Services and dependency injection in NestJS.',
+    url: 'https://docs.nestjs.com/providers',
+    type: ResourceType.ARTICLE,
+    provider: 'NestJS',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'Explains where business logic lives and how it is injected.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['NestJS', 'TypeScript'],
+  },
+  {
+    id: RESOURCE.prismaSchema,
+    title: 'Prisma ORM: Schema Overview',
+    description: 'Modelling tables and relations in the Prisma schema.',
+    url: 'https://www.prisma.io/docs/orm/prisma-schema/overview',
+    type: ResourceType.ARTICLE,
+    provider: 'Prisma',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale: 'Covers the data modelling a CRUD API starts from.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['Prisma'],
+  },
+  {
+    id: RESOURCE.prismaCrud,
+    title: 'Prisma ORM: CRUD Queries',
+    description: 'Creating, reading, updating and deleting records.',
+    url: 'https://www.prisma.io/docs/orm/prisma-client/queries/crud',
+    type: ResourceType.ARTICLE,
+    provider: 'Prisma',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'The query reference for the create, read, update and delete endpoints.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['Prisma'],
+  },
 ];
 
 const BACKEND_STEP_RESOURCES: Record<number, string[]> = {
-  1: [RESOURCE.typescriptHandbook],
-  2: [RESOURCE.nestFirstSteps, RESOURCE.prismaGettingStarted],
+  1: [RESOURCE.typescriptHandbook, RESOURCE.typescriptIn5Minutes],
+  2: [
+    RESOURCE.nestFirstSteps,
+    RESOURCE.nestControllers,
+    RESOURCE.nestProviders,
+    RESOURCE.prismaGettingStarted,
+    RESOURCE.prismaSchema,
+    RESOURCE.prismaCrud,
+  ],
 };
 
 const usSalary = (
@@ -565,7 +1270,13 @@ const CAREERS: CareerSeed[] = [
           expectedActivity:
             'Recreate a provided landing-page design that works at phone and desktop widths.',
           skills: ['HTML & CSS'],
-          resources: [RESOURCE.mdnLearnWeb],
+          resources: [
+            RESOURCE.mdnLearnWeb,
+            RESOURCE.webDevLearnHtml,
+            RESOURCE.webDevLearnCss,
+            RESOURCE.flexboxGuide,
+            RESOURCE.flexboxFroggy,
+          ],
         },
         {
           title: 'Program the page with JavaScript',
@@ -577,7 +1288,14 @@ const CAREERS: CareerSeed[] = [
           expectedActivity:
             'Add search and filtering to a list fetched from a public API, tracking the work in Git.',
           skills: ['JavaScript', 'Git'],
-          resources: [RESOURCE.freeCodeCampJs, RESOURCE.proGit],
+          resources: [
+            RESOURCE.freeCodeCampJs,
+            RESOURCE.javascriptInfo,
+            RESOURCE.mdnFetchApi,
+            RESOURCE.eloquentJs,
+            RESOURCE.proGit,
+            RESOURCE.githubSkills,
+          ],
         },
         {
           title: 'Build interfaces with React',
@@ -592,6 +1310,8 @@ const CAREERS: CareerSeed[] = [
           resources: [
             RESOURCE.reactQuickStart,
             RESOURCE.typescriptHandbook,
+            RESOURCE.reactTypescriptCheatsheets,
+            RESOURCE.viteGuide,
             RESOURCE.createReactApp,
           ],
         },
@@ -642,7 +1362,11 @@ const CAREERS: CareerSeed[] = [
           expectedActivity:
             'Clean a sales export and build a pivot table that answers three business questions.',
           skills: ['Excel'],
-          resources: [RESOURCE.excelHelp],
+          resources: [
+            RESOURCE.excelHelp,
+            RESOURCE.exceljet,
+            RESOURCE.excelEasy,
+          ],
         },
         {
           title: 'Query databases with SQL',
@@ -653,7 +1377,13 @@ const CAREERS: CareerSeed[] = [
           expectedActivity:
             'Answer five questions about a sample database using joins and GROUP BY.',
           skills: ['SQL', 'Python'],
-          resources: [RESOURCE.sqlBolt, RESOURCE.pythonForEverybody],
+          resources: [
+            RESOURCE.sqlBolt,
+            RESOURCE.sqlZoo,
+            RESOURCE.kaggleIntroSql,
+            RESOURCE.pythonForEverybody,
+            RESOURCE.kaggleIntroPython,
+          ],
         },
         {
           title: 'Present findings with visualisations',
@@ -665,7 +1395,12 @@ const CAREERS: CareerSeed[] = [
           expectedActivity:
             'Build a one-page dashboard and give a five-minute walkthrough of what it shows.',
           skills: ['Data Visualization'],
-          resources: [RESOURCE.storytellingWithData],
+          resources: [
+            RESOURCE.storytellingWithData,
+            RESOURCE.dataToViz,
+            RESOURCE.kaggleDataViz,
+            RESOURCE.powerBiGuidedLearning,
+          ],
         },
       ],
     },
@@ -711,7 +1446,11 @@ const CAREERS: CareerSeed[] = [
           expectedActivity:
             'Audit a familiar app against five UX principles and propose fixes.',
           skills: ['UX Principles'],
-          resources: [RESOURCE.lawsOfUx],
+          resources: [
+            RESOURCE.lawsOfUx,
+            RESOURCE.nngHeuristics,
+            RESOURCE.material3,
+          ],
         },
         {
           title: 'Research user needs',
@@ -722,7 +1461,11 @@ const CAREERS: CareerSeed[] = [
           expectedActivity:
             'Interview three people about a daily task and summarise the patterns you find.',
           skills: ['User Research'],
-          resources: [RESOURCE.userInterviews],
+          resources: [
+            RESOURCE.userInterviews,
+            RESOURCE.usabilityTesting101,
+            RESOURCE.designKitFieldGuide,
+          ],
         },
         {
           title: 'Design and prototype in Figma',
@@ -733,7 +1476,11 @@ const CAREERS: CareerSeed[] = [
           expectedActivity:
             'Design and prototype a three-screen flow that addresses a need from your interviews.',
           skills: ['Figma', 'Prototyping'],
-          resources: [RESOURCE.figmaGetStarted],
+          resources: [
+            RESOURCE.figmaGetStarted,
+            RESOURCE.figmaPrototyping,
+            RESOURCE.googleUxCertificate,
+          ],
         },
       ],
     },
@@ -785,7 +1532,11 @@ const CAREERS: CareerSeed[] = [
           expectedActivity:
             'Write test cases for a sign-up form, run them and log the defects you find.',
           skills: ['Test Design'],
-          resources: [RESOURCE.istqbFoundation],
+          resources: [
+            RESOURCE.istqbFoundation,
+            RESOURCE.guru99Testing,
+            RESOURCE.ministryOfTesting,
+          ],
         },
         {
           title: 'Automate browser tests',
@@ -797,7 +1548,11 @@ const CAREERS: CareerSeed[] = [
           expectedActivity:
             'Automate the sign-up test cases from the previous step with Playwright.',
           skills: ['Test Automation', 'JavaScript'],
-          resources: [RESOURCE.playwrightIntro],
+          resources: [
+            RESOURCE.playwrightIntro,
+            RESOURCE.playwrightBestPractices,
+            RESOURCE.testAutomationUniversity,
+          ],
         },
         {
           title: 'Test APIs',
@@ -808,7 +1563,12 @@ const CAREERS: CareerSeed[] = [
           expectedActivity:
             'Build a Postman collection that checks success and error cases for a public API.',
           skills: ['API Testing'],
-          resources: [RESOURCE.postmanQuickStart],
+          resources: [
+            RESOURCE.postmanQuickStart,
+            RESOURCE.postmanTestScripts,
+            RESOURCE.mdnHttpOverview,
+            RESOURCE.mdnHttpStatus,
+          ],
         },
       ],
     },
@@ -853,7 +1613,11 @@ const CAREERS: CareerSeed[] = [
           expectedActivity:
             'Write a shell script that backs up a directory and removes old backups.',
           skills: ['Linux'],
-          resources: [RESOURCE.linuxCommandLine],
+          resources: [
+            RESOURCE.linuxCommandLine,
+            RESOURCE.linuxJourney,
+            RESOURCE.overTheWireBandit,
+          ],
         },
         {
           title: 'Package applications with Docker',
@@ -864,7 +1628,13 @@ const CAREERS: CareerSeed[] = [
           expectedActivity:
             'Containerise a small API and its database with a Dockerfile and a Compose file.',
           skills: ['Docker', 'Git'],
-          resources: [RESOURCE.dockerGetStarted, RESOURCE.proGit],
+          resources: [
+            RESOURCE.dockerGetStarted,
+            RESOURCE.dockerCompose,
+            RESOURCE.dockerfileBestPractices,
+            RESOURCE.playWithDocker,
+            RESOURCE.proGit,
+          ],
         },
         {
           title: 'Learn cloud foundations',
@@ -875,7 +1645,12 @@ const CAREERS: CareerSeed[] = [
           expectedActivity:
             'Plan a cloud deployment for the containerised API, with a monthly cost estimate.',
           skills: ['Cloud Fundamentals'],
-          resources: [RESOURCE.awsCloudPractitioner],
+          resources: [
+            RESOURCE.awsCloudPractitioner,
+            RESOURCE.awsCloudPractitionerTraining,
+            RESOURCE.awsPricingCalculator,
+            RESOURCE.awsWellArchitected,
+          ],
         },
       ],
     },
