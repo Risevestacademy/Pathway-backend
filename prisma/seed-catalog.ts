@@ -10,6 +10,19 @@ import {
   TargetLevel,
 } from '../src/generated/prisma/client';
 
+/**
+ * Catalog seed.
+ *
+ * Default mode is CREATE-ONLY: anything that already exists (by slug / name / id)
+ * is skipped entirely, so edits and additions made by admins through the app are
+ * never overwritten. Re-running only adds what is missing.
+ *
+ * To deliberately push seed changes onto existing rows (dev/staging only), run with
+ * SEED_REFRESH_CATALOG=true. This overwrites seeded rows and rebuilds their links,
+ * and is refused when NODE_ENV=production.
+ */
+const REFRESH = process.env.SEED_REFRESH_CATALOG === 'true';
+
 type OutlookRow = Omit<Prisma.OutlookDataCreateManyInput, 'careerId'>;
 
 interface StepSeed {
@@ -68,6 +81,18 @@ const FIELDS = [
 ];
 
 const SKILLS = [
+  {
+    name: 'TypeScript',
+    description: 'Strongly typed JavaScript',
+  },
+  {
+    name: 'NestJS',
+    description: 'Progressive Node.js framework',
+  },
+  {
+    name: 'Prisma',
+    description: 'Next-generation ORM',
+  },
   {
     name: 'JavaScript',
     description: 'The language of the web, running in browsers and on servers',
@@ -213,7 +238,7 @@ const RESOURCE = {
   awsPricingCalculator: '9c50ae9a-1b74-4ba1-99d7-e1dc5c933799',
   awsWellArchitected: '9191cf0a-1b23-411e-b3eb-6db8e3e42fe9',
 
-  // Backend (pathway seeded elsewhere)
+  // Backend
   typescriptIn5Minutes: '6450a5b5-0c5e-4100-959c-7bdfd201afb2',
   nestControllers: 'a1535003-a119-4b1a-833b-d8d21fee254c',
   nestProviders: 'bfb6d7b4-b9c5-46ba-af0d-8107b94ee523',
@@ -1088,7 +1113,7 @@ const RESOURCES: ResourceSeed[] = [
   },
 
   // ---------------------------------------------------------------------
-  // Backend (pathway seeded elsewhere)
+  // Backend Engineer
   // ---------------------------------------------------------------------
   {
     id: RESOURCE.typescriptIn5Minutes,
@@ -1160,18 +1185,6 @@ const RESOURCES: ResourceSeed[] = [
   },
 ];
 
-const BACKEND_STEP_RESOURCES: Record<number, string[]> = {
-  1: [RESOURCE.typescriptHandbook, RESOURCE.typescriptIn5Minutes],
-  2: [
-    RESOURCE.nestFirstSteps,
-    RESOURCE.nestControllers,
-    RESOURCE.nestProviders,
-    RESOURCE.prismaGettingStarted,
-    RESOURCE.prismaSchema,
-    RESOURCE.prismaCrud,
-  ],
-};
-
 const usSalary = (
   median: string,
   percentile25: string,
@@ -1224,6 +1237,73 @@ const lagosDemand = (demandLevel: Demand): OutlookRow => ({
 });
 
 const CAREERS: CareerSeed[] = [
+  {
+    slug: 'backend-engineer',
+    title: 'Backend Engineer',
+    description: 'Builds scalable server-side applications and APIs.',
+    roleSummary:
+      'Designs, builds, and maintains server-side applications, APIs, and services that power software products.',
+    exampleActivities: [
+      'Design and build REST APIs',
+      'Implement business logic and backend services',
+      'Design and query databases',
+      'Write automated tests',
+      'Monitor and troubleshoot backend systems',
+    ],
+    typicalEducationNote:
+      'Degree in computing, related field, or equivalent bootcamp/self-study experience.',
+    certificationsNote:
+      'Rarely required. A strong portfolio and practical experience matter more.',
+    targetLevels: [TargetLevel.RECENT_GRAD, TargetLevel.EARLY_CAREER],
+    status: CareerStatus.PUBLISHED,
+    field: 'software-engineering',
+    skills: ['TypeScript', 'NestJS', 'Prisma'],
+    outlook: [
+      usSalary('95000.00', '75000.00', '120000.00'),
+      lagosSalary('4500000.00'),
+      usGrowth(208, 225),
+      lagosDemand(Demand.HIGH),
+    ],
+    pathway: {
+      title: 'Backend Engineering Fundamentals',
+      description: 'Core steps to become a proficient backend engineer.',
+      steps: [
+        {
+          title: 'Learn TypeScript Basics',
+          description: 'Understand types, interfaces, and generics.',
+          learningObjective:
+            'Use TypeScript types, interfaces and generics to write type-safe code.',
+          prerequisites: null,
+          expectedActivity:
+            'Complete a small exercise that models data with interfaces and a generic helper function.',
+          skills: ['TypeScript'],
+          resources: [
+            RESOURCE.typescriptHandbook,
+            RESOURCE.typescriptIn5Minutes,
+          ],
+        },
+        {
+          title: 'Build an API with NestJS',
+          description: 'Create controllers, services, and modules.',
+          learningObjective:
+            'Build a REST API with NestJS using controllers, services and modules.',
+          prerequisites:
+            'Comfortable with TypeScript basics (types, interfaces, generics).',
+          expectedActivity:
+            'Build a small CRUD API with at least one module, controller and service.',
+          skills: ['NestJS'],
+          resources: [
+            RESOURCE.nestFirstSteps,
+            RESOURCE.nestControllers,
+            RESOURCE.nestProviders,
+            RESOURCE.prismaGettingStarted,
+            RESOURCE.prismaSchema,
+            RESOURCE.prismaCrud,
+          ],
+        },
+      ],
+    },
+  },
   {
     slug: 'frontend-engineer',
     title: 'Frontend Engineer',
@@ -1700,7 +1780,7 @@ async function upsertFields(
   for (const { slug, name } of FIELDS) {
     const field = await prisma.field.upsert({
       where: { slug },
-      update: { name },
+      update: REFRESH ? { name } : {},
       create: { slug, name },
     });
 
@@ -1716,11 +1796,12 @@ async function upsertSkills(
   for (const { name, description } of SKILLS) {
     await prisma.skill.upsert({
       where: { name },
-      update: { description },
+      update: REFRESH ? { description } : {},
       create: { name, description },
     });
   }
 
+  // Includes skills admins added; careers only look up names they reference.
   const skills = await prisma.skill.findMany({
     select: { id: true, name: true },
   });
@@ -1733,6 +1814,17 @@ async function upsertResources(
   skillIds: Map<string, string>,
 ): Promise<void> {
   for (const { id, skills, ...resource } of RESOURCES) {
+    if (!REFRESH) {
+      const existing = await prisma.resource.findUnique({
+        where: { id },
+        select: { id: true },
+      });
+
+      if (existing) {
+        continue;
+      }
+    }
+
     const data = { ...resource, lastCheckedDate: LAST_CHECKED };
 
     await prisma.resource.upsert({
@@ -1805,6 +1897,20 @@ async function upsertCareer(
   fieldIds: Map<string, string>,
   skillIds: Map<string, string>,
 ): Promise<void> {
+  // Create-only: a career that already exists is left completely alone (its
+  // skills, outlook rows and pathway included), so admin edits survive re-seeding.
+  if (!REFRESH) {
+    const existing = await prisma.career.findUnique({
+      where: { slug },
+      select: { id: true },
+    });
+
+    if (existing) {
+      console.log(`Career "${slug}" already exists, skipping`);
+      return;
+    }
+  }
+
   const data = {
     ...details,
     field: { connect: { id: idOf(fieldIds, field) } },
@@ -1829,26 +1935,29 @@ async function upsertCareer(
   if (pathway) {
     await upsertPathway(prisma, careerId, pathway, skillIds);
   }
-}
 
-async function linkBackendResources(
-  prisma: PrismaClient,
-  pathwayId: string,
-): Promise<void> {
-  for (const [order, resourceIds] of Object.entries(BACKEND_STEP_RESOURCES)) {
-    const { id: pathwayStepId } = await prisma.pathwayStep.findUniqueOrThrow({
-      where: { pathwayId_order: { pathwayId, order: Number(order) } },
-      select: { id: true },
+  // Scoped to this career, so careers created by admins are never stamped.
+  if (details.status !== CareerStatus.DRAFT) {
+    await prisma.career.updateMany({
+      where: { id: careerId, publishedAt: null },
+      data: { publishedAt: PUBLISHED_AT },
     });
-
-    await linkStepResources(prisma, pathwayStepId, resourceIds);
   }
 }
 
-export async function seedCatalog(
-  prisma: PrismaClient,
-  backendPathwayId: string,
-): Promise<void> {
+export async function seedCatalog(prisma: PrismaClient): Promise<void> {
+  if (REFRESH && process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'SEED_REFRESH_CATALOG overwrites catalog data and is refused when NODE_ENV=production',
+    );
+  }
+
+  console.log(
+    REFRESH
+      ? 'Seeding catalog in REFRESH mode (overwriting seeded rows)'
+      : 'Seeding catalog in create-only mode (existing rows are kept)',
+  );
+
   const fieldIds = await upsertFields(prisma);
   const skillIds = await upsertSkills(prisma);
 
@@ -1857,11 +1966,4 @@ export async function seedCatalog(
   for (const career of CAREERS) {
     await upsertCareer(prisma, career, fieldIds, skillIds);
   }
-
-  await linkBackendResources(prisma, backendPathwayId);
-
-  await prisma.career.updateMany({
-    where: { status: { not: CareerStatus.DRAFT }, publishedAt: null },
-    data: { publishedAt: PUBLISHED_AT },
-  });
 }
