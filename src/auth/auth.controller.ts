@@ -15,9 +15,6 @@ import { ConfigService } from '@nestjs/config';
 import { ApiHeader, ApiOperation, ApiResponse } from '@nestjs/swagger';
 
 import { AuthService } from './auth.service';
-import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { CurrentUser } from './decorators/current-user.decorator';
-import { type AuthenticatedUser } from './interfaces/authenticated-user.interface';
 import {
   AuthTokensResponseDto,
   AuthResponseDto,
@@ -33,7 +30,12 @@ import {
   type ClientPlatform,
   resolveClientPlatform,
 } from './utils/client-platform';
-import { apiPrefix } from '../common';
+import {
+  apiPrefix,
+  type AuthenticatedUser,
+  CurrentUser,
+  JwtAuthGuard,
+} from '../common';
 import { type EnvironmentVariables } from '../config';
 import { AuthThrottle } from '../common/throttler';
 
