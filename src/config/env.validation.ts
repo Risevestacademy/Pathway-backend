@@ -1,5 +1,7 @@
-import { plainToInstance, Type } from 'class-transformer';
+import { plainToInstance, Transform, Type } from 'class-transformer';
 import {
+  ArrayNotEmpty,
+  IsArray,
   IsEnum,
   IsIn,
   IsInt,
@@ -7,9 +9,11 @@ import {
   IsOptional,
   IsString,
   IsUrl,
+  Matches,
   Max,
   Min,
   ValidateBy,
+  ValidateIf,
   validateSync,
 } from 'class-validator';
 import ms, { type StringValue } from 'ms';
@@ -21,6 +25,11 @@ export enum NodeEnv {
   Production = 'production',
 }
 
+export enum MailDriver {
+  MailerSend = 'mailersend',
+  Log = 'log',
+}
+
 const LOG_LEVELS = [
   'fatal',
   'error',
@@ -30,6 +39,20 @@ const LOG_LEVELS = [
   'trace',
   'silent',
 ];
+
+const splitCommaList = ({ value }: { value: unknown }): unknown =>
+  typeof value === 'string'
+    ? value
+        .split(',')
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0)
+    : value;
+
+const FRONTEND_URL_OPTIONS = {
+  require_tld: false,
+  require_protocol: true,
+  protocols: ['http', 'https'],
+};
 
 const isPositiveDuration = (value: unknown): boolean => {
   try {
@@ -121,6 +144,12 @@ export class EnvironmentVariables {
   @Min(1)
   THROTTLE_AUTH_LIMIT: number = 10;
 
+  @IsEnum(MailDriver)
+  MAIL_DRIVER: MailDriver = MailDriver.MailerSend;
+
+  @ValidateIf(
+    (env: EnvironmentVariables) => env.MAIL_DRIVER === MailDriver.MailerSend,
+  )
   @IsString()
   @IsNotEmpty()
   MAILERSEND_API_KEY: string;
@@ -134,12 +163,22 @@ export class EnvironmentVariables {
   EMAIL_FROM_NAME = 'Pathway';
 
   @IsOptional()
-  @IsUrl({
-    require_tld: false,
-    require_protocol: true,
-    protocols: ['http', 'https'],
-  })
+  @IsUrl(FRONTEND_URL_OPTIONS)
   PASSWORD_RESET_URL = 'http://localhost:5173/reset-password';
+
+  @IsOptional()
+  @IsUrl(FRONTEND_URL_OPTIONS)
+  EMAIL_VERIFICATION_URL = 'http://localhost:5173/verify-email';
+
+  @Transform(splitCommaList)
+  @IsArray()
+  @ArrayNotEmpty()
+  @Matches(/^[\w-]+\.apps\.googleusercontent\.com$/, {
+    each: true,
+    message:
+      'GOOGLE_CLIENT_IDS must be a comma-separated list of Google OAuth client IDs',
+  })
+  GOOGLE_CLIENT_IDS: string[];
 }
 
 export function validateEnv(
