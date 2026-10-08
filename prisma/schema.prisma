@@ -94,20 +94,51 @@ enum ResourceStatus {
   WITHDRAWN
 }
 
-model User {
-  id           String   @id @default(uuid())
-  email        String   @unique
-  passwordHash String
-  role         Role     @default(USER)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+enum AuthProvider {
+  GOOGLE
+}
 
-  refreshTokens       RefreshToken[]
-  passwordResetTokens PasswordResetToken[]
-  assessments         Assessment[]
-  userSkills          UserSkill[]
-  pathways            UserPathway[]
-  pathwayProgress     UserPathwayStep[]
+model User {
+  id              String    @id @default(uuid())
+  email           String    @unique
+  passwordHash    String?
+  role            Role      @default(USER)
+  emailVerifiedAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  profile                 UserProfile?
+  identities              AuthIdentity[]
+  refreshTokens           RefreshToken[]
+  passwordResetTokens     PasswordResetToken[]
+  emailVerificationTokens EmailVerificationToken[]
+  assessments             Assessment[]
+  userSkills              UserSkill[]
+  pathways                UserPathway[]
+  pathwayProgress         UserPathwayStep[]
+}
+
+model UserProfile {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  fullName  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AuthIdentity {
+  id             String       @id @default(uuid())
+  provider       AuthProvider
+  providerUserId String
+  userId         String
+  createdAt      DateTime     @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId])
+  @@index([userId])
 }
 
 model RefreshToken {
@@ -124,6 +155,19 @@ model RefreshToken {
 }
 
 model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model EmailVerificationToken {
   id        String    @id @default(uuid())
   userId    String
   tokenHash String    @unique
@@ -185,6 +229,8 @@ model Career {
   outlook      OutlookData[]
   pathway      Pathway?
   userPathways UserPathway[]
+
+  @@index([fieldId])
 }
 
 model CareerSkill {
@@ -195,6 +241,7 @@ model CareerSkill {
   skill  Skill  @relation(fields: [skillId], references: [id], onDelete: Cascade)
 
   @@id([careerId, skillId])
+  @@index([skillId])
 }
 
 model OutlookData {
@@ -228,6 +275,8 @@ model OutlookData {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([careerId])
 }
 
 model Pathway {
@@ -271,6 +320,7 @@ model PathwayStepSkill {
   skill       Skill       @relation(fields: [skillId], references: [id], onDelete: Cascade)
 
   @@id([pathwayStepId, skillId])
+  @@index([skillId])
 }
 
 model Resource {
@@ -300,6 +350,7 @@ model PathwayStepResource {
   resource    Resource    @relation(fields: [resourceId], references: [id], onDelete: Cascade)
 
   @@id([pathwayStepId, resourceId])
+  @@index([resourceId])
 }
 
 model ResourceSkill {
@@ -310,6 +361,7 @@ model ResourceSkill {
   skill    Skill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
 
   @@id([resourceId, skillId])
+  @@index([skillId])
 }
 
 model UserPathway {
@@ -345,7 +397,7 @@ model UserSkill {
   id        String   @id @default(uuid())
   userId    String
   skillId   String
-  rating    Int
+  rating    Int?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -361,7 +413,7 @@ model UserSkillProgress {
   id           String              @id @default(uuid())
   userSkillId  String
   assessmentId String?
-  rating       Int
+  rating       Int?
   source       SkillProgressSource
   createdAt    DateTime            @default(now())
 
@@ -409,7 +461,7 @@ model AssessmentResponse {
   id           String   @id @default(uuid())
   assessmentId String
   questionId   String
-  rating       Int
+  rating       Int?
   createdAt    DateTime @default(now())
 
   assessment Assessment         @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
