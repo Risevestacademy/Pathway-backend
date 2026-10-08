@@ -258,10 +258,19 @@ export class AuthController {
     await this.authService.confirmPasswordReset(dto);
   }
 
+  @ApiOperation({ summary: 'Get the signed-in user' })
+  @ApiResponse({ status: 200, type: UserResponseDto })
+  @ApiResponse({
+    status: 401,
+    description:
+      'Access token missing or invalid, or the user no longer exists',
+  })
   @Get('me')
   @UseGuards(JwtAuthGuard)
-  async getMe(@CurrentUser() user: AuthenticatedUser) {
-    return user;
+  async getMe(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<UserResponseDto> {
+    return this.authService.findCurrentUser(user.id);
   }
 
   private deliverTokens(

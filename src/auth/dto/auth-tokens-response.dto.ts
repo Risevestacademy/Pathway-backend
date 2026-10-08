@@ -9,6 +9,15 @@ export class UserResponseDto {
 
   @ApiProperty({ example: 'USER' })
   role: string;
+
+  @ApiProperty({ type: String, nullable: true, example: 'Ada Obi' })
+  fullName: string | null;
+
+  @ApiProperty({ example: false })
+  emailVerified: boolean;
+
+  @ApiProperty({ type: String, format: 'date-time' })
+  createdAt: Date;
 }
 
 export class AuthTokensResponseDto {

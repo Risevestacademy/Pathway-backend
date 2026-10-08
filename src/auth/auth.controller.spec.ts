@@ -7,6 +7,7 @@ import { AuthController } from './auth.controller';
 import { AuthService, AuthResult } from './auth.service';
 import { LoginDto, RegisterDto } from './dto';
 import { type AuthenticatedUser } from './interfaces/authenticated-user.interface';
+import type { UserResponse } from '../users';
 
 type RegisterRequest = Parameters<AuthController['register']>[1];
 type LoginRequest = Parameters<AuthController['login']>[1];
@@ -23,10 +24,13 @@ describe('AuthController', () => {
 
   const cookiePath = '/api/v1/auth';
 
-  const mockUser = {
+  const mockUser: UserResponse = {
     id: '123e4567-e89b-12d3-a456-426614174000',
     email: 'dev@example.com',
     role: 'USER',
+    fullName: 'Ada Obi',
+    emailVerified: false,
+    createdAt: new Date('2026-10-01T09:00:00.000Z'),
   };
 
   const mockAuthService = {
@@ -37,6 +41,7 @@ describe('AuthController', () => {
     logout: jest.fn<() => Promise<void>>(),
     confirmPasswordReset: jest.fn<() => Promise<void>>(),
     requestPasswordReset: jest.fn<() => Promise<void>>(),
+    findCurrentUser: jest.fn<() => Promise<UserResponse>>(),
   };
 
   const mockConfigService = {
@@ -458,16 +463,26 @@ describe('AuthController', () => {
   });
 
   describe('getMe', () => {
-    it('returns the authenticated user as the me response body', async () => {
+    it('returns the current user loaded by AuthService', async () => {
       const user = {
         id: 'user-id',
         email: 'dev@example.com',
         role: 'USER',
       } as AuthenticatedUser;
+      const currentUser: UserResponse = {
+        id: 'user-id',
+        email: 'dev@example.com',
+        role: 'USER',
+        fullName: 'Ada Obi',
+        emailVerified: true,
+        createdAt: new Date('2026-10-01T09:00:00.000Z'),
+      };
+      mockAuthService.findCurrentUser.mockResolvedValue(currentUser);
 
       const result = await controller.getMe(user);
 
-      expect(result).toEqual(user);
+      expect(mockAuthService.findCurrentUser).toHaveBeenCalledWith('user-id');
+      expect(result).toEqual(currentUser);
     });
   });
 });

@@ -6,6 +6,7 @@ import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { apiPrefix as resolveApiPrefix, configureApp } from '../src/common';
 import { EnvironmentVariables } from '../src/config';
+import { PrismaService } from '../src/prisma';
 
 describe('AuthController (e2e)', () => {
   let app: INestApplication;
@@ -15,6 +16,17 @@ describe('AuthController (e2e)', () => {
   let oldRefreshToken: string;
 
   let apiPrefix: string;
+  let prisma: PrismaService;
+  let registeredUser: Record<string, unknown>;
+
+  const userKeys = [
+    'createdAt',
+    'email',
+    'emailVerified',
+    'fullName',
+    'id',
+    'role',
+  ];
 
   const testUser = {
     email: `e2e-${Date.now()}@test.com`,
@@ -34,6 +46,7 @@ describe('AuthController (e2e)', () => {
       app.get<ConfigService<EnvironmentVariables, true>>(ConfigService);
 
     apiPrefix = `/${resolveApiPrefix(config)}`;
+    prisma = app.get(PrismaService);
 
     await app.init();
   });
@@ -58,6 +71,10 @@ describe('AuthController (e2e)', () => {
     expect(response.body.user.email).toBe(testUser.email);
     expect(response.body.user.id).toBeDefined();
     expect(response.body.user.role).toBeDefined();
+    expect(Object.keys(response.body.user).sort()).toEqual(userKeys);
+    expect(response.body.user.emailVerified).toBe(false);
+
+    registeredUser = response.body.user;
 
     // Password hash should never be returned to the client
     expect(response.body.passwordHash).toBeUndefined();
@@ -117,8 +134,7 @@ describe('AuthController (e2e)', () => {
     expect(response.body.data).toBeUndefined();
     expect(response.body.accessToken).toBeDefined();
     expect(response.body.refreshToken).toBeUndefined();
-    expect(response.body.user).toBeDefined();
-    expect(response.body.user.email).toBe(testUser.email);
+    expect(response.body.user).toEqual(registeredUser);
 
     accessToken = response.body.accessToken;
 
@@ -143,15 +159,75 @@ describe('AuthController (e2e)', () => {
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
 
+    expect(response.body).toEqual(registeredUser);
+    expect(response.body.passwordHash).toBeUndefined();
+    expect(response.body.emailVerifiedAt).toBeUndefined();
+  });
+
+  it('/auth/me (GET) - returns a null fullName when the user has no profile', async () => {
+    await prisma.userProfile.deleteMany({
+      where: { userId: registeredUser.id as string },
+    });
+
+    const response = await request(app.getHttpServer())
+      .get(`${apiPrefix}/auth/me`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(response.body.fullName).toBeNull();
+  });
+
+  it('/auth/me (GET) - reflects database changes without a new token', async () => {
+    const userId = registeredUser.id as string;
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        emailVerifiedAt: new Date(),
+        profile: {
+          upsert: {
+            create: { fullName: 'Ada Obi' },
+            update: { fullName: 'Ada Obi' },
+          },
+        },
+      },
+    });
+
+    const response = await request(app.getHttpServer())
+      .get(`${apiPrefix}/auth/me`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
     expect(response.body).toEqual({
-      id: expect.any(String),
-      email: testUser.email,
-      role: 'USER',
+      ...registeredUser,
+      fullName: 'Ada Obi',
+      emailVerified: true,
     });
   });
 
   it('/auth/me (GET) - no access token', async () => {
     await request(app.getHttpServer()).get(`${apiPrefix}/auth/me`).expect(401);
+  });
+
+  it('/auth/me (GET) - rejects the token of a deleted user', async () => {
+    const doomedUser = {
+      email: `e2e-deleted-${Date.now()}@test.com`,
+      password: 'Password123!',
+    };
+
+    const registration = await request(app.getHttpServer())
+      .post(`${apiPrefix}/auth/register`)
+      .send(doomedUser)
+      .expect(201);
+
+    await prisma.user.delete({ where: { id: registration.body.user.id } });
+
+    const response = await request(app.getHttpServer())
+      .get(`${apiPrefix}/auth/me`)
+      .set('Authorization', `Bearer ${registration.body.accessToken}`)
+      .expect(401);
+
+    expect(response.body.error).toBe('UNAUTHORIZED');
   });
 
   it('/auth/refresh (POST) - success', async () => {
