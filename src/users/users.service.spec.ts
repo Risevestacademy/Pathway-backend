@@ -10,6 +10,7 @@ describe('UsersService', () => {
   let findUnique: jest.Mock<() => Promise<unknown>>;
   let create: jest.Mock<() => Promise<unknown>>;
   let update: jest.Mock<() => Promise<unknown>>;
+  let upsertProfile: jest.Mock<() => Promise<unknown>>;
 
   const publicUser = {
     id: 'user-1',
@@ -25,13 +26,17 @@ describe('UsersService', () => {
     findUnique = jest.fn<() => Promise<unknown>>();
     create = jest.fn<() => Promise<unknown>>();
     update = jest.fn<() => Promise<unknown>>();
+    upsertProfile = jest.fn<() => Promise<unknown>>();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UsersService,
         {
           provide: PrismaService,
-          useValue: { user: { findUnique, create, update } },
+          useValue: {
+            user: { findUnique, create, update },
+            userProfile: { upsert: upsertProfile },
+          },
         },
       ],
     }).compile();
@@ -145,6 +150,66 @@ describe('UsersService', () => {
 
       await expect(
         service.create({ email: 'dev@example.com', passwordHash: 'hashed' }),
+      ).rejects.toBe(failure);
+    });
+  });
+
+  describe('updateProfile', () => {
+    it('upserts the profile by user id and returns the shared user shape', async () => {
+      upsertProfile.mockResolvedValue({});
+      findUnique.mockResolvedValue(publicUser);
+
+      const result = await service.updateProfile('user-1', {
+        fullName: 'Ada Obi',
+      });
+
+      expect(upsertProfile).toHaveBeenCalledWith({
+        where: { userId: 'user-1' },
+        create: { userId: 'user-1', fullName: 'Ada Obi' },
+        update: { fullName: 'Ada Obi' },
+      });
+      expect(findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'user-1' } }),
+      );
+      expect(result).toEqual({
+        id: 'user-1',
+        email: 'dev@example.com',
+        role: Role.USER,
+        fullName: 'Ada Obi',
+        emailVerified: false,
+        createdAt: publicUser.createdAt,
+      });
+    });
+
+    it('throws NotFoundException when the user no longer exists', async () => {
+      upsertProfile.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError(
+          'Foreign key constraint violated',
+          { code: 'P2003', clientVersion: 'test' },
+        ),
+      );
+
+      await expect(
+        service.updateProfile('missing', { fullName: 'Ada Obi' }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(findUnique).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException when the user is deleted before the read', async () => {
+      upsertProfile.mockResolvedValue({});
+      findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.updateProfile('user-1', { fullName: 'Ada Obi' }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('propagates other database errors', async () => {
+      const failure = new Error('connection lost');
+      upsertProfile.mockRejectedValue(failure);
+
+      await expect(
+        service.updateProfile('user-1', { fullName: 'Ada Obi' }),
       ).rejects.toBe(failure);
     });
   });

@@ -6,7 +6,7 @@ import type { Response } from 'express';
 import { AuthController } from './auth.controller';
 import { AuthService, AuthResult } from './auth.service';
 import { LoginDto, RegisterDto } from './dto';
-import { type AuthenticatedUser } from './interfaces/authenticated-user.interface';
+import type { AuthenticatedUser } from '../common';
 import type { UserResponse } from '../users';
 
 type RegisterRequest = Parameters<AuthController['register']>[1];
