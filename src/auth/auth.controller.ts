@@ -23,8 +23,8 @@ import {
   RefreshTokenDto,
   RegisterDto,
   RequestPasswordResetDto,
-  UserResponseDto,
 } from './dto';
+import { UserResponseDto } from '../users';
 import {
   CLIENT_PLATFORM_API_HEADER,
   type ClientPlatform,
