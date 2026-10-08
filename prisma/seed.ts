@@ -8,8 +8,8 @@ import {
   Demand,
 } from '../src/generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
-import * as bcrypt from 'bcrypt';
 import { seedCatalog } from './seed-catalog';
+import { readAdminConfig, seedAdmin, seedDevUser } from './seed-users';
 
 // 1. Initialize the adapter exactly like your PrismaService does
 const adapter = new PrismaPg({
@@ -21,6 +21,10 @@ const prisma = new PrismaClient({ adapter });
 
 async function main() {
   console.log('Starting seed...');
+  const adminConfig = readAdminConfig();
+
+  await seedAdmin(prisma, adminConfig);
+  await seedDevUser(prisma);
 
   // 1. Seed Fields
   const softwareEngField = await prisma.field.upsert({
@@ -200,18 +204,6 @@ async function main() {
   });
 
   await seedCatalog(prisma, backendPathway.id);
-
-  // 6. Seed a Development User
-  const hashedPassword = await bcrypt.hash('password123', 10);
-  await prisma.user.upsert({
-    where: { email: 'dev@example.com' },
-    update: {},
-    create: {
-      email: 'dev@example.com',
-      passwordHash: hashedPassword,
-      role: Role.USER,
-    },
-  });
 
   console.log('✅ Seed completed successfully!');
 }
