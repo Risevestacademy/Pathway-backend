@@ -6,6 +6,7 @@ import {
 import { Prisma, Role, User } from '../generated/prisma/client';
 import { PrismaService } from '../prisma';
 import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
 
 const profileSelect = {
   profile: { select: { fullName: true } },
@@ -80,6 +81,27 @@ export class UsersService {
 
       throw error;
     }
+  }
+
+  async updateProfile(id: string, dto: UpdateUserDto): Promise<UserResponse> {
+    try {
+      await this.prisma.userProfile.upsert({
+        where: { userId: id },
+        create: { userId: id, fullName: dto.fullName },
+        update: { fullName: dto.fullName },
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2003'
+      ) {
+        throw new NotFoundException('User not found');
+      }
+
+      throw error;
+    }
+
+    return this.toUserResponse(await this.findById(id));
   }
 
   toUserResponse(
