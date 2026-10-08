@@ -1,9 +1,9 @@
-import { Body, Controller, Get, Param, Patch, UseGuards } from '@nestjs/common';
+import { Body, Controller, Patch, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { type AuthenticatedUser, CurrentUser, JwtAuthGuard } from '../common';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserResponseDto } from './dto/user-response.dto';
-import { PublicUser, UserResponse, UsersService } from './users.service';
+import { UserResponse, UsersService } from './users.service';
 
 @Controller('users')
 export class UsersController {
@@ -21,10 +21,5 @@ export class UsersController {
     @Body() dto: UpdateUserDto,
   ): Promise<UserResponse> {
     return this.usersService.updateProfile(user.id, dto);
-  }
-
-  @Get(':id')
-  async findOne(@Param('id') id: string): Promise<PublicUser> {
-    return this.usersService.findById(id);
   }
 }

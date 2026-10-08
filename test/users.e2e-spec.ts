@@ -8,7 +8,7 @@ import { apiPrefix as resolveApiPrefix, configureApp } from '../src/common';
 import { EnvironmentVariables } from '../src/config';
 import { PrismaService } from '../src/prisma';
 
-describe('PATCH /users/me (e2e)', () => {
+describe('Users (e2e)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let apiPrefix: string;
@@ -157,5 +157,16 @@ describe('PATCH /users/me (e2e)', () => {
       .patch(`${apiPrefix}/users/me`)
       .send({ fullName: 'Ada Obi' })
       .expect(401);
+  });
+
+  it('does not expose an existing user by id', async () => {
+    await request(app.getHttpServer())
+      .get(`${apiPrefix}/users/${otherUserId}`)
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .get(`${apiPrefix}/users/${otherUserId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
   });
 });

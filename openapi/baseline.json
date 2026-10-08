@@ -29,29 +29,6 @@
         ]
       }
     },
-    "/users/{id}": {
-      "get": {
-        "operationId": "UsersController_findOne",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "Users"
-        ]
-      }
-    },
     "/auth/register": {
       "post": {
         "operationId": "AuthController_register",
