@@ -10,26 +10,33 @@ describe('UsersService', () => {
   let findUnique: jest.Mock<() => Promise<unknown>>;
   let create: jest.Mock<() => Promise<unknown>>;
   let update: jest.Mock<() => Promise<unknown>>;
+  let upsertProfile: jest.Mock<() => Promise<unknown>>;
 
   const publicUser = {
     id: 'user-1',
     email: 'dev@example.com',
     role: Role.USER,
+    emailVerifiedAt: null,
     createdAt: new Date('2026-09-18T10:00:00.000Z'),
     updatedAt: new Date('2026-09-18T10:00:00.000Z'),
+    profile: { fullName: 'Ada Obi' },
   };
 
   beforeEach(async () => {
     findUnique = jest.fn<() => Promise<unknown>>();
     create = jest.fn<() => Promise<unknown>>();
     update = jest.fn<() => Promise<unknown>>();
+    upsertProfile = jest.fn<() => Promise<unknown>>();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UsersService,
         {
           provide: PrismaService,
-          useValue: { user: { findUnique, create, update } },
+          useValue: {
+            user: { findUnique, create, update },
+            userProfile: { upsert: upsertProfile },
+          },
         },
       ],
     }).compile();
@@ -63,6 +70,18 @@ describe('UsersService', () => {
       expect(select).not.toHaveProperty('passwordHash');
     });
 
+    it('selects the verification timestamp and profile name', async () => {
+      findUnique.mockResolvedValue(publicUser);
+
+      await service.findById('user-1');
+
+      const { select } = (findUnique.mock.calls[0] as [{ select: object }])[0];
+      expect(select).toMatchObject({
+        emailVerifiedAt: true,
+        profile: { select: { fullName: true } },
+      });
+    });
+
     it('throws NotFoundException when the user is missing', async () => {
       findUnique.mockResolvedValue(null);
 
@@ -73,7 +92,7 @@ describe('UsersService', () => {
   });
 
   describe('findByEmail', () => {
-    it('returns the full record so auth can verify credentials', async () => {
+    it('returns the full record with the profile so auth can verify credentials', async () => {
       const withCredentials = { ...publicUser, passwordHash: 'hashed' };
       findUnique.mockResolvedValue(withCredentials);
 
@@ -82,6 +101,7 @@ describe('UsersService', () => {
       );
       expect(findUnique).toHaveBeenCalledWith({
         where: { email: 'dev@example.com' },
+        include: { profile: { select: { fullName: true } } },
       });
     });
 
@@ -131,6 +151,110 @@ describe('UsersService', () => {
       await expect(
         service.create({ email: 'dev@example.com', passwordHash: 'hashed' }),
       ).rejects.toBe(failure);
+    });
+  });
+
+  describe('updateProfile', () => {
+    it('upserts the profile by user id and returns the shared user shape', async () => {
+      upsertProfile.mockResolvedValue({});
+      findUnique.mockResolvedValue(publicUser);
+
+      const result = await service.updateProfile('user-1', {
+        fullName: 'Ada Obi',
+      });
+
+      expect(upsertProfile).toHaveBeenCalledWith({
+        where: { userId: 'user-1' },
+        create: { userId: 'user-1', fullName: 'Ada Obi' },
+        update: { fullName: 'Ada Obi' },
+      });
+      expect(findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'user-1' } }),
+      );
+      expect(result).toEqual({
+        id: 'user-1',
+        email: 'dev@example.com',
+        role: Role.USER,
+        fullName: 'Ada Obi',
+        emailVerified: false,
+        createdAt: publicUser.createdAt,
+      });
+    });
+
+    it('throws NotFoundException when the user no longer exists', async () => {
+      upsertProfile.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError(
+          'Foreign key constraint violated',
+          { code: 'P2003', clientVersion: 'test' },
+        ),
+      );
+
+      await expect(
+        service.updateProfile('missing', { fullName: 'Ada Obi' }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(findUnique).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException when the user is deleted before the read', async () => {
+      upsertProfile.mockResolvedValue({});
+      findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.updateProfile('user-1', { fullName: 'Ada Obi' }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('propagates other database errors', async () => {
+      const failure = new Error('connection lost');
+      upsertProfile.mockRejectedValue(failure);
+
+      await expect(
+        service.updateProfile('user-1', { fullName: 'Ada Obi' }),
+      ).rejects.toBe(failure);
+    });
+  });
+
+  describe('toUserResponse', () => {
+    it('maps a user to the shared response shape', () => {
+      expect(service.toUserResponse(publicUser)).toEqual({
+        id: 'user-1',
+        email: 'dev@example.com',
+        role: Role.USER,
+        fullName: 'Ada Obi',
+        emailVerified: false,
+        createdAt: publicUser.createdAt,
+      });
+    });
+
+    it('reports a user with a verification timestamp as verified', () => {
+      const result = service.toUserResponse({
+        ...publicUser,
+        emailVerifiedAt: new Date('2026-09-19T10:00:00.000Z'),
+      });
+
+      expect(result.emailVerified).toBe(true);
+    });
+
+    it('returns a null fullName when the user has no profile', () => {
+      const result = service.toUserResponse({ ...publicUser, profile: null });
+
+      expect(result.fullName).toBeNull();
+    });
+
+    it('never exposes credentials or raw timestamps', () => {
+      const result = service.toUserResponse({
+        ...publicUser,
+        passwordHash: 'hashed',
+      } as typeof publicUser);
+
+      expect(Object.keys(result).sort()).toEqual([
+        'createdAt',
+        'email',
+        'emailVerified',
+        'fullName',
+        'id',
+        'role',
+      ]);
     });
   });
 

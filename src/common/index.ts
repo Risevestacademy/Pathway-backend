@@ -5,3 +5,7 @@ export { RequestIdInterceptor } from './interceptors/request-id.interceptor';
 export { generateRequestId } from './utils/request-id';
 export { apiPrefix } from './utils/api-prefix';
 export { configureApp } from './utils/configure-app';
+export { JwtAuthGuard } from './guards/jwt-auth.guard';
+export { CurrentUser } from './decorators/current-user.decorator';
+export { Public } from './decorators/public.decorator';
+export type { AuthenticatedUser } from './interfaces/authenticated-user.interface';

@@ -15,9 +15,6 @@ import { ConfigService } from '@nestjs/config';
 import { ApiHeader, ApiOperation, ApiResponse } from '@nestjs/swagger';
 
 import { AuthService } from './auth.service';
-import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { CurrentUser } from './decorators/current-user.decorator';
-import { type AuthenticatedUser } from './interfaces/authenticated-user.interface';
 import {
   AuthTokensResponseDto,
   AuthResponseDto,
@@ -26,14 +23,19 @@ import {
   RefreshTokenDto,
   RegisterDto,
   RequestPasswordResetDto,
-  UserResponseDto,
 } from './dto';
+import { UserResponseDto } from '../users';
 import {
   CLIENT_PLATFORM_API_HEADER,
   type ClientPlatform,
   resolveClientPlatform,
 } from './utils/client-platform';
-import { apiPrefix } from '../common';
+import {
+  apiPrefix,
+  type AuthenticatedUser,
+  CurrentUser,
+  JwtAuthGuard,
+} from '../common';
 import { type EnvironmentVariables } from '../config';
 import { AuthThrottle } from '../common/throttler';
 
@@ -258,10 +260,19 @@ export class AuthController {
     await this.authService.confirmPasswordReset(dto);
   }
 
+  @ApiOperation({ summary: 'Get the signed-in user' })
+  @ApiResponse({ status: 200, type: UserResponseDto })
+  @ApiResponse({
+    status: 401,
+    description:
+      'Access token missing or invalid, or the user no longer exists',
+  })
   @Get('me')
   @UseGuards(JwtAuthGuard)
-  async getMe(@CurrentUser() user: AuthenticatedUser) {
-    return user;
+  async getMe(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<UserResponseDto> {
+    return this.authService.findCurrentUser(user.id);
   }
 
   private deliverTokens(

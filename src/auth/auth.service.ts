@@ -12,7 +12,7 @@ import * as bcrypt from 'bcrypt';
 import { createHash, randomBytes, randomUUID } from 'crypto';
 import { StringValue } from 'ms';
 import ms from 'ms';
-import { UsersService } from '../users';
+import { UsersService, type UserResponse } from '../users';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -30,11 +30,7 @@ const hashToken = (token: string) =>
   createHash('sha256').update(token).digest('hex');
 
 export interface AuthResult {
-  user: {
-    id: string;
-    email: string;
-    role: Role;
-  };
+  user: UserResponse;
   tokens: {
     accessToken: string;
     refreshToken: string;
@@ -71,11 +67,7 @@ export class AuthService {
       passwordHash,
     });
 
-    const user = {
-      id: createdUser.id,
-      email: createdUser.email,
-      role: createdUser.role,
-    };
+    const user = this.usersService.toUserResponse(createdUser);
 
     const tokens = await this.issueTokens(user);
 
@@ -103,18 +95,30 @@ export class AuthService {
 
     this.logger.log({ userId: user.id }, 'Login succeeded');
 
-    const userPayload = {
-      id: user.id,
-      email: user.email,
-      role: user.role,
-    };
-
-    const tokens = await this.issueTokens(userPayload);
+    const tokens = await this.issueTokens(user);
 
     return {
-      user: userPayload,
+      user: this.usersService.toUserResponse(user),
       tokens,
     };
+  }
+
+  async findCurrentUser(userId: string): Promise<UserResponse> {
+    const user = await this.usersService
+      .findById(userId)
+      .catch((error: unknown) => {
+        if (error instanceof NotFoundException) {
+          return null;
+        }
+
+        throw error;
+      });
+
+    if (!user) {
+      throw new UnauthorizedException('User no longer exists');
+    }
+
+    return this.usersService.toUserResponse(user);
   }
 
   // Refresh access token using refresh token

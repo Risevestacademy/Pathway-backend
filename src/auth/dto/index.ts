@@ -4,6 +4,5 @@ export { RegisterResponseDto } from './register-response.dto';
 export { AuthTokensResponseDto } from './auth-tokens-response.dto';
 export { RefreshTokenDto } from './refresh-token.dto';
 export { AuthResponseDto } from './auth-tokens-response.dto';
-export { UserResponseDto } from './auth-tokens-response.dto';
 export { ConfirmPasswordResetDto } from './confirm-password-reset.dto';
 export { RequestPasswordResetDto } from './request-password-reset.dto';

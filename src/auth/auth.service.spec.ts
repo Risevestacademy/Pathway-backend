@@ -24,7 +24,10 @@ describe('AuthService', () => {
     create: jest.fn(),
     findById: jest.fn(),
     updatePasswordHash: jest.fn<(...args: unknown[]) => Promise<void>>(),
+    toUserResponse: jest.fn(UsersService.prototype.toUserResponse),
   };
+
+  const createdAt = new Date('2026-10-01T09:00:00.000Z');
 
   const mockJwtService = {
     signAsync: jest.fn().mockResolvedValue('mock-token'),
@@ -94,6 +97,10 @@ describe('AuthService', () => {
         id: '1',
         email: 'test@test.com',
         role: Role.USER,
+        emailVerifiedAt: null,
+        createdAt,
+        updatedAt: createdAt,
+        profile: { fullName: 'Ada Obi' },
       };
       mockUsersService.findByEmail.mockResolvedValue(null);
       mockUsersService.create.mockResolvedValue(mockPublicUser);
@@ -104,7 +111,14 @@ describe('AuthService', () => {
       });
 
       expect(result).toEqual({
-        user: mockPublicUser,
+        user: {
+          id: '1',
+          email: 'test@test.com',
+          role: Role.USER,
+          fullName: 'Ada Obi',
+          emailVerified: false,
+          createdAt,
+        },
         tokens: {
           accessToken: 'mock-token',
           refreshToken: 'mock-token',
@@ -138,6 +152,10 @@ describe('AuthService', () => {
         email: 'test@test.com',
         passwordHash: hashedPassword,
         role: Role.USER,
+        emailVerifiedAt: createdAt,
+        createdAt,
+        updatedAt: createdAt,
+        profile: null,
       };
 
       mockUsersService.findByEmail.mockResolvedValue(mockUser);
@@ -152,6 +170,9 @@ describe('AuthService', () => {
           id: mockUser.id,
           email: mockUser.email,
           role: mockUser.role,
+          fullName: null,
+          emailVerified: true,
+          createdAt,
         },
         tokens: {
           accessToken: 'mock-token',
@@ -159,6 +180,47 @@ describe('AuthService', () => {
         },
       });
       expect(mockPrismaService.refreshToken.create).toHaveBeenCalled();
+    });
+  });
+
+  describe('findCurrentUser', () => {
+    it('returns the shared user shape loaded from the database', async () => {
+      mockUsersService.findById.mockResolvedValue({
+        id: 'user-1',
+        email: 'test@test.com',
+        role: Role.ADMIN,
+        emailVerifiedAt: null,
+        createdAt,
+        updatedAt: createdAt,
+        profile: { fullName: 'Ada Obi' },
+      });
+
+      await expect(service.findCurrentUser('user-1')).resolves.toEqual({
+        id: 'user-1',
+        email: 'test@test.com',
+        role: Role.ADMIN,
+        fullName: 'Ada Obi',
+        emailVerified: false,
+        createdAt,
+      });
+      expect(mockUsersService.findById).toHaveBeenCalledWith('user-1');
+    });
+
+    it('rejects with UnauthorizedException when the user no longer exists', async () => {
+      mockUsersService.findById.mockRejectedValue(
+        new NotFoundException('User not found'),
+      );
+
+      await expect(service.findCurrentUser('deleted-user')).rejects.toThrow(
+        UnauthorizedException,
+      );
+    });
+
+    it('propagates user lookup failures other than not-found', async () => {
+      const failure = new Error('connection lost');
+      mockUsersService.findById.mockRejectedValue(failure);
+
+      await expect(service.findCurrentUser('user-1')).rejects.toBe(failure);
     });
   });
 
