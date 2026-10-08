@@ -3,22 +3,40 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, User } from '../generated/prisma/client';
+import { Prisma, Role, User } from '../generated/prisma/client';
 import { PrismaService } from '../prisma';
 import { CreateUserDto } from './dto/create-user.dto';
+
+const profileSelect = {
+  profile: { select: { fullName: true } },
+} satisfies Prisma.UserSelect;
 
 const publicUserSelect = {
   id: true,
   email: true,
   role: true,
+  emailVerifiedAt: true,
   createdAt: true,
   updatedAt: true,
+  ...profileSelect,
 } satisfies Prisma.UserSelect;
 
-export type PublicUser = Pick<
-  User,
-  'id' | 'email' | 'role' | 'createdAt' | 'updatedAt'
->;
+export type PublicUser = Prisma.UserGetPayload<{
+  select: typeof publicUserSelect;
+}>;
+
+export type UserWithCredentials = Prisma.UserGetPayload<{
+  include: typeof profileSelect;
+}>;
+
+export interface UserResponse {
+  id: string;
+  email: string;
+  role: Role;
+  fullName: string | null;
+  emailVerified: boolean;
+  createdAt: Date;
+}
 
 type UserClient = Pick<PrismaService, 'user'>;
 
@@ -39,8 +57,11 @@ export class UsersService {
     return user;
   }
 
-  async findByEmail(email: string): Promise<User | null> {
-    return this.prisma.user.findUnique({ where: { email } });
+  async findByEmail(email: string): Promise<UserWithCredentials | null> {
+    return this.prisma.user.findUnique({
+      where: { email },
+      include: profileSelect,
+    });
   }
 
   async create(dto: CreateUserDto): Promise<PublicUser> {
@@ -59,6 +80,22 @@ export class UsersService {
 
       throw error;
     }
+  }
+
+  toUserResponse(
+    user: Pick<
+      User,
+      'id' | 'email' | 'role' | 'emailVerifiedAt' | 'createdAt'
+    > & { profile: { fullName: string | null } | null },
+  ): UserResponse {
+    return {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      fullName: user.profile?.fullName ?? null,
+      emailVerified: user.emailVerifiedAt !== null,
+      createdAt: user.createdAt,
+    };
   }
 
   async updatePasswordHash(
