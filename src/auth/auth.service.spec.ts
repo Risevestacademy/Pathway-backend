@@ -88,8 +88,13 @@ describe('AuthService', () => {
       mockUsersService.findByEmail.mockResolvedValue({ id: '1' });
 
       await expect(
-        service.register({ email: 'test@test.com', password: 'password123' }),
+        service.register({
+          email: 'test@test.com',
+          password: 'password123',
+          fullName: 'Ada Obi',
+        }),
       ).rejects.toThrow(ConflictException);
+      expect(mockUsersService.create).not.toHaveBeenCalled();
     });
 
     it('should create user, issue tokens, and return user object with tokens', async () => {
@@ -108,6 +113,7 @@ describe('AuthService', () => {
       const result = await service.register({
         email: 'test@test.com',
         password: 'password123',
+        fullName: 'Ada Obi',
       });
 
       expect(result).toEqual({
@@ -124,7 +130,11 @@ describe('AuthService', () => {
           refreshToken: 'mock-token',
         },
       });
-      expect(mockUsersService.create).toHaveBeenCalled();
+      expect(mockUsersService.create).toHaveBeenCalledWith({
+        email: 'test@test.com',
+        passwordHash: expect.any(String),
+        fullName: 'Ada Obi',
+      });
       expect(mockPrismaService.refreshToken.create).toHaveBeenCalled();
     });
   });

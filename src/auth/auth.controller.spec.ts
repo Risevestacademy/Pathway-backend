@@ -80,6 +80,7 @@ describe('AuthController', () => {
     const registerDto: RegisterDto = {
       email: 'dev@example.com',
       password: 'Password123!',
+      fullName: 'Ada Obi',
     };
 
     it('sets a refresh token cookie and returns user with accessToken for web client', async () => {

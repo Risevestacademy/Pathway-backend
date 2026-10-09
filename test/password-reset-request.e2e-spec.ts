@@ -61,7 +61,7 @@ describe('Password reset request (e2e)', () => {
     const response = await request(app.getHttpServer())
       .post(`${apiPrefix}/auth/register`)
       .set('X-Client-Platform', 'mobile')
-      .send({ email, password: 'Password123!' })
+      .send({ email, password: 'Password123!', fullName: 'Ada Obi' })
       .expect(201);
 
     userId = response.body.user.id;

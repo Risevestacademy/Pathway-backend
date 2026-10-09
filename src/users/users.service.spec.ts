@@ -115,17 +115,24 @@ describe('UsersService', () => {
   });
 
   describe('create', () => {
-    it('persists the user and returns it without passwordHash', async () => {
+    const newUser = {
+      email: 'dev@example.com',
+      passwordHash: 'hashed',
+      fullName: 'Ada Obi',
+    };
+
+    it('persists the user with its profile in one nested write and returns it without passwordHash', async () => {
       create.mockResolvedValue(publicUser);
 
-      const result = await service.create({
-        email: 'dev@example.com',
-        passwordHash: 'hashed',
-      });
+      const result = await service.create(newUser);
 
       expect(create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: { email: 'dev@example.com', passwordHash: 'hashed' },
+          data: {
+            email: 'dev@example.com',
+            passwordHash: 'hashed',
+            profile: { create: { fullName: 'Ada Obi' } },
+          },
         }),
       );
       expect(result).not.toHaveProperty('passwordHash');
@@ -139,18 +146,16 @@ describe('UsersService', () => {
         }),
       );
 
-      await expect(
-        service.create({ email: 'dev@example.com', passwordHash: 'hashed' }),
-      ).rejects.toBeInstanceOf(ConflictException);
+      await expect(service.create(newUser)).rejects.toBeInstanceOf(
+        ConflictException,
+      );
     });
 
     it('propagates other database errors', async () => {
       const failure = new Error('connection lost');
       create.mockRejectedValue(failure);
 
-      await expect(
-        service.create({ email: 'dev@example.com', passwordHash: 'hashed' }),
-      ).rejects.toBe(failure);
+      await expect(service.create(newUser)).rejects.toBe(failure);
     });
   });
 
