@@ -12,6 +12,7 @@ import { GetCareersQueryDto } from './dto/get-careers-query.dto';
 import { TargetLevel } from '../../generated/prisma/client';
 import { CareerDetailDto } from './dto/career-detail.dto';
 import { CareerPathwayResponseDto } from './pathways/dto/career-pathway.dto';
+import { PathwayStepListItemDto } from './pathways/dto/list-pathway-steps.dto';
 import { PathwaysService } from './pathways/pathways.service';
 
 @ApiTags('Careers')
@@ -93,5 +94,31 @@ export class CareersController {
     @Param('careerId', ParseUUIDPipe) careerId: string,
   ): Promise<CareerPathwayResponseDto> {
     return this.pathwaysService.getCareerPathway(careerId);
+  }
+
+  @Get(':careerId/pathway/steps')
+  @ApiOperation({
+    summary: "Get a published career's pathway steps without detail",
+  })
+  @ApiParam({ name: 'careerId', description: 'Career UUID' })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Pathway steps in order, each with its skills. Returns an empty array ' +
+      'if the career has no pathway yet.',
+    type: [PathwayStepListItemDto],
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'careerId is not a valid UUID.',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Career does not exist, or exists but is not PUBLISHED.',
+  })
+  async getCareerPathwaySteps(
+    @Param('careerId', ParseUUIDPipe) careerId: string,
+  ): Promise<PathwayStepListItemDto[]> {
+    return this.pathwaysService.getCareerPathwaySteps(careerId);
   }
 }
