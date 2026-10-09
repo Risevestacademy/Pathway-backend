@@ -65,10 +65,10 @@ export class UsersService {
     });
   }
 
-  async create(dto: CreateUserDto): Promise<PublicUser> {
+  async create({ fullName, ...dto }: CreateUserDto): Promise<PublicUser> {
     try {
       return await this.prisma.user.create({
-        data: dto,
+        data: { ...dto, profile: { create: { fullName } } },
         select: publicUserSelect,
       });
     } catch (error) {

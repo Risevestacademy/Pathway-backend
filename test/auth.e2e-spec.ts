@@ -33,6 +33,9 @@ describe('AuthController (e2e)', () => {
     password: 'Password123!',
   };
 
+  const register = (body: Record<string, unknown>) =>
+    request(app.getHttpServer()).post(`${apiPrefix}/auth/register`).send(body);
+
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -56,10 +59,10 @@ describe('AuthController (e2e)', () => {
   });
 
   it('/auth/register (POST) - success (web client)', async () => {
-    const response = await request(app.getHttpServer())
-      .post(`${apiPrefix}/auth/register`)
-      .send(testUser)
-      .expect(201);
+    const response = await register({
+      ...testUser,
+      fullName: '  Ada Obi  ',
+    }).expect(201);
 
     expect(response.body).toBeDefined();
     expect(response.body.data).toBeUndefined();
@@ -73,8 +76,14 @@ describe('AuthController (e2e)', () => {
     expect(response.body.user.role).toBeDefined();
     expect(Object.keys(response.body.user).sort()).toEqual(userKeys);
     expect(response.body.user.emailVerified).toBe(false);
+    expect(response.body.user.fullName).toBe('Ada Obi');
 
     registeredUser = response.body.user;
+
+    const profile = await prisma.userProfile.findUnique({
+      where: { userId: response.body.user.id },
+    });
+    expect(profile?.fullName).toBe('Ada Obi');
 
     // Password hash should never be returned to the client
     expect(response.body.passwordHash).toBeUndefined();
@@ -93,17 +102,58 @@ describe('AuthController (e2e)', () => {
   });
 
   it('/auth/register (POST) - duplicate email', async () => {
-    await request(app.getHttpServer())
-      .post(`${apiPrefix}/auth/register`)
-      .send(testUser)
-      .expect(409);
+    await register({ ...testUser, fullName: 'Grace Hopper' }).expect(409);
   });
 
   it('/auth/register (POST) - duplicate email in a different case', async () => {
-    await request(app.getHttpServer())
-      .post(`${apiPrefix}/auth/register`)
-      .send({ ...testUser, email: ` ${testUser.email.toUpperCase()} ` })
-      .expect(409);
+    await register({
+      ...testUser,
+      email: ` ${testUser.email.toUpperCase()} `,
+      fullName: 'Grace Hopper',
+    }).expect(409);
+  });
+
+  it.each([
+    ['missing', {}],
+    ['blank', { fullName: '   ' }],
+    ['over 100 characters', { fullName: 'a'.repeat(101) }],
+    ['not a string', { fullName: 42 }],
+  ])(
+    '/auth/register (POST) - rejects a %s fullName in the standard validation format',
+    async (_label, body) => {
+      const response = await register({
+        email: `e2e-invalid-name-${Date.now()}@test.com`,
+        password: 'Password123!',
+        ...body,
+      }).expect(400);
+
+      expect(response.body.error).toBe('VALIDATION_ERROR');
+      expect(response.body.fields).toHaveProperty('fullName');
+    },
+  );
+
+  it('/auth/register (POST) - leaves neither row when the profile write fails', async () => {
+    const stamp = Date.now();
+    const email = `e2e-profile-failure-${stamp}@test.com`;
+    const fullName = `Profile Failure ${stamp}`;
+    const constraint = `e2e_profile_failure_${stamp}`;
+
+    await prisma.$executeRawUnsafe(
+      `ALTER TABLE "UserProfile" ADD CONSTRAINT "${constraint}" CHECK ("fullName" IS DISTINCT FROM '${fullName}')`,
+    );
+
+    try {
+      await register({ email, password: 'Password123!', fullName }).expect(500);
+    } finally {
+      await prisma.$executeRawUnsafe(
+        `ALTER TABLE "UserProfile" DROP CONSTRAINT "${constraint}"`,
+      );
+    }
+
+    await expect(prisma.user.count({ where: { email } })).resolves.toBe(0);
+    await expect(
+      prisma.userProfile.count({ where: { fullName } }),
+    ).resolves.toBe(0);
   });
 
   it('/auth/login (POST) - email in a different case', async () => {
@@ -210,15 +260,11 @@ describe('AuthController (e2e)', () => {
   });
 
   it('/auth/me (GET) - rejects the token of a deleted user', async () => {
-    const doomedUser = {
+    const registration = await register({
       email: `e2e-deleted-${Date.now()}@test.com`,
       password: 'Password123!',
-    };
-
-    const registration = await request(app.getHttpServer())
-      .post(`${apiPrefix}/auth/register`)
-      .send(doomedUser)
-      .expect(201);
+      fullName: 'Doomed User',
+    }).expect(201);
 
     await prisma.user.delete({ where: { id: registration.body.user.id } });
 
@@ -357,7 +403,7 @@ describe('AuthController (e2e)', () => {
       const regResponse = await request(app.getHttpServer())
         .post(`${apiPrefix}/auth/register`)
         .set('X-Client-Platform', 'mobile')
-        .send(mobileUser)
+        .send({ ...mobileUser, fullName: 'Mobile User' })
         .expect(201);
 
       expect(regResponse.body.accessToken).toBeDefined();

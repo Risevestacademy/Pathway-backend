@@ -22,7 +22,7 @@ describe('Users (e2e)', () => {
   const register = async (email: string) => {
     const response = await request(app.getHttpServer())
       .post(`${apiPrefix}/auth/register`)
-      .send({ email, password })
+      .send({ email, password, fullName: 'Ada Obi' })
       .expect(201);
 
     return response.body as {

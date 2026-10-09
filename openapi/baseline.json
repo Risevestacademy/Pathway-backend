@@ -517,6 +517,13 @@
       "RegisterDto": {
         "type": "object",
         "properties": {
+          "fullName": {
+            "type": "string",
+            "example": "Ada Obi",
+            "description": "Full name, trimmed. 1 to 100 characters.",
+            "minLength": 1,
+            "maxLength": 100
+          },
           "email": {
             "type": "string",
             "example": "user@example.com",
@@ -530,6 +537,7 @@
           }
         },
         "required": [
+          "fullName",
           "email",
           "password"
         ]
