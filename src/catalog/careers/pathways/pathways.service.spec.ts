@@ -21,6 +21,9 @@ describe('PathwaysService', () => {
     pathway: {
       findUnique: jest.fn<(args: unknown) => Promise<unknown>>(),
     },
+    pathwayStep: {
+      findMany: jest.fn<(args: unknown) => Promise<unknown>>(),
+    },
   };
 
   beforeEach(async () => {
@@ -284,6 +287,96 @@ describe('PathwaysService', () => {
       );
 
       expect(mockPrismaService.pathway.findUnique).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getCareerPathwaySteps', () => {
+    const mockDbSteps = [
+      {
+        id: 'step-1',
+        order: 1,
+        title: 'Learn TypeScript',
+        skills: [{ skill: { id: 'skill-ts', name: 'TypeScript' } }],
+      },
+      {
+        id: 'step-2',
+        order: 2,
+        title: 'Build an API',
+        skills: [],
+      },
+    ];
+
+    beforeEach(() => {
+      mockPrismaService.career.findFirst.mockResolvedValue({ id: 'career-1' });
+      mockPrismaService.pathwayStep.findMany.mockResolvedValue(mockDbSteps);
+    });
+
+    it('should verify the career is published before loading the steps', async () => {
+      await service.getCareerPathwaySteps('career-1');
+
+      expect(mockPrismaService.career.findFirst).toHaveBeenCalledWith({
+        where: {
+          id: 'career-1',
+          status: CareerStatus.PUBLISHED,
+        },
+        select: {
+          id: true,
+        },
+      });
+    });
+
+    it("should load the career's steps in ascending order with only id, order, title and skills", async () => {
+      await service.getCareerPathwaySteps('career-1');
+
+      expect(mockPrismaService.pathwayStep.findMany).toHaveBeenCalledWith({
+        where: { pathway: { careerId: 'career-1' } },
+        orderBy: { order: 'asc' },
+        select: {
+          id: true,
+          order: true,
+          title: true,
+          skills: {
+            select: { skill: { select: { id: true, name: true } } },
+          },
+        },
+      });
+    });
+
+    it('should flatten step skills', async () => {
+      const result = await service.getCareerPathwaySteps('career-1');
+
+      expect(result).toEqual([
+        {
+          id: 'step-1',
+          order: 1,
+          title: 'Learn TypeScript',
+          skills: [{ id: 'skill-ts', name: 'TypeScript' }],
+        },
+        {
+          id: 'step-2',
+          order: 2,
+          title: 'Build an API',
+          skills: [],
+        },
+      ]);
+    });
+
+    it('should return an empty array when the career has no pathway', async () => {
+      mockPrismaService.pathwayStep.findMany.mockResolvedValue([]);
+
+      await expect(service.getCareerPathwaySteps('career-1')).resolves.toEqual(
+        [],
+      );
+    });
+
+    it('should throw NotFoundException when the career is missing or not published', async () => {
+      mockPrismaService.career.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.getCareerPathwaySteps('draft-career'),
+      ).rejects.toThrow(NotFoundException);
+
+      expect(mockPrismaService.pathwayStep.findMany).not.toHaveBeenCalled();
     });
   });
 });
