@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { TemplateRenderer } from '../src/notifications/template-renderer.service';
 import { buildSwaggerDocument } from '../src/swagger/swagger.config';
 
 async function generate() {
@@ -11,6 +12,16 @@ async function generate() {
   })
     .overrideProvider(PrismaService)
     .useValue({})
+    // Spec generation never sends email, so skip loading template files
+    .overrideProvider(TemplateRenderer)
+    .useValue({
+      onModuleInit: () => undefined,
+      render: () => {
+        throw new Error(
+          'Templates are not available during OpenAPI generation',
+        );
+      },
+    })
     .compile();
 
   const app = moduleRef.createNestApplication();
