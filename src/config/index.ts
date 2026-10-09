@@ -1,2 +1,7 @@
 export { AppConfigModule } from './config.module';
-export { EnvironmentVariables, NodeEnv, validateEnv } from './env.validation';
+export {
+  EnvironmentVariables,
+  NodeEnv,
+  validateEnv,
+  MailDriver,
+} from './env.validation';

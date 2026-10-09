@@ -84,6 +84,22 @@ const DiffersFrom = (property: keyof EnvironmentVariables) =>
     },
   });
 
+const LOCAL_ONLY_MAIL_DRIVER_ENVS = [NodeEnv.Development, NodeEnv.Test];
+
+const LogDriverOnlyInLocalEnvs = () =>
+  ValidateBy({
+    name: 'logDriverOnlyInLocalEnvs',
+    validator: {
+      validate: (value, args) =>
+        value !== MailDriver.Log ||
+        LOCAL_ONLY_MAIL_DRIVER_ENVS.includes(
+          (args?.object as EnvironmentVariables).NODE_ENV,
+        ),
+      defaultMessage: () =>
+        'MAIL_DRIVER=log is only allowed when NODE_ENV is development or test, because it writes reset links to the logs',
+    },
+  });
+
 export class EnvironmentVariables {
   @IsEnum(NodeEnv)
   NODE_ENV: NodeEnv = NodeEnv.Development;
@@ -145,6 +161,7 @@ export class EnvironmentVariables {
   THROTTLE_AUTH_LIMIT: number = 10;
 
   @IsEnum(MailDriver)
+  @LogDriverOnlyInLocalEnvs()
   MAIL_DRIVER: MailDriver = MailDriver.MailerSend;
 
   @ValidateIf(

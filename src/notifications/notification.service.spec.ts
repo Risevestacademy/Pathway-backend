@@ -1,6 +1,7 @@
 import { jest } from '@jest/globals';
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotificationService } from './notification.service';
+import { TemplateRenderer } from './template-renderer.service';
 import {
   EMAIL_PROVIDER,
   type EmailProvider,
@@ -8,16 +9,29 @@ import {
 
 describe('NotificationService', () => {
   let service: NotificationService;
+
   const mockProvider: { send: jest.Mock<EmailProvider['send']> } = {
     send: jest.fn(),
   };
+  const mockRenderer: { render: jest.Mock<TemplateRenderer['render']> } = {
+    render: jest.fn(),
+  };
+
+  const rendered = {
+    subject: 'Test subject',
+    html: '<p>html body</p>',
+    text: 'text body',
+  };
 
   beforeEach(async () => {
-    jest.clearAllMocks();
+    jest.resetAllMocks();
+    mockRenderer.render.mockReturnValue(rendered);
+    mockProvider.send.mockResolvedValue(undefined);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         NotificationService,
+        { provide: TemplateRenderer, useValue: mockRenderer },
         { provide: EMAIL_PROVIDER, useValue: mockProvider },
       ],
     }).compile();
@@ -29,40 +43,35 @@ describe('NotificationService', () => {
     expect(service).toBeDefined();
   });
 
-  it('renders the named template and delegates to the provider', async () => {
+  it('renders the named template and delegates the result to the provider', async () => {
     await service.send('dev@example.com', 'welcome', { name: 'Ada' });
 
+    expect(mockRenderer.render).toHaveBeenCalledWith('welcome', {
+      name: 'Ada',
+    });
     expect(mockProvider.send).toHaveBeenCalledWith({
       to: 'dev@example.com',
-      subject: 'Welcome to Pathway',
-      html: '<p>Hi Ada, welcome to Pathway!</p>',
-      text: 'Hi Ada, welcome to Pathway!',
+      ...rendered,
     });
   });
 
-  it('renders the password-reset template with the reset link and expiry', async () => {
-    const resetUrl = 'http://localhost:5173/reset-password?token=abc123';
-
-    await service.send('dev@example.com', 'password-reset', {
-      resetUrl,
-      expiresInMinutes: 60,
+  it('does not call the provider when rendering fails', async () => {
+    mockRenderer.render.mockImplementation(() => {
+      throw new Error('Unknown notification template: nope');
     });
 
-    const [message] = mockProvider.send.mock.calls[0];
-
-    expect(message.to).toBe('dev@example.com');
-    expect(message.subject).toBe('Reset your Pathway password');
-    expect(message.html).toContain(`href="${resetUrl}"`);
-    expect(message.html).toContain('60 minutes');
-    expect(message.text).toContain(resetUrl);
-    expect(message.text).toContain('60 minutes');
-  });
-
-  it('throws for an unknown template', async () => {
     await expect(
-      service.send('dev@example.com', 'does-not-exist' as never, {}),
+      service.send('dev@example.com', 'welcome', {}),
     ).rejects.toThrow('Unknown notification template');
 
     expect(mockProvider.send).not.toHaveBeenCalled();
+  });
+
+  it('lets provider failures propagate to the caller', async () => {
+    mockProvider.send.mockRejectedValue(new Error('provider down'));
+
+    await expect(
+      service.send('dev@example.com', 'welcome', { name: 'Ada' }),
+    ).rejects.toThrow('provider down');
   });
 });

@@ -320,10 +320,23 @@ describe('validateEnv', () => {
     const config = validateEnv({
       ...validEnv,
       MAIL_DRIVER: 'log',
+      NODE_ENV: 'development',
       MAILERSEND_API_KEY: undefined,
     });
 
     expect(config.MAIL_DRIVER).toBe(MailDriver.Log);
     expect(config.MAILERSEND_API_KEY).toBeUndefined();
+  });
+
+  it('rejects the log driver in production', () => {
+    expect(() =>
+      validateEnv({ ...validEnv, MAIL_DRIVER: 'log', NODE_ENV: 'production' }),
+    ).toThrow('MAIL_DRIVER=log is only allowed');
+  });
+
+  it('rejects the log driver in staging', () => {
+    expect(() =>
+      validateEnv({ ...validEnv, MAIL_DRIVER: 'log', NODE_ENV: 'staging' }),
+    ).toThrow('MAIL_DRIVER=log is only allowed');
   });
 });
