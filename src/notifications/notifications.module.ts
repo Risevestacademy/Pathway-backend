@@ -2,25 +2,37 @@ import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { MailerSend } from 'mailersend';
 import { NotificationService } from './notification.service';
+import { TemplateRenderer } from './template-renderer.service';
+import { MailerSendProvider } from './providers/mailersend.provider';
+import { LogEmailProvider } from './providers/log-email.provider';
 import {
-  MailerSendProvider,
-  MAILERSEND_CLIENT,
-} from './providers/mailersend.provider';
-import { EMAIL_PROVIDER } from './interfaces/email-provider.interface';
-import type { EnvironmentVariables } from '../config';
+  EMAIL_PROVIDER,
+  type EmailProvider,
+} from './interfaces/email-provider.interface';
+import { MailDriver, type EnvironmentVariables } from '../config';
 
 @Module({
   providers: [
     NotificationService,
+    TemplateRenderer,
     {
-      provide: MAILERSEND_CLIENT,
+      provide: EMAIL_PROVIDER,
       inject: [ConfigService],
-      useFactory: (config: ConfigService<EnvironmentVariables, true>) =>
-        new MailerSend({
-          apiKey: config.get('MAILERSEND_API_KEY', { infer: true }),
-        }),
+      useFactory: (
+        config: ConfigService<EnvironmentVariables, true>,
+      ): EmailProvider => {
+        if (config.get('MAIL_DRIVER', { infer: true }) === MailDriver.Log) {
+          return new LogEmailProvider();
+        }
+
+        return new MailerSendProvider(
+          new MailerSend({
+            apiKey: config.get('MAILERSEND_API_KEY', { infer: true }),
+          }),
+          config,
+        );
+      },
     },
-    { provide: EMAIL_PROVIDER, useClass: MailerSendProvider },
   ],
   exports: [NotificationService],
 })
