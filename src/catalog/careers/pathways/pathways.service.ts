@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { CareerPathwayResponseDto } from './dto/career-pathway.dto';
+import { PathwayStepListItemDto } from './dto/list-pathway-steps.dto';
 import { PrismaService } from '../../../prisma';
 import { CareerStatus, ResourceStatus } from '../../../generated/prisma/client';
 
@@ -20,6 +21,32 @@ export class PathwaysService {
     if (!career) {
       throw new NotFoundException('Career not found');
     }
+  }
+
+  async getCareerPathwaySteps(
+    careerId: string,
+  ): Promise<PathwayStepListItemDto[]> {
+    await this.assertCareerIsPublished(careerId);
+
+    const steps = await this.prisma.pathwayStep.findMany({
+      where: { pathway: { careerId } },
+      orderBy: { order: 'asc' },
+      select: {
+        id: true,
+        order: true,
+        title: true,
+        skills: {
+          select: { skill: { select: { id: true, name: true } } },
+        },
+      },
+    });
+
+    return steps.map((step) => ({
+      id: step.id,
+      order: step.order,
+      title: step.title,
+      skills: step.skills.map(({ skill }) => skill),
+    }));
   }
 
   async getCareerPathway(careerId: string): Promise<CareerPathwayResponseDto> {

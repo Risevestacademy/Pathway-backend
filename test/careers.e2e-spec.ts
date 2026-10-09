@@ -88,6 +88,7 @@ describe('Careers (e2e)', () => {
 
   const mockPathwaysService = {
     getCareerPathway: jest.fn(),
+    getCareerPathwaySteps: jest.fn(),
   };
 
   beforeAll(async () => {
@@ -258,6 +259,73 @@ describe('Careers (e2e)', () => {
         .expect(400);
 
       expect(mockCareersService.getCareerPathway).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('GET /careers/:careerId/pathway/steps', () => {
+    const careerId = '123e4567-e89b-12d3-a456-426614174000';
+
+    const mockSteps = [
+      {
+        id: 'step-1',
+        order: 1,
+        title: 'Learn TypeScript',
+        skills: [{ id: 'skill-ts', name: 'TypeScript' }],
+      },
+      {
+        id: 'step-2',
+        order: 2,
+        title: 'Build an API',
+        skills: [],
+      },
+    ];
+
+    it('should return 200 OK with the ordered steps without an access token', async () => {
+      mockPathwaysService.getCareerPathwaySteps.mockResolvedValue(mockSteps);
+
+      const response = await request(app.getHttpServer())
+        .get(`${apiPrefix}/careers/${careerId}/pathway/steps`)
+        .expect(200);
+
+      expect(response.body).toEqual(mockSteps);
+      expect(mockPathwaysService.getCareerPathwaySteps).toHaveBeenCalledWith(
+        careerId,
+      );
+    });
+
+    it('should return an empty array when the career has no pathway yet', async () => {
+      mockPathwaysService.getCareerPathwaySteps.mockResolvedValue([]);
+
+      const response = await request(app.getHttpServer())
+        .get(`${apiPrefix}/careers/${careerId}/pathway/steps`)
+        .expect(200);
+
+      expect(response.body).toEqual([]);
+    });
+
+    it('should return 404 in the standard format when the career does not exist or is not published', async () => {
+      mockPathwaysService.getCareerPathwaySteps.mockRejectedValue(
+        new NotFoundException('Career not found'),
+      );
+
+      const response = await request(app.getHttpServer())
+        .get(`${apiPrefix}/careers/${careerId}/pathway/steps`)
+        .expect(404);
+
+      expect(response.body).toMatchObject({
+        statusCode: 404,
+        message: 'Career not found',
+        error: 'NOT_FOUND',
+        path: `${apiPrefix}/careers/${careerId}/pathway/steps`,
+      });
+    });
+
+    it('should reject an invalid career UUID', async () => {
+      await request(app.getHttpServer())
+        .get(`${apiPrefix}/careers/not-a-uuid/pathway/steps`)
+        .expect(400);
+
+      expect(mockPathwaysService.getCareerPathwaySteps).not.toHaveBeenCalled();
     });
   });
 });
