@@ -57,6 +57,21 @@ Module structure, the testing bar, and the git workflow are defined in the proje
 
 `src/users` is the reference implementation to copy when adding a module.
 
+## Admin routes
+
+Restrict a controller to admins by attaching both guards to the whole class, in this order:
+
+```ts
+@Controller('admin/careers')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(Role.ADMIN)
+export class AdminCareersController {}
+```
+
+`JwtAuthGuard` must come first, because it sets `req.user`, which `RolesGuard` reads. A missing or invalid token gets 401 and a non-admin token gets 403.
+
+The role is read from the access token, so a role change takes effect only when the user's next access token is issued: at their next token refresh (at most 15 minutes) or login.
+
 ## API shape
 
 Responses are wrapped:
