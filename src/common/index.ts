@@ -6,6 +6,8 @@ export { generateRequestId } from './utils/request-id';
 export { apiPrefix } from './utils/api-prefix';
 export { configureApp } from './utils/configure-app';
 export { JwtAuthGuard } from './guards/jwt-auth.guard';
+export { RolesGuard } from './guards/roles.guard';
 export { CurrentUser } from './decorators/current-user.decorator';
 export { Public } from './decorators/public.decorator';
+export { Roles } from './decorators/roles.decorator';
 export type { AuthenticatedUser } from './interfaces/authenticated-user.interface';
