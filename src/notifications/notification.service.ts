@@ -3,10 +3,8 @@ import {
   EMAIL_PROVIDER,
   type EmailProvider,
 } from './interfaces/email-provider.interface';
-import {
-  NOTIFICATION_TEMPLATES,
-  type NotificationTemplateName,
-} from './templates/templates';
+import { type NotificationTemplateName } from './templates/templates';
+import { TemplateRenderer } from './template-renderer.service';
 
 @Injectable()
 export class NotificationService {
@@ -14,6 +12,7 @@ export class NotificationService {
 
   constructor(
     @Inject(EMAIL_PROVIDER) private readonly provider: EmailProvider,
+    private readonly renderer: TemplateRenderer,
   ) {}
 
   async send<T extends Record<string, unknown>>(
@@ -21,15 +20,9 @@ export class NotificationService {
     template: NotificationTemplateName,
     data: T,
   ): Promise<void> {
-    const definition = NOTIFICATION_TEMPLATES[template];
-
-    if (!definition) {
-      throw new Error(`Unknown notification template: ${String(template)}`);
-    }
-
-    const { subject, html, text } = definition.render(data);
+    const { subject, html, text } = this.renderer.render(template, data);
 
     await this.provider.send({ to, subject, html, text });
-    this.logger.log(`Sent "${template}" notification to ${to}`);
+    this.logger.log(`Sent "${template}" notification`);
   }
 }

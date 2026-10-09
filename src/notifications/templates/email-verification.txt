@@ -1,0 +1,3 @@
+Welcome to Pathway. Confirm your email address using this link: {{verificationUrl}}
+
+The link expires in {{expiresInMinutes}} minutes. If you did not create a Pathway account, ignore this email.
