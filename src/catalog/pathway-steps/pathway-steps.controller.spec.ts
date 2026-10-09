@@ -1,5 +1,7 @@
 import { jest } from '@jest/globals';
 import { Test, TestingModule } from '@nestjs/testing';
+import { GUARDS_METADATA } from '@nestjs/common/constants';
+import { JwtAuthGuard } from '../../common';
 import { PathwayStepsController } from './pathway-steps.controller';
 import { PathwayStepsService } from './pathway-steps.service';
 import { PathwayStepDetailDto } from './dto/pathway-step-detail.dto';
@@ -59,6 +61,15 @@ describe('PathwayStepsController', () => {
         'step-1',
       );
       expect(result).toEqual(mockResult);
+    });
+
+    it('requires an authenticated user', () => {
+      const guards = Reflect.getMetadata(
+        GUARDS_METADATA,
+        PathwayStepsController.prototype.getPathwayStep,
+      ) as unknown[];
+
+      expect(guards).toContain(JwtAuthGuard);
     });
   });
 });

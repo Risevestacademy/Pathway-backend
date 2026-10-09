@@ -1,5 +1,12 @@
-import { Controller, Get, Param, ParseUUIDPipe } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { JwtAuthGuard } from '../../common';
 import { PathwayStepsService } from './pathway-steps.service';
 import { PathwayStepDetailDto } from './dto/pathway-step-detail.dto';
 
@@ -9,6 +16,7 @@ export class PathwayStepsController {
   constructor(private readonly pathwayStepsService: PathwayStepsService) {}
 
   @Get(':stepId')
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({
     summary: 'Get a single pathway step with its skills and resources',
   })
@@ -22,6 +30,10 @@ export class PathwayStepsController {
   @ApiResponse({
     status: 400,
     description: 'stepId is not a valid UUID.',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Access token missing or invalid.',
   })
   @ApiResponse({
     status: 404,
