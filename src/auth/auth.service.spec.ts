@@ -40,6 +40,8 @@ describe('AuthService', () => {
       if (key === 'JWT_REFRESH_EXPIRY') return '7d';
       if (key === 'PASSWORD_RESET_URL')
         return 'http://localhost:5173/reset-password';
+      if (key === 'EMAIL_VERIFICATION_URL')
+        return 'http://localhost:5173/verify-email';
       return 'mock-secret';
     }),
   };
@@ -56,6 +58,18 @@ describe('AuthService', () => {
       updateMany: jest.fn<(args: unknown) => Promise<unknown>>(),
       deleteMany: jest.fn<(args: unknown) => Promise<unknown>>(),
       create: jest.fn<(args: unknown) => Promise<unknown>>(),
+    },
+    emailVerificationToken: {
+      findFirst: jest.fn<(args: unknown) => Promise<unknown>>(),
+      updateMany: jest.fn<(args: unknown) => Promise<unknown>>(),
+      deleteMany: jest.fn<(args: unknown) => Promise<unknown>>(),
+      create: jest.fn<(args: unknown) => Promise<unknown>>(),
+    },
+    user: {
+      update: jest.fn<(args: unknown) => Promise<unknown>>(),
+      updateMany: jest
+        .fn<(args: unknown) => Promise<unknown>>()
+        .mockResolvedValue({ count: 1 }),
     },
     $transaction: jest.fn((callback: (tx: unknown) => unknown) =>
       callback(mockPrismaService),
@@ -136,6 +150,77 @@ describe('AuthService', () => {
         fullName: 'Ada Obi',
       });
       expect(mockPrismaService.refreshToken.create).toHaveBeenCalled();
+    });
+
+    it('creates a verification token and emails it, keyed to the new user', async () => {
+      const mockPublicUser = {
+        id: '1',
+        email: 'test@test.com',
+        role: Role.USER,
+        emailVerifiedAt: null,
+        createdAt,
+        updatedAt: createdAt,
+        profile: { fullName: 'Ada Obi' },
+      };
+      mockUsersService.findByEmail.mockResolvedValue(null);
+      mockUsersService.create.mockResolvedValue(mockPublicUser);
+      mockPrismaService.emailVerificationToken.create.mockResolvedValue({
+        id: 'verify-1',
+      });
+      mockNotificationService.send.mockResolvedValue(undefined);
+
+      await service.register({
+        email: 'test@test.com',
+        password: 'password123',
+        fullName: 'Ada Obi',
+      });
+
+      expect(
+        mockPrismaService.emailVerificationToken.create,
+      ).toHaveBeenCalledWith({
+        data: {
+          userId: '1',
+          tokenHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+          expiresAt: expect.any(Date),
+        },
+      });
+
+      await new Promise(process.nextTick); // flush the un-awaited send
+
+      expect(mockNotificationService.send).toHaveBeenCalledWith(
+        'test@test.com',
+        'email-verification',
+        expect.objectContaining({ expiresInMinutes: 24 * 60 }),
+      );
+    });
+
+    it('still resolves registration when the verification email fails to send', async () => {
+      mockUsersService.findByEmail.mockResolvedValue(null);
+      mockUsersService.create.mockResolvedValue({
+        id: '1',
+        email: 'test@test.com',
+        role: Role.USER,
+        emailVerifiedAt: null,
+        createdAt,
+        updatedAt: createdAt,
+        profile: { fullName: 'Ada Obi' },
+      });
+      mockPrismaService.emailVerificationToken.create.mockResolvedValue({
+        id: 'verify-1',
+      });
+      mockNotificationService.send.mockRejectedValue(new Error('mail down'));
+
+      await expect(
+        service.register({
+          email: 'test@test.com',
+          password: 'password123',
+          fullName: 'Ada Obi',
+        }),
+      ).resolves.toBeDefined();
+
+      await new Promise(process.nextTick);
+
+      expect(mockNotificationService.send).toHaveBeenCalled();
     });
   });
 
@@ -552,6 +637,217 @@ describe('AuthService', () => {
 
       expect(mockUsersService.updatePasswordHash).not.toHaveBeenCalled();
       expect(mockPrismaService.refreshToken.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('also verifies the email, since the user has proven inbox ownership', async () => {
+      await service.confirmPasswordReset(dto);
+
+      expect(mockPrismaService.user.updateMany).toHaveBeenCalledWith({
+        where: { id: 'user-1', emailVerifiedAt: null },
+        data: { emailVerifiedAt: expect.any(Date) },
+      });
+    });
+
+    it('does not touch user.updateMany when no valid reset token matches', async () => {
+      mockPrismaService.passwordResetToken.findFirst.mockResolvedValue(null);
+
+      await expect(service.confirmPasswordReset(dto)).rejects.toThrow(
+        BadRequestException,
+      );
+
+      expect(mockPrismaService.user.updateMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('verifyEmail', () => {
+    const dto = { token: 'raw-verify-token' };
+    const expectedHash = createHash('sha256')
+      .update('raw-verify-token')
+      .digest('hex');
+
+    beforeEach(() => {
+      mockPrismaService.emailVerificationToken.findFirst.mockResolvedValue({
+        id: 'verify-1',
+        userId: 'user-1',
+      });
+      mockPrismaService.emailVerificationToken.updateMany.mockResolvedValue({
+        count: 1,
+      });
+      mockPrismaService.user.update.mockResolvedValue({ id: 'user-1' });
+    });
+
+    it('looks up an unused, unexpired token by the SHA-256 hash of the raw token', async () => {
+      await service.verifyEmail(dto);
+
+      expect(
+        mockPrismaService.emailVerificationToken.findFirst,
+      ).toHaveBeenCalledWith({
+        where: {
+          tokenHash: expectedHash,
+          usedAt: null,
+          expiresAt: { gt: expect.any(Date) },
+        },
+        select: { id: true, userId: true },
+      });
+    });
+
+    it('marks the token used only if it is still unused', async () => {
+      await service.verifyEmail(dto);
+
+      expect(
+        mockPrismaService.emailVerificationToken.updateMany,
+      ).toHaveBeenCalledWith({
+        where: { id: 'verify-1', usedAt: null },
+        data: { usedAt: expect.any(Date) },
+      });
+    });
+
+    it('sets emailVerifiedAt on the user', async () => {
+      await service.verifyEmail(dto);
+
+      expect(mockPrismaService.user.update).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        data: { emailVerifiedAt: expect.any(Date) },
+      });
+    });
+
+    it('runs the whole verification in one transaction', async () => {
+      await service.verifyEmail(dto);
+
+      expect(mockPrismaService.$transaction).toHaveBeenCalledTimes(1);
+    });
+
+    it('throws BadRequestException and changes nothing when no valid token matches', async () => {
+      mockPrismaService.emailVerificationToken.findFirst.mockResolvedValue(
+        null,
+      );
+
+      await expect(service.verifyEmail(dto)).rejects.toThrow(
+        BadRequestException,
+      );
+
+      expect(
+        mockPrismaService.emailVerificationToken.updateMany,
+      ).not.toHaveBeenCalled();
+      expect(mockPrismaService.user.update).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when a concurrent request used the token first', async () => {
+      mockPrismaService.emailVerificationToken.updateMany.mockResolvedValue({
+        count: 0,
+      });
+
+      await expect(service.verifyEmail(dto)).rejects.toThrow(
+        BadRequestException,
+      );
+
+      expect(mockPrismaService.user.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('resendVerificationEmail', () => {
+    const unverifiedUser = {
+      id: 'user-1',
+      email: 'dev@example.com',
+      emailVerifiedAt: null,
+    };
+
+    const sentData = () =>
+      mockNotificationService.send.mock.calls[0][2] as {
+        verificationUrl: string;
+        expiresInMinutes: number;
+      };
+
+    beforeEach(() => {
+      mockUsersService.findByEmail.mockResolvedValue(unverifiedUser);
+      mockPrismaService.emailVerificationToken.deleteMany.mockResolvedValue({
+        count: 0,
+      });
+      mockPrismaService.emailVerificationToken.create.mockResolvedValue({
+        id: 'verify-2',
+      });
+      mockNotificationService.send.mockResolvedValue(undefined);
+    });
+
+    it('does nothing for an unknown email and still resolves', async () => {
+      mockUsersService.findByEmail.mockResolvedValue(null);
+
+      await expect(
+        service.resendVerificationEmail({ email: 'nobody@example.com' }),
+      ).resolves.toBeUndefined();
+
+      expect(mockPrismaService.$transaction).not.toHaveBeenCalled();
+      expect(mockNotificationService.send).not.toHaveBeenCalled();
+    });
+
+    it('does nothing for an already-verified email and still resolves', async () => {
+      mockUsersService.findByEmail.mockResolvedValue({
+        ...unverifiedUser,
+        emailVerifiedAt: createdAt,
+      });
+
+      await expect(
+        service.resendVerificationEmail({ email: unverifiedUser.email }),
+      ).resolves.toBeUndefined();
+
+      expect(mockPrismaService.$transaction).not.toHaveBeenCalled();
+      expect(mockNotificationService.send).not.toHaveBeenCalled();
+    });
+
+    it("deletes the user's unused verification tokens and stores a new one in one transaction", async () => {
+      await service.resendVerificationEmail({ email: unverifiedUser.email });
+
+      expect(mockPrismaService.$transaction).toHaveBeenCalledTimes(1);
+      expect(
+        mockPrismaService.emailVerificationToken.deleteMany,
+      ).toHaveBeenCalledWith({
+        where: { userId: 'user-1', usedAt: null },
+      });
+      expect(
+        mockPrismaService.emailVerificationToken.create,
+      ).toHaveBeenCalledWith({
+        data: {
+          userId: 'user-1',
+          tokenHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+          expiresAt: expect.any(Date),
+        },
+      });
+    });
+
+    it('emails a verification link whose token hashes to the stored hash', async () => {
+      await service.resendVerificationEmail({ email: unverifiedUser.email });
+
+      expect(mockNotificationService.send).toHaveBeenCalledWith(
+        'dev@example.com',
+        'email-verification',
+        expect.objectContaining({ expiresInMinutes: 24 * 60 }),
+      );
+
+      const verifyUrl = new URL(sentData().verificationUrl);
+      const token = verifyUrl.searchParams.get('token')!;
+      const { data } = mockPrismaService.emailVerificationToken.create.mock
+        .calls[0][0] as { data: { tokenHash: string } };
+
+      expect(verifyUrl.origin + verifyUrl.pathname).toBe(
+        'http://localhost:5173/verify-email',
+      );
+      expect(token).toMatch(/^[0-9a-f]{64}$/);
+      expect(data.tokenHash).not.toBe(token);
+      expect(data.tokenHash).toBe(
+        createHash('sha256').update(token).digest('hex'),
+      );
+    });
+
+    it('still resolves when the email fails to send', async () => {
+      mockNotificationService.send.mockRejectedValue(new Error('smtp down'));
+
+      await expect(
+        service.resendVerificationEmail({ email: unverifiedUser.email }),
+      ).resolves.toBeUndefined();
+
+      await new Promise(process.nextTick);
+
+      expect(mockNotificationService.send).toHaveBeenCalled();
     });
   });
 });
