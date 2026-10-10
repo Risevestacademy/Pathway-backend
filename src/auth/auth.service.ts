@@ -21,10 +21,13 @@ import { RequestPasswordResetDto } from './dto/request-password-reset.dto';
 import { Role } from '../generated/prisma/enums';
 import { PrismaService } from '../prisma';
 import { NotificationService } from '../notifications';
+import { VerifyEmailDto } from './dto/verify-email.dto';
+import { ResendVerificationDto } from './dto/resend-verification.dto';
 
 type PrismaTransactionClient = Pick<PrismaService, 'refreshToken'>;
 
 const PASSWORD_RESET_TOKEN_TTL_MINUTES = 60;
+const EMAIL_VERIFICATION_TOKEN_TTL_MINUTES = 24 * 60;
 
 const hashToken = (token: string) =>
   createHash('sha256').update(token).digest('hex');
@@ -71,6 +74,23 @@ export class AuthService {
     const user = this.usersService.toUserResponse(createdUser);
 
     const tokens = await this.issueTokens(user);
+    const verificationToken = randomBytes(32).toString('hex');
+
+    await this.prisma.emailVerificationToken.create({
+      data: {
+        userId: createdUser.id,
+        tokenHash: hashToken(verificationToken),
+        expiresAt: new Date(
+          Date.now() + EMAIL_VERIFICATION_TOKEN_TTL_MINUTES * 60 * 1000,
+        ),
+      },
+    });
+
+    void this.sendEmailVerificationEmail(
+      createdUser.id,
+      createdUser.email,
+      verificationToken,
+    );
 
     this.logger.log({ userId: user.id }, 'User registered');
 
@@ -310,6 +330,12 @@ export class AuthService {
         data: { revokedAt: now },
       });
 
+      // Confirming a reset proves the user controls this inbox — treat it as verification too
+      await tx.user.updateMany({
+        where: { id: resetToken.userId, emailVerifiedAt: null },
+        data: { emailVerifiedAt: now },
+      });
+
       return resetToken.userId;
     });
 
@@ -386,5 +412,103 @@ export class AuthService {
       accessToken,
       refreshToken,
     };
+  }
+
+  private async sendEmailVerificationEmail(
+    userId: string,
+    email: string,
+    token: string,
+  ): Promise<void> {
+    try {
+      const verifyUrl = new URL(
+        this.configService.get<string>('EMAIL_VERIFICATION_URL')!,
+      );
+      verifyUrl.searchParams.set('token', token);
+
+      await this.notificationService.send(email, 'email-verification', {
+        verificationUrl: verifyUrl.toString(),
+        expiresInMinutes: EMAIL_VERIFICATION_TOKEN_TTL_MINUTES,
+      });
+
+      this.logger.log({ userId }, 'Email verification email sent');
+    } catch (error) {
+      this.logger.error(
+        { userId, err: error },
+        'Email verification email failed',
+      );
+    }
+  }
+
+  async verifyEmail(dto: VerifyEmailDto): Promise<void> {
+    const tokenHash = hashToken(dto.token);
+
+    const userId = await this.prisma.$transaction(async (tx) => {
+      const now = new Date();
+
+      const verificationToken = await tx.emailVerificationToken.findFirst({
+        where: { tokenHash, usedAt: null, expiresAt: { gt: now } },
+        select: { id: true, userId: true },
+      });
+
+      if (!verificationToken) {
+        throw this.emailVerificationFailed();
+      }
+
+      // Guard against two concurrent requests using the same token
+      const claimed = await tx.emailVerificationToken.updateMany({
+        where: { id: verificationToken.id, usedAt: null },
+        data: { usedAt: now },
+      });
+
+      if (claimed.count === 0) {
+        throw this.emailVerificationFailed();
+      }
+
+      await tx.user.update({
+        where: { id: verificationToken.userId },
+        data: { emailVerifiedAt: now },
+      });
+
+      return verificationToken.userId;
+    });
+
+    this.logger.log({ userId }, 'Email verified');
+  }
+
+  private emailVerificationFailed(): BadRequestException {
+    this.logger.warn('Email verification failed');
+    return new BadRequestException('Invalid or expired verification token');
+  }
+
+  async resendVerificationEmail(dto: ResendVerificationDto): Promise<void> {
+    const user = await this.usersService.findByEmail(dto.email);
+
+    // Same response whether the email is unknown or already verified — never reveal which
+    if (!user || user.emailVerifiedAt) {
+      this.logger.log(
+        'Resend verification requested for an unknown or already-verified email',
+      );
+      return;
+    }
+
+    const token = randomBytes(32).toString('hex');
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.emailVerificationToken.deleteMany({
+        where: { userId: user.id, usedAt: null },
+      });
+
+      await tx.emailVerificationToken.create({
+        data: {
+          userId: user.id,
+          tokenHash: hashToken(token),
+          expiresAt: new Date(
+            Date.now() + EMAIL_VERIFICATION_TOKEN_TTL_MINUTES * 60 * 1000,
+          ),
+        },
+      });
+    });
+
+    void this.sendEmailVerificationEmail(user.id, user.email, token);
   }
 }

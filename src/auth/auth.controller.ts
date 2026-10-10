@@ -23,6 +23,8 @@ import {
   RefreshTokenDto,
   RegisterDto,
   RequestPasswordResetDto,
+  VerifyEmailDto,
+  ResendVerificationDto,
 } from './dto';
 import { UserResponseDto } from '../users';
 import {
@@ -258,6 +260,32 @@ export class AuthController {
     @Body() dto: ConfirmPasswordResetDto,
   ): Promise<void> {
     await this.authService.confirmPasswordReset(dto);
+  }
+
+  @ApiOperation({ summary: "Verify a user's email address" })
+  @ApiResponse({ status: 204, description: 'Email verified.' })
+  @ApiResponse({
+    status: 400,
+    description: 'Verification token is invalid, expired or already used',
+  })
+  @AuthThrottle()
+  @Post('verify-email')
+  @HttpCode(204)
+  async verifyEmail(@Body() dto: VerifyEmailDto): Promise<void> {
+    await this.authService.verifyEmail(dto);
+  }
+
+  @ApiOperation({ summary: 'Resend the email verification link' })
+  @ApiResponse({
+    status: 204,
+    description:
+      'Always returned, whether or not an account exists or is already verified. A new link is emailed only when appropriate.',
+  })
+  @AuthThrottle()
+  @Post('resend-verification')
+  @HttpCode(204)
+  async resendVerification(@Body() dto: ResendVerificationDto): Promise<void> {
+    await this.authService.resendVerificationEmail(dto);
   }
 
   @ApiOperation({ summary: 'Get the signed-in user' })
