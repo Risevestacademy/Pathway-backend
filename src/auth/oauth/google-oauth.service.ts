@@ -21,14 +21,19 @@ export class GoogleOAuthService {
   constructor(private readonly configService: ConfigService) {}
 
   async verifyIdToken(idToken: string): Promise<GoogleProfile> {
-    const clientIdsEnv = this.configService.get<string>('GOOGLE_CLIENT_IDS');
+    const clientIdsEnv = this.configService.get<string | string[]>(
+      'GOOGLE_CLIENT_IDS',
+    );
 
-    const allowedAudiences = clientIdsEnv
-      ? clientIdsEnv
-          .split(',')
-          .map((id) => id.trim())
-          .filter(Boolean)
-      : [];
+    const allowedAudiences = (
+      Array.isArray(clientIdsEnv)
+        ? clientIdsEnv
+        : typeof clientIdsEnv === 'string'
+          ? clientIdsEnv.split(',')
+          : []
+    )
+      .map((id) => id.trim())
+      .filter(Boolean);
 
     if (allowedAudiences.length === 0) {
       throw new InternalServerErrorException('Google OAuth is not configured');

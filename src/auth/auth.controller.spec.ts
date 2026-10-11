@@ -5,7 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import type { Response } from 'express';
 import { AuthController } from './auth.controller';
 import { AuthService, AuthResult } from './auth.service';
-import { LoginDto, RegisterDto } from './dto';
+import { LoginDto, RegisterDto, GoogleAuthDto } from './dto';
 import type { AuthenticatedUser } from '../common';
 import type { UserResponse } from '../users';
 
@@ -13,6 +13,7 @@ type RegisterRequest = Parameters<AuthController['register']>[1];
 type LoginRequest = Parameters<AuthController['login']>[1];
 type RefreshRequest = Parameters<AuthController['refresh']>[0];
 type LogoutRequest = Parameters<AuthController['logout']>[0];
+type GoogleRequest = Parameters<AuthController['google']>[1];
 
 const requestWith = (platform?: string, cookies: object = {}) => ({
   get: () => platform,
@@ -36,6 +37,7 @@ describe('AuthController', () => {
   const mockAuthService = {
     register: jest.fn<() => Promise<AuthResult>>(),
     login: jest.fn<() => Promise<AuthResult>>(),
+    googleLogin: jest.fn<() => Promise<AuthResult>>(),
     refresh:
       jest.fn<() => Promise<{ accessToken: string; refreshToken: string }>>(),
     logout: jest.fn<() => Promise<void>>(),
@@ -220,6 +222,41 @@ describe('AuthController', () => {
       expect(result).toEqual({
         accessToken: 'access-token',
         refreshToken: 'refresh-token',
+        user: mockUser,
+      });
+    });
+  });
+
+  describe('google', () => {
+    const googleAuthDto: GoogleAuthDto = {
+      idToken: 'valid-google-id-token',
+    };
+
+    it('sets a refresh token cookie and returns user with accessToken for web client on google sign-in', async () => {
+      mockAuthService.googleLogin.mockResolvedValue({
+        user: mockUser,
+        tokens: {
+          accessToken: 'access-token',
+          refreshToken: 'refresh-token',
+        },
+      });
+
+      const result = await controller.google(
+        googleAuthDto,
+        requestWith() as unknown as GoogleRequest,
+        mockResponse as unknown as Response,
+      );
+
+      expect(mockAuthService.googleLogin).toHaveBeenCalledWith(
+        'valid-google-id-token',
+      );
+      expect(mockResponse.cookie).toHaveBeenCalledWith(
+        'refreshToken',
+        'refresh-token',
+        expect.objectContaining({ path: cookiePath }),
+      );
+      expect(result).toEqual({
+        accessToken: 'access-token',
         user: mockUser,
       });
     });

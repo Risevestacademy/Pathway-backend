@@ -1,12 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, UnauthorizedException } from '@nestjs/common';
 import request from 'supertest';
 
 import { AppModule } from '../src/app.module';
 import { apiPrefix as resolveApiPrefix, configureApp } from '../src/common';
 import { EnvironmentVariables } from '../src/config';
 import { PrismaService } from '../src/prisma';
+import { AuthService } from '../src/auth/auth.service';
 
 describe('AuthController (e2e)', () => {
   let app: INestApplication;
@@ -18,6 +19,7 @@ describe('AuthController (e2e)', () => {
   let apiPrefix: string;
   let prisma: PrismaService;
   let registeredUser: Record<string, unknown>;
+  let authService: AuthService;
 
   const userKeys = [
     'createdAt',
@@ -50,6 +52,7 @@ describe('AuthController (e2e)', () => {
 
     apiPrefix = `/${resolveApiPrefix(config)}`;
     prisma = app.get(PrismaService);
+    authService = app.get(AuthService);
 
     await app.init();
   });
@@ -201,6 +204,50 @@ describe('AuthController (e2e)', () => {
     expect(refreshCookie).toContain(`Path=${apiPrefix}/auth`);
 
     oldRefreshToken = refreshCookie!.split(';')[0].replace('refreshToken=', '');
+  });
+
+  describe('/auth/google (POST)', () => {
+    it('authenticates with Google successfully and sets a refresh cookie for web client', async () => {
+      jest.spyOn(authService, 'googleLogin').mockResolvedValueOnce({
+        user: registeredUser as Record<string, unknown>,
+        tokens: {
+          accessToken: 'google-access-token',
+          refreshToken: 'google-refresh-token',
+        },
+      });
+
+      const response = await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/google`)
+        .send({ idToken: 'valid-google-id-token' })
+        .expect(200);
+
+      expect(response.body.accessToken).toBe('google-access-token');
+      expect(response.body.user).toBeDefined();
+      expect(response.body.refreshToken).toBeUndefined();
+
+      const cookies = response.headers['set-cookie'];
+      expect(cookies).toBeDefined();
+
+      const refreshCookie = cookies.find((cookie: string) =>
+        cookie.startsWith('refreshToken='),
+      );
+      expect(refreshCookie).toBeDefined();
+      expect(refreshCookie).toContain(`Path=${apiPrefix}/auth`);
+    });
+
+    it('rejects an invalid or missing google id token', async () => {
+      // Ensure the mock throws a NestJS UnauthorizedException (which results in 401)
+      jest
+        .spyOn(authService, 'googleLogin')
+        .mockRejectedValueOnce(
+          new UnauthorizedException('Google ID token is invalid'),
+        );
+
+      await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/google`)
+        .send({ idToken: 'invalid-token' })
+        .expect(401);
+    });
   });
 
   it('/auth/me (GET) - authenticated', async () => {
