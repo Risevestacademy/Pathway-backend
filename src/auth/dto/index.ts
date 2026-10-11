@@ -8,3 +8,4 @@ export { ConfirmPasswordResetDto } from './confirm-password-reset.dto';
 export { RequestPasswordResetDto } from './request-password-reset.dto';
 export { VerifyEmailDto } from './verify-email.dto';
 export { ResendVerificationDto } from './resend-verification.dto';
+export { GoogleAuthDto } from './google-auth.dto';

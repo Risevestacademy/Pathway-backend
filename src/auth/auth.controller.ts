@@ -25,6 +25,7 @@ import {
   RequestPasswordResetDto,
   VerifyEmailDto,
   ResendVerificationDto,
+  GoogleAuthDto,
 } from './dto';
 import { UserResponseDto } from '../users';
 import {
@@ -133,6 +134,32 @@ export class AuthController {
     const platform = resolveClientPlatform(request);
 
     const { user, tokens } = await this.authService.login(dto);
+
+    return this.deliverTokens(response, platform, tokens, user);
+  }
+
+  @ApiOperation({ summary: 'Sign in with Google' })
+  @ApiResponse({
+    status: 200,
+    description: 'Google sign-in succeeded.',
+    type: AuthResponseDto,
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Google ID token is invalid or the email is not verified.',
+  })
+  @ApiHeader(CLIENT_PLATFORM_API_HEADER)
+  @AuthThrottle()
+  @Post('google')
+  @HttpCode(200)
+  async google(
+    @Body() dto: GoogleAuthDto,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const platform = resolveClientPlatform(request);
+
+    const { user, tokens } = await this.authService.googleLogin(dto.idToken);
 
     return this.deliverTokens(response, platform, tokens, user);
   }

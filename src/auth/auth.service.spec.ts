@@ -15,6 +15,7 @@ import { PrismaService } from '../prisma';
 import { NotificationService } from '../notifications';
 import { Role } from '../generated/prisma/enums';
 import * as bcrypt from 'bcrypt';
+import { GoogleOAuthService } from './oauth/google-oauth.service';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -25,6 +26,10 @@ describe('AuthService', () => {
     findById: jest.fn(),
     updatePasswordHash: jest.fn<(...args: unknown[]) => Promise<void>>(),
     toUserResponse: jest.fn(UsersService.prototype.toUserResponse),
+  };
+
+  const mockGoogleOAuthService = {
+    verifyIdToken: jest.fn(),
   };
 
   const createdAt = new Date('2026-10-01T09:00:00.000Z');
@@ -70,6 +75,8 @@ describe('AuthService', () => {
       updateMany: jest
         .fn<(args: unknown) => Promise<unknown>>()
         .mockResolvedValue({ count: 1 }),
+      findUnique: jest.fn<(args: unknown) => Promise<unknown>>(),
+      findUniqueOrThrow: jest.fn<(args: unknown) => Promise<unknown>>(),
     },
     $transaction: jest.fn((callback: (tx: unknown) => unknown) =>
       callback(mockPrismaService),
@@ -91,6 +98,7 @@ describe('AuthService', () => {
         { provide: ConfigService, useValue: mockConfigService },
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: NotificationService, useValue: mockNotificationService },
+        { provide: GoogleOAuthService, useValue: mockGoogleOAuthService },
       ],
     }).compile();
 
@@ -848,6 +856,247 @@ describe('AuthService', () => {
       await new Promise(process.nextTick);
 
       expect(mockNotificationService.send).toHaveBeenCalled();
+    });
+  });
+
+  describe('googleLogin', () => {
+    const validIdToken = 'valid-google-id-token';
+    const googleProfile = {
+      googleId: 'google-sub-123',
+      email: 'test@test.com',
+      emailVerified: true,
+      fullName: 'Ada Obi',
+      picture: 'https://example.com/pic.jpg',
+    };
+
+    beforeEach(() => {
+      // Default: return a valid profile unless overridden
+      mockGoogleOAuthService.verifyIdToken.mockResolvedValue(googleProfile);
+    });
+
+    it('should throw UnauthorizedException on invalid, expired, or wrong-audience token', async () => {
+      // Simulate verification failure
+      mockGoogleOAuthService.verifyIdToken.mockRejectedValue(
+        new UnauthorizedException('Invalid Google ID token'),
+      );
+
+      await expect(service.googleLogin('bad-token')).rejects.toThrow(
+        UnauthorizedException,
+      );
+    });
+
+    it('should throw UnauthorizedException when email_verified is false', async () => {
+      // If your service or GoogleOAuthService throws/handles email verification:
+      // (If verifyIdToken handles it, mock it returning emailVerified: false and throw,
+      // or if googleLogin checks it, ensure the profile reflects it)
+      mockGoogleOAuthService.verifyIdToken.mockResolvedValue({
+        ...googleProfile,
+        emailVerified: false,
+      });
+
+      // Note: If verifyIdToken itself throws for unverified emails,
+      // mock a rejection or ensure your logic handles it.
+      // Based on your previous code snippet, verifyIdToken checks `payload.email_verified !== true`
+      // and throws UnauthorizedException there.
+      mockGoogleOAuthService.verifyIdToken.mockRejectedValue(
+        new UnauthorizedException('Google account must have a verified email'),
+      );
+
+      await expect(service.googleLogin(validIdToken)).rejects.toThrow(
+        UnauthorizedException,
+      );
+    });
+
+    it('should sign in the linked user when a Google identity already exists', async () => {
+      const mockIdentity = {
+        provider: 'GOOGLE',
+        providerUserId: googleProfile.googleId,
+        user: {
+          id: 'user-1',
+          email: 'test@test.com',
+          role: Role.USER,
+          emailVerifiedAt: createdAt,
+          createdAt,
+          updatedAt: createdAt,
+          profile: { fullName: 'Ada Obi' },
+        },
+      };
+
+      mockPrismaService.authIdentity = {
+        findUnique: jest.fn().mockResolvedValue(mockIdentity),
+        create: jest.fn(),
+      } as unknown as typeof mockPrismaService.authIdentity;
+      mockPrismaService.user.findUnique = jest.fn();
+
+      const result = await service.googleLogin(validIdToken);
+
+      expect(result).toEqual({
+        user: {
+          id: 'user-1',
+          email: 'test@test.com',
+          role: Role.USER,
+          fullName: 'Ada Obi',
+          emailVerified: true,
+          createdAt,
+        },
+        tokens: {
+          accessToken: 'mock-token',
+          refreshToken: 'mock-token',
+        },
+      });
+      expect(mockPrismaService.refreshToken.create).toHaveBeenCalled();
+    });
+
+    it('should link identity, clear password, revoke refresh tokens, and remove pending tokens for an unverified local account', async () => {
+      const existingUnverifiedUser = {
+        id: 'user-1', // <-- Make sure id is defined here
+        email: 'test@test.com',
+        passwordHash: 'hashed-local-password',
+        emailVerifiedAt: null,
+      };
+
+      const updatedUser = {
+        ...existingUnverifiedUser,
+        passwordHash: null,
+        emailVerifiedAt: new Date(),
+        profile: { fullName: 'Ada Obi' },
+      };
+
+      mockPrismaService.authIdentity = {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({}),
+      } as unknown as typeof mockPrismaService.authIdentity;
+
+      // Ensure findUnique returns the user object with an ID
+      mockPrismaService.user.findUnique = jest
+        .fn()
+        .mockResolvedValue(existingUnverifiedUser);
+
+      mockPrismaService.user.findUniqueOrThrow = jest
+        .fn()
+        .mockResolvedValue(updatedUser);
+
+      await service.googleLogin(validIdToken);
+
+      expect(mockPrismaService.user.update).toHaveBeenCalledWith({
+        where: { id: existingUnverifiedUser.id },
+        data: {
+          passwordHash: null,
+          emailVerifiedAt: expect.any(Date),
+        },
+      });
+      expect(mockPrismaService.refreshToken.updateMany).toHaveBeenCalledWith({
+        where: { userId: existingUnverifiedUser.id, revokedAt: null },
+        data: { revokedAt: expect.any(Date) },
+      });
+      expect(
+        mockPrismaService.passwordResetToken.deleteMany,
+      ).toHaveBeenCalled();
+      expect(
+        mockPrismaService.emailVerificationToken.deleteMany,
+      ).toHaveBeenCalled();
+      expect(mockPrismaService.authIdentity.create).toHaveBeenCalled();
+    });
+
+    it('should link identity, clear password, revoke refresh tokens, and remove pending tokens for an unverified local account', async () => {
+      const existingUnverifiedUser = {
+        id: 'user-1',
+        email: 'test@test.com',
+        passwordHash: 'hashed-local-password',
+        emailVerifiedAt: null,
+      };
+
+      mockPrismaService.authIdentity = {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({}),
+      } as unknown as typeof mockPrismaService.authIdentity;
+      mockPrismaService.user.findUnique = jest
+        .fn()
+        .mockResolvedValueOnce(existingUnverifiedUser)
+        .mockResolvedValueOnce({
+          ...existingUnverifiedUser,
+          passwordHash: null,
+          emailVerifiedAt: new Date(),
+        });
+
+      await service.googleLogin(validIdToken);
+
+      expect(mockPrismaService.user.update).toHaveBeenCalledWith({
+        where: { id: existingUnverifiedUser.id },
+        data: {
+          passwordHash: null,
+          emailVerifiedAt: expect.any(Date),
+        },
+      });
+      expect(mockPrismaService.refreshToken.updateMany).toHaveBeenCalledWith({
+        where: { userId: existingUnverifiedUser.id, revokedAt: null },
+        data: { revokedAt: expect.any(Date) },
+      });
+      expect(
+        mockPrismaService.passwordResetToken.deleteMany,
+      ).toHaveBeenCalled();
+      expect(
+        mockPrismaService.emailVerificationToken.deleteMany,
+      ).toHaveBeenCalled();
+      expect(mockPrismaService.authIdentity.create).toHaveBeenCalled();
+    });
+
+    it('should create user, profile, and identity for a new Google user', async () => {
+      const newUser = {
+        id: 'new-user-1',
+        email: 'test@test.com',
+        role: Role.USER,
+        emailVerifiedAt: createdAt,
+        createdAt,
+        updatedAt: createdAt,
+        profile: { fullName: 'Ada Obi' },
+      };
+
+      mockPrismaService.authIdentity = {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn(),
+      } as unknown as typeof mockPrismaService.authIdentity;
+      mockPrismaService.user.findUnique = jest.fn().mockResolvedValue(null);
+      mockPrismaService.user.create = jest.fn().mockResolvedValue(newUser);
+
+      const result = await service.googleLogin(validIdToken);
+
+      expect(mockPrismaService.user.create).toHaveBeenCalledWith({
+        data: {
+          email: 'test@test.com',
+          passwordHash: null,
+          emailVerifiedAt: expect.any(Date),
+          profile: {
+            create: {
+              fullName: 'Ada Obi',
+            },
+          },
+          identities: {
+            create: {
+              provider: 'GOOGLE',
+              providerUserId: googleProfile.googleId,
+            },
+          },
+        },
+        include: { profile: true },
+      });
+      expect(result.user).toBeDefined();
+      expect(mockPrismaService.refreshToken.create).toHaveBeenCalled();
+    });
+
+    it('should throw ConflictException if the database uniqueness constraint (P2002) is triggered', async () => {
+      mockPrismaService.authIdentity = {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockRejectedValue({ code: 'P2002' }),
+      } as unknown as typeof mockPrismaService.authIdentity;
+      mockPrismaService.user.findUnique = jest.fn().mockResolvedValue(null);
+      mockPrismaService.user.create = jest
+        .fn()
+        .mockRejectedValue({ code: 'P2002' });
+
+      await expect(service.googleLogin(validIdToken)).rejects.toThrow(
+        ConflictException,
+      );
     });
   });
 });
