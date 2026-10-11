@@ -18,11 +18,12 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ConfirmPasswordResetDto } from './dto/confirm-password-reset.dto';
 import { RequestPasswordResetDto } from './dto/request-password-reset.dto';
-import { Role } from '../generated/prisma/enums';
+import { AuthProvider, Role } from '../generated/prisma/enums';
 import { PrismaService } from '../prisma';
 import { NotificationService } from '../notifications';
 import { VerifyEmailDto } from './dto/verify-email.dto';
 import { ResendVerificationDto } from './dto/resend-verification.dto';
+import { GoogleOAuthService } from './oauth/google-oauth.service';
 
 type PrismaTransactionClient = Pick<PrismaService, 'refreshToken'>;
 
@@ -53,6 +54,7 @@ export class AuthService {
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
     private readonly notificationService: NotificationService,
+    private readonly googleOAuthService: GoogleOAuthService,
   ) {}
 
   // Register a new user
@@ -235,6 +237,139 @@ export class AuthService {
     });
 
     this.logger.log({ userId: payload.sub }, 'User logged out');
+  }
+
+  // google login/signup
+  async googleLogin(idToken: string): Promise<AuthResult> {
+    const googleProfile = await this.googleOAuthService.verifyIdToken(idToken);
+
+    const email = googleProfile.email.trim().toLowerCase();
+    const now = new Date();
+
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        // The Google subject is the stable identity key.
+        const identity = await tx.authIdentity.findUnique({
+          where: {
+            provider_providerUserId: {
+              provider: AuthProvider.GOOGLE,
+              providerUserId: googleProfile.googleId,
+            },
+          },
+          include: {
+            user: { include: { profile: true } },
+          },
+        });
+
+        // An existing Google identity always resolves to its linked user.
+        if (identity) {
+          const tokens = await this.issueTokens(identity.user, tx);
+
+          return {
+            user: this.usersService.toUserResponse(identity.user),
+            tokens,
+          };
+        }
+
+        let user = await tx.user.findUnique({
+          where: { email },
+          include: { profile: true },
+        });
+
+        if (user) {
+          if (!user.emailVerifiedAt) {
+            // A verified Google identity takes over this unverified
+            // local account, so its old password must stop working.
+            await tx.user.update({
+              where: { id: user.id },
+              data: {
+                passwordHash: null,
+                emailVerifiedAt: now,
+              },
+            });
+
+            await tx.refreshToken.updateMany({
+              where: {
+                userId: user.id,
+                revokedAt: null,
+              },
+              data: { revokedAt: now },
+            });
+
+            await tx.passwordResetToken.deleteMany({
+              where: {
+                userId: user.id,
+                usedAt: null,
+              },
+            });
+
+            await tx.emailVerificationToken.deleteMany({
+              where: {
+                userId: user.id,
+                usedAt: null,
+              },
+            });
+
+            user = await tx.user.findUniqueOrThrow({
+              where: { id: user.id },
+              include: { profile: true },
+            });
+          }
+
+          // Verified local accounts keep their existing password.
+          await tx.authIdentity.create({
+            data: {
+              provider: AuthProvider.GOOGLE,
+              providerUserId: googleProfile.googleId,
+              userId: user.id,
+            },
+          });
+        } else {
+          // New Google account: user, profile and identity are atomic.
+          user = await tx.user.create({
+            data: {
+              email,
+              passwordHash: null,
+              emailVerifiedAt: now,
+              profile: {
+                create: {
+                  fullName: googleProfile.fullName,
+                },
+              },
+              identities: {
+                create: {
+                  provider: AuthProvider.GOOGLE,
+                  providerUserId: googleProfile.googleId,
+                },
+              },
+            },
+            include: { profile: true },
+          });
+        }
+
+        const tokens = await this.issueTokens(user, tx);
+
+        return {
+          user: this.usersService.toUserResponse(user),
+          tokens,
+        };
+      });
+    } catch (error) {
+      // The database's unique constraints protect against concurrent
+      // attempts to claim the same email or Google identity.
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          'Account or Google identity already exists; please retry',
+        );
+      }
+
+      throw error;
+    }
   }
 
   // Email a password reset link if the account exists
