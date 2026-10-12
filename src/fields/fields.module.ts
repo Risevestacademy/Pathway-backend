@@ -5,5 +5,6 @@ import { FieldsService } from './fields.service';
 @Module({
   controllers: [FieldsController],
   providers: [FieldsService],
+  exports: [FieldsService],
 })
 export class FieldsModule {}
