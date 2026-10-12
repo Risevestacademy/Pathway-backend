@@ -15,6 +15,7 @@ import { CareersModule } from './catalog/careers';
 import { PathwayStepsModule } from './catalog/pathway-steps';
 import { SkillsModule } from './skills';
 import { NotificationsModule } from './notifications/notifications.module';
+import { PathwaysModule } from './catalog/pathways/pathways.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     PathwayStepsModule,
     SkillsModule,
     NotificationsModule,
+    PathwaysModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
