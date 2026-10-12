@@ -4,7 +4,7 @@ import { CareerStatus } from '../../generated/prisma/client';
 import { PathwayMetadataDto } from './dto/pathway-metadata.dto';
 
 @Injectable()
-export class PathwayService {
+export class PathwaysService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getPathwayMetadata(pathwayId: string): Promise<PathwayMetadataDto> {
@@ -21,7 +21,12 @@ export class PathwayService {
         _count: { select: { steps: true } },
         steps: {
           orderBy: { order: 'asc' },
-          select: { id: true, title: true, order: true, description: true },
+          select: {
+            id: true,
+            title: true,
+            order: true,
+            description: true,
+          },
         },
       },
     });
@@ -31,12 +36,12 @@ export class PathwayService {
     }
 
     return {
-      id: '...',
-      careerId: '...',
-      title: '...',
-      description: '...',
-      stepCount: 5,
-      steps: [{ id: '...', title: '...', order: 1, description: '...' }],
+      id: pathway.id,
+      careerId: pathway.careerId,
+      title: pathway.title,
+      description: pathway.description,
+      stepCount: pathway._count.steps,
+      steps: pathway.steps,
     };
   }
 }
