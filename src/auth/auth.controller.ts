@@ -26,6 +26,7 @@ import {
   VerifyEmailDto,
   ResendVerificationDto,
   GoogleAuthDto,
+  RegisterResponseDto,
 } from './dto';
 import { UserResponseDto } from '../users';
 import {
@@ -63,22 +64,14 @@ export class AuthController {
     );
   }
 
-  @ApiOperation({ summary: 'Register a new user' })
+  // Register a new user and send a verification code
+  @ApiOperation({ summary: 'Register a new user and send a verification code' })
   @ApiResponse({
     status: 201,
     description:
-      'User registered successfully. Sets a refresh token cookie for web clients.',
-    type: AuthResponseDto,
-    headers: {
-      'Set-Cookie': {
-        description: 'HttpOnly refresh token cookie for web clients',
-        schema: {
-          type: 'string',
-          example:
-            'refreshToken=eyJhbGciOiJIUzI1Ni...; Path=/api/v1/auth; HttpOnly; SameSite=Lax',
-        },
-      },
-    },
+      'User created. A six-digit verification code has been emailed. No ' +
+      'authentication tokens are issued until the email is verified.',
+    type: RegisterResponseDto,
   })
   @ApiResponse({ status: 409, description: 'Email already registered' })
   @ApiResponse({
@@ -88,18 +81,11 @@ export class AuthController {
   @ApiHeader(CLIENT_PLATFORM_API_HEADER)
   @AuthThrottle()
   @Post('register')
-  async register(
-    @Body() dto: RegisterDto,
-    @Req() request: Request,
-    @Res({ passthrough: true }) response: Response,
-  ) {
-    const platform = resolveClientPlatform(request);
-
-    const { user, tokens } = await this.authService.register(dto);
-
-    return this.deliverTokens(response, platform, tokens, user);
+  async register(@Body() dto: RegisterDto): Promise<RegisterResponseDto> {
+    return this.authService.register(dto);
   }
 
+  // Login a user and issue authentication tokens
   @ApiOperation({ summary: 'Login a user' })
   @ApiResponse({
     status: 200,
@@ -117,10 +103,13 @@ export class AuthController {
       },
     },
   })
-  @ApiResponse({ status: 401, description: 'Invalid Credentials' })
   @ApiResponse({
     status: 400,
     description: 'Unsupported X-Client-Platform value',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Invalid credentials, or the email has not been verified.',
   })
   @ApiHeader(CLIENT_PLATFORM_API_HEADER)
   @AuthThrottle()
@@ -138,6 +127,7 @@ export class AuthController {
     return this.deliverTokens(response, platform, tokens, user);
   }
 
+  // Sign in with Google and issue authentication tokens
   @ApiOperation({ summary: 'Sign in with Google' })
   @ApiResponse({
     status: 200,
@@ -164,6 +154,7 @@ export class AuthController {
     return this.deliverTokens(response, platform, tokens, user);
   }
 
+  // Refresh the access token using a refresh token
   @ApiOperation({ summary: 'Refresh access token using refresh token' })
   @ApiResponse({
     status: 200,
@@ -212,6 +203,7 @@ export class AuthController {
     return this.deliverTokens(response, platform, tokens);
   }
 
+  // Logout a user and revoke all refresh tokens
   @ApiOperation({ summary: 'Logout a user' })
   @ApiResponse({
     status: 204,
@@ -253,6 +245,7 @@ export class AuthController {
     });
   }
 
+  // Request a password reset email
   @ApiOperation({ summary: 'Request a password reset email' })
   @ApiResponse({
     status: 204,
@@ -289,25 +282,54 @@ export class AuthController {
     await this.authService.confirmPasswordReset(dto);
   }
 
-  @ApiOperation({ summary: "Verify a user's email address" })
-  @ApiResponse({ status: 204, description: 'Email verified.' })
+  // Verify a user's email with a six-digit code
+  @ApiOperation({ summary: "Verify a user's email with a six-digit code" })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Email verified. Returns access (and for mobile, refresh) tokens, or ' +
+      'sets a refresh token cookie for web clients.',
+    type: AuthResponseDto,
+    headers: {
+      'Set-Cookie': {
+        description: 'HttpOnly refresh token cookie for web clients',
+        schema: {
+          type: 'string',
+          example:
+            'refreshToken=eyJhbGciOiJIUzI1Ni...; Path=/api/v1/auth; HttpOnly; SameSite=Lax',
+        },
+      },
+    },
+  })
   @ApiResponse({
     status: 400,
-    description: 'Verification token is invalid, expired or already used',
+    description: 'Verification code is invalid, expired or already used',
   })
+  @ApiHeader(CLIENT_PLATFORM_API_HEADER)
   @AuthThrottle()
   @Post('verify-email')
-  @HttpCode(204)
-  async verifyEmail(@Body() dto: VerifyEmailDto): Promise<void> {
-    await this.authService.verifyEmail(dto);
+  @HttpCode(200)
+  async verifyEmail(
+    @Body() dto: VerifyEmailDto,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const platform = resolveClientPlatform(request);
+
+    const { user, tokens } = await this.authService.verifyEmail(dto);
+
+    return this.deliverTokens(response, platform, tokens, user);
   }
 
-  @ApiOperation({ summary: 'Resend the email verification link' })
+  // Resend the email verification code
+  @ApiOperation({ summary: 'Resend the email verification code' })
   @ApiResponse({
     status: 204,
     description:
-      'Always returned, whether or not an account exists or is already verified. A new link is emailed only when appropriate.',
+      'Always returned, whether or not an account exists or is already ' +
+      'verified. A new six-digit code is emailed only when appropriate.',
   })
+  @ApiResponse({ status: 400, description: 'Email is missing or invalid' })
   @AuthThrottle()
   @Post('resend-verification')
   @HttpCode(204)

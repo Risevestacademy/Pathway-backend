@@ -310,10 +310,10 @@ export class AuthService {
               },
             });
 
-            await tx.emailVerificationToken.deleteMany({
+            await tx.emailVerificationOtp.deleteMany({
               where: {
                 userId: user.id,
-                usedAt: null,
+                consumedAt: null,
               },
             });
 
