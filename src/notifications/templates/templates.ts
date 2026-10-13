@@ -13,10 +13,6 @@ export const NOTIFICATION_TEMPLATES = {
     subject: 'Reset your Pathway password',
     file: 'password-reset',
   },
-  'email-verification': {
-    subject: 'Verify your Pathway email',
-    file: 'email-verification',
-  },
   'email-verification-otp': {
     subject: 'Your Pathway verification code',
     file: 'email-verification-otp',
