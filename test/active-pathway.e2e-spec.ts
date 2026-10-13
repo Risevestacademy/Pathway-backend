@@ -356,4 +356,51 @@ describe('Active pathway (e2e)', () => {
       expect(otherRows[0].careerId).toBe(careerWithPathwayId);
     });
   });
+
+  describe('GET /me/active-pathway auth and isolation', () => {
+    it('returns 401 with no token', async () => {
+      await request(app.getHttpServer()).get(activePathwayUrl()).expect(401);
+    });
+
+    it('returns 401 with a garbage token', async () => {
+      await request(app.getHttpServer())
+        .get(activePathwayUrl())
+        .set('Authorization', 'Bearer not-a-real-jwt')
+        .expect(401);
+    });
+
+    it("returns only the caller's own active pathway, not another user's", async () => {
+      const userA = await registerAndVerify(app, apiPrefix, {
+        email: `e2e-get-isolation-a-${Date.now()}@test.com`,
+      });
+      const userB = await registerAndVerify(app, apiPrefix, {
+        email: `e2e-get-isolation-b-${Date.now()}@test.com`,
+      });
+
+      await request(app.getHttpServer())
+        .put(activePathwayUrl())
+        .set('Authorization', `Bearer ${userA.accessToken}`)
+        .send({ careerId: careerWithPathwayId })
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .put(activePathwayUrl())
+        .set('Authorization', `Bearer ${userB.accessToken}`)
+        .send({ careerId: secondCareerWithPathwayId })
+        .expect(200);
+
+      const aResponse = await request(app.getHttpServer())
+        .get(activePathwayUrl())
+        .set('Authorization', `Bearer ${userA.accessToken}`)
+        .expect(200);
+
+      const bResponse = await request(app.getHttpServer())
+        .get(activePathwayUrl())
+        .set('Authorization', `Bearer ${userB.accessToken}`)
+        .expect(200);
+
+      expect(aResponse.body.career.id).toBe(careerWithPathwayId);
+      expect(bResponse.body.career.id).toBe(secondCareerWithPathwayId);
+    });
+  });
 });
