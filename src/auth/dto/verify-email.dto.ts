@@ -1,12 +1,24 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString } from 'class-validator';
+import { IsEmail, IsString, Length, Matches } from 'class-validator';
+import { NormalizeEmail } from '../decorators/normalize-email.decorator';
 
 export class VerifyEmailDto {
   @ApiProperty({
-    example: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08',
-    description: 'Verification token from the email verification link.',
+    example: 'user@example.com',
+    description: 'Email address of the account being verified.',
+  })
+  @NormalizeEmail()
+  @IsEmail()
+  email: string;
+
+  @ApiProperty({
+    example: '123456',
+    description: 'Six-digit verification code sent to the email address.',
+    minLength: 6,
+    maxLength: 6,
   })
   @IsString()
-  @IsNotEmpty()
-  token: string;
+  @Length(6, 6)
+  @Matches(/^\d{6}$/, { message: 'otp must be exactly 6 digits' })
+  otp: string;
 }

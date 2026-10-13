@@ -17,6 +17,10 @@ export const NOTIFICATION_TEMPLATES = {
     subject: 'Verify your Pathway email',
     file: 'email-verification',
   },
+  'email-verification-otp': {
+    subject: 'Your Pathway verification code',
+    file: 'email-verification-otp',
+  },
 } as const satisfies Record<string, NotificationTemplateDefinition>;
 
 export type NotificationTemplateName = keyof typeof NOTIFICATION_TEMPLATES;

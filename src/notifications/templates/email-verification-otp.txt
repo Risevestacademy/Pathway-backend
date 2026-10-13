@@ -1,0 +1,3 @@
+Your Pathway verification code is: {{otp}}
+
+The code expires in {{expiresInMinutes}} minutes. If you did not create a Pathway account, ignore this email.
