@@ -1,0 +1,41 @@
+import { Body, Controller, Get, Put, UseGuards } from '@nestjs/common';
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  type AuthenticatedUser,
+  CurrentUser,
+  JwtAuthGuard,
+} from '../../common';
+import { PathwaysService } from './pathways.service';
+import { SetActivePathwayDto } from './dto/set-active-pathway.dto';
+import { ActivePathwayResponseDto } from './dto/active-pathway-response.dto';
+
+@ApiTags('Me')
+@Controller('me')
+@UseGuards(JwtAuthGuard)
+export class MeController {
+  constructor(private readonly pathwaysService: PathwaysService) {}
+
+  @ApiOperation({ summary: "Set the signed-in user's active pathway" })
+  @ApiResponse({ status: 200, type: ActivePathwayResponseDto })
+  @ApiResponse({
+    status: 404,
+    description: 'Career does not exist or is not PUBLISHED',
+  })
+  @ApiResponse({ status: 409, description: 'The career has no pathway yet' })
+  @Put('active-pathway')
+  async setActivePathway(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: SetActivePathwayDto,
+  ): Promise<ActivePathwayResponseDto> {
+    return this.pathwaysService.setActivePathway(user.id, dto.careerId);
+  }
+
+  @ApiOperation({ summary: "Get the signed-in user's active pathway" })
+  @ApiResponse({ status: 200, type: ActivePathwayResponseDto })
+  @Get('active-pathway')
+  async getActivePathway(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ActivePathwayResponseDto> {
+    return this.pathwaysService.getActivePathway(user.id);
+  }
+}
