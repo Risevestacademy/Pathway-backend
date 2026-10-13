@@ -9,6 +9,11 @@ import { apiPrefix as resolveApiPrefix, configureApp } from '../src/common';
 import { EnvironmentVariables } from '../src/config';
 import { NotificationService } from '../src/notifications';
 import { PrismaService } from '../src/prisma';
+import {
+  notificationMock,
+  registerAndVerify,
+  wireNotificationMock,
+} from './utils/auth';
 
 describe('Password reset request (e2e)', () => {
   let app: INestApplication;
@@ -17,17 +22,12 @@ describe('Password reset request (e2e)', () => {
   let passwordResetUrl: string;
 
   let userId: string;
-
-  const email = `e2e-reset-request-${Date.now()}@test.com`;
-
-  const mockNotificationService = {
-    send: jest.fn().mockResolvedValue(undefined),
-  };
+  let email: string;
 
   const requestUrl = () => `${apiPrefix}/auth/password-reset/request`;
 
   const lastEmailedToken = (): string => {
-    const calls = mockNotificationService.send.mock.calls;
+    const calls = notificationMock.send.mock.calls;
     const { resetUrl } = calls[calls.length - 1][2] as { resetUrl: string };
 
     return new URL(resetUrl).searchParams.get('token')!;
@@ -41,11 +41,10 @@ describe('Password reset request (e2e)', () => {
       imports: [AppModule],
     })
       .overrideProvider(NotificationService)
-      .useValue(mockNotificationService)
+      .useValue(notificationMock)
       .compile();
 
     app = moduleFixture.createNestApplication();
-
     configureApp(app);
 
     const config =
@@ -58,13 +57,15 @@ describe('Password reset request (e2e)', () => {
 
     prisma = app.get(PrismaService);
 
-    const response = await request(app.getHttpServer())
-      .post(`${apiPrefix}/auth/register`)
-      .set('X-Client-Platform', 'mobile')
-      .send({ email, password: 'Password123!', fullName: 'Ada Obi' })
-      .expect(201);
+    wireNotificationMock();
 
-    userId = response.body.user.id;
+    const registered = await registerAndVerify(app, apiPrefix, {
+      email: `e2e-reset-request-${Date.now()}@test.com`,
+      platform: 'mobile',
+    });
+
+    userId = registered.id;
+    email = registered.email;
   });
 
   afterAll(async () => {
@@ -72,7 +73,11 @@ describe('Password reset request (e2e)', () => {
   });
 
   beforeEach(() => {
-    mockNotificationService.send.mockClear();
+    // Keep the password-reset send calls isolated per test, but do NOT
+    // clear the notification implementation — that's what captures OTPs
+    // during any future register in this suite. `clearAllMocks` only
+    // wipes call history, so it's safe.
+    notificationMock.send.mockClear();
   });
 
   it('returns 204 for an unknown email without sending anything', async () => {
@@ -82,7 +87,7 @@ describe('Password reset request (e2e)', () => {
       .expect(204);
 
     expect(response.body).toEqual({});
-    expect(mockNotificationService.send).not.toHaveBeenCalled();
+    expect(notificationMock.send).not.toHaveBeenCalled();
   });
 
   it('rejects an invalid email', async () => {
@@ -101,19 +106,20 @@ describe('Password reset request (e2e)', () => {
       .send({ email: email.toUpperCase() })
       .expect(204);
 
-    expect(mockNotificationService.send).toHaveBeenCalledWith(
+    expect(notificationMock.send).toHaveBeenCalledWith(
       email,
       'password-reset',
       expect.objectContaining({ expiresInMinutes: 60 }),
     );
 
     const token = lastEmailedToken();
-    const { resetUrl } = mockNotificationService.send.mock.calls[0][2] as {
+    const { resetUrl } = notificationMock.send.mock.calls[0][2] as {
       resetUrl: string;
     };
 
     expect(resetUrl).toBe(`${passwordResetUrl}?token=${token}`);
     expect(token).toMatch(/^[0-9a-f]{64}$/);
+
     const stored = await prisma.passwordResetToken.findMany({
       where: { userId },
     });

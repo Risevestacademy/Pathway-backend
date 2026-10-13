@@ -2,14 +2,17 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { INestApplication, UnauthorizedException } from '@nestjs/common';
 import request from 'supertest';
+import { createHash } from 'crypto';
 
-import { randomInt } from 'crypto';
 import { AppModule } from '../src/app.module';
 import { apiPrefix as resolveApiPrefix, configureApp } from '../src/common';
 import { EnvironmentVariables } from '../src/config';
 import { PrismaService } from '../src/prisma';
 import { AuthService } from '../src/auth/auth.service';
 import { NotificationService } from '../src/notifications';
+import { AuthProvider } from '../src/generated/prisma/enums';
+
+const sha256 = (v: string) => createHash('sha256').update(v).digest('hex');
 
 describe('AuthController (e2e)', () => {
   let app: INestApplication;
@@ -23,8 +26,8 @@ describe('AuthController (e2e)', () => {
   let registeredUser: Record<string, unknown>;
   let authService: AuthService;
 
-  // Capture OTPs as they leave the service so we don't need to reverse hashes.
   const capturedOtps = new Map<string, string>();
+  const capturedResets = new Map<string, string>();
   const realNotificationService = { send: jest.fn() };
 
   const userKeys = [
@@ -52,7 +55,6 @@ describe('AuthController (e2e)', () => {
   const login = (body: { email: string; password: string }) =>
     request(app.getHttpServer()).post(`${apiPrefix}/auth/login`).send(body);
 
-  /** Registers a user, pulls the OTP off the wire, and verifies them. */
   const registerAndVerify = async (
     email: string,
     password: string,
@@ -61,9 +63,7 @@ describe('AuthController (e2e)', () => {
     await register({ email, password, fullName }).expect(201);
 
     const otp = capturedOtps.get(email);
-    if (!otp) {
-      throw new Error(`No OTP captured for ${email}`);
-    }
+    if (!otp) throw new Error(`No OTP captured for ${email}`);
 
     return verifyEmail({ email, otp }).expect(200);
   };
@@ -72,13 +72,11 @@ describe('AuthController (e2e)', () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
-      // Intercept outbound notifications so we can read the OTP.
       .overrideProvider(NotificationService)
       .useValue(realNotificationService)
       .compile();
 
     app = moduleFixture.createNestApplication();
-
     configureApp(app);
 
     const config =
@@ -88,7 +86,6 @@ describe('AuthController (e2e)', () => {
     prisma = app.get(PrismaService);
     authService = app.get(AuthService);
 
-    // Route all notification sends into a fake that captures OTPs per email.
     realNotificationService.send.mockImplementation(
       async (
         email: string,
@@ -100,6 +97,14 @@ describe('AuthController (e2e)', () => {
           typeof data.otp === 'string'
         ) {
           capturedOtps.set(email, data.otp);
+        }
+        if (
+          template === 'password-reset' &&
+          typeof data.resetUrl === 'string'
+        ) {
+          const url = new URL(data.resetUrl);
+          const token = url.searchParams.get('token');
+          if (token) capturedResets.set(email, token);
         }
       },
     );
@@ -115,6 +120,9 @@ describe('AuthController (e2e)', () => {
     await app.close();
   });
 
+  // ──────────────────────────────────────────────────────────────
+  // /auth/register
+  // ──────────────────────────────────────────────────────────────
   describe('/auth/register (POST)', () => {
     it('creates an unverified user and returns an acknowledgement without tokens', async () => {
       const email = `e2e-register-${Date.now()}@test.com`;
@@ -131,11 +139,8 @@ describe('AuthController (e2e)', () => {
       expect(response.body.accessToken).toBeUndefined();
       expect(response.body.refreshToken).toBeUndefined();
       expect(response.headers['set-cookie']).toBeUndefined();
-
-      // Six-digit OTP was emailed.
       expect(capturedOtps.get(email)).toMatch(/^\d{6}$/);
 
-      // The user exists but is unverified.
       const user = await prisma.user.findUniqueOrThrow({ where: { email } });
       expect(user.emailVerifiedAt).toBeNull();
 
@@ -145,12 +150,46 @@ describe('AuthController (e2e)', () => {
       expect(profile?.fullName).toBe('Ada Obi');
     });
 
+    it('normalizes the email to lowercase', async () => {
+      const email = `E2E-CASE-${Date.now()}@TEST.COM`;
+      await register({ email, password: 'Password123!', fullName: 'A' }).expect(
+        201,
+      );
+
+      const user = await prisma.user.findUniqueOrThrow({
+        where: { email: email.toLowerCase() },
+      });
+      expect(user.email).toBe(email.toLowerCase());
+    });
+
     it('rejects a duplicate email', async () => {
       const email = `e2e-dup-${Date.now()}@test.com`;
       await register({ email, password: 'Password123!', fullName: 'A' }).expect(
         201,
       );
       await register({ email, password: 'Password123!', fullName: 'B' }).expect(
+        409,
+      );
+    });
+
+    it('rejects registering an email that already exists as a Google account', async () => {
+      const email = `e2e-google-dup-${Date.now()}@test.com`;
+      await prisma.user.create({
+        data: {
+          email,
+          passwordHash: null,
+          emailVerifiedAt: new Date(),
+          profile: { create: { fullName: 'Google User' } },
+          identities: {
+            create: {
+              provider: AuthProvider.GOOGLE,
+              providerUserId: `google-${Date.now()}`,
+            },
+          },
+        },
+      });
+
+      await register({ email, password: 'Password123!', fullName: 'A' }).expect(
         409,
       );
     });
@@ -175,6 +214,9 @@ describe('AuthController (e2e)', () => {
     );
   });
 
+  // ──────────────────────────────────────────────────────────────
+  // /auth/verify-email
+  // ──────────────────────────────────────────────────────────────
   describe('/auth/verify-email (POST)', () => {
     it('verifies with the correct OTP and returns tokens for a web client', async () => {
       const email = `e2e-verify-${Date.now()}@test.com`;
@@ -185,7 +227,6 @@ describe('AuthController (e2e)', () => {
       }).expect(201);
 
       const otp = capturedOtps.get(email)!;
-
       const response = await verifyEmail({ email, otp }).expect(200);
 
       expect(response.body.accessToken).toBeDefined();
@@ -212,7 +253,6 @@ describe('AuthController (e2e)', () => {
       }).expect(201);
 
       const otp = capturedOtps.get(email)!;
-
       const response = await request(app.getHttpServer())
         .post(`${apiPrefix}/auth/verify-email`)
         .set('X-Client-Platform', 'mobile')
@@ -222,17 +262,6 @@ describe('AuthController (e2e)', () => {
       expect(response.body.accessToken).toBeDefined();
       expect(response.body.refreshToken).toBeDefined();
       expect(response.headers['set-cookie']).toBeUndefined();
-    });
-
-    it('rejects a wrong OTP with 400', async () => {
-      const email = `e2e-verify-wrong-${Date.now()}@test.com`;
-      await register({
-        email,
-        password: 'Password123!',
-        fullName: 'Ada Obi',
-      }).expect(201);
-
-      await verifyEmail({ email, otp: '000000' }).expect(400);
     });
 
     it('rejects a wrong OTP with 400', async () => {
@@ -258,9 +287,38 @@ describe('AuthController (e2e)', () => {
       }).expect(201);
 
       const otp = capturedOtps.get(email)!;
-
       await verifyEmail({ email, otp }).expect(200);
       await verifyEmail({ email, otp }).expect(400);
+    });
+
+    it('rejects an expired OTP', async () => {
+      const email = `e2e-verify-expired-${Date.now()}@test.com`;
+      await register({
+        email,
+        password: 'Password123!',
+        fullName: 'Ada Obi',
+      }).expect(201);
+
+      const otp = capturedOtps.get(email)!;
+
+      // Force-expire the OTP row.
+      await prisma.emailVerificationOtp.updateMany({
+        where: { user: { email } },
+        data: { expiresAt: new Date(Date.now() - 1000) },
+      });
+
+      await verifyEmail({ email, otp }).expect(400);
+    });
+
+    it('rejects verification for an already-verified user', async () => {
+      const email = `e2e-verify-already-${Date.now()}@test.com`;
+      await registerAndVerify(email, 'Password123!');
+
+      // Grab the (now consumed) OTP from the map, or just send any code.
+      await verifyEmail({
+        email,
+        otp: capturedOtps.get(email) ?? '123456',
+      }).expect(400);
     });
 
     it('does not reveal whether the email exists', async () => {
@@ -281,6 +339,9 @@ describe('AuthController (e2e)', () => {
     });
   });
 
+  // ──────────────────────────────────────────────────────────────
+  // /auth/resend-verification
+  // ──────────────────────────────────────────────────────────────
   describe('/auth/resend-verification (POST)', () => {
     it('issues a fresh code and invalidates the previous one', async () => {
       const email = `e2e-resend-${Date.now()}@test.com`;
@@ -299,7 +360,6 @@ describe('AuthController (e2e)', () => {
 
       const secondOtp = capturedOtps.get(email)!;
 
-      // The previous code is now rejected, the new one succeeds.
       await verifyEmail({ email, otp: firstOtp }).expect(400);
       await verifyEmail({ email, otp: secondOtp }).expect(200);
     });
@@ -310,8 +370,41 @@ describe('AuthController (e2e)', () => {
         .send({ email: `nobody-${Date.now()}@test.com` })
         .expect(204);
     });
+
+    it('always returns 204 for an already-verified email', async () => {
+      const email = `e2e-resend-verified-${Date.now()}@test.com`;
+      await registerAndVerify(email, 'Password123!');
+
+      await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/resend-verification`)
+        .send({ email })
+        .expect(204);
+    });
+
+    it('does not issue a new OTP for an already-verified email', async () => {
+      const email = `e2e-resend-verified-2-${Date.now()}@test.com`;
+      await registerAndVerify(email, 'Password123!');
+
+      const before = await prisma.emailVerificationOtp.count({
+        where: { user: { email } },
+      });
+
+      await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/resend-verification`)
+        .send({ email })
+        .expect(204);
+
+      const after = await prisma.emailVerificationOtp.count({
+        where: { user: { email } },
+      });
+
+      expect(after).toBe(before);
+    });
   });
 
+  // ──────────────────────────────────────────────────────────────
+  // /auth/login
+  // ──────────────────────────────────────────────────────────────
   describe('/auth/login (POST)', () => {
     it('rejects an unverified account with 401 "Email not verified"', async () => {
       const email = `e2e-unverified-${Date.now()}@test.com`;
@@ -360,8 +453,204 @@ describe('AuthController (e2e)', () => {
 
       await login({ email, password: 'WrongPassword!' }).expect(401);
     });
+
+    it('rejects login for a Google-only account with no password set', async () => {
+      const email = `e2e-google-only-${Date.now()}@test.com`;
+      await prisma.user.create({
+        data: {
+          email,
+          passwordHash: null,
+          emailVerifiedAt: new Date(),
+          profile: { create: { fullName: 'Google Only' } },
+          identities: {
+            create: {
+              provider: AuthProvider.GOOGLE,
+              providerUserId: `google-${Date.now()}`,
+            },
+          },
+        },
+      });
+
+      await login({ email, password: 'Password123!' }).expect(401);
+    });
   });
 
+  // ──────────────────────────────────────────────────────────────
+  // /auth/password-reset/*
+  // ──────────────────────────────────────────────────────────────
+  describe('/auth/password-reset (POST)', () => {
+    it('request: always returns 204 for an unknown email (no enumeration)', async () => {
+      await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/password-reset/request`)
+        .send({ email: `nobody-${Date.now()}@test.com` })
+        .expect(204);
+    });
+
+    it('request: returns 204 and emails a reset link for a known email', async () => {
+      const email = `e2e-pwreset-${Date.now()}@test.com`;
+      await registerAndVerify(email, 'Password123!');
+
+      await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/password-reset/request`)
+        .send({ email })
+        .expect(204);
+
+      expect(capturedResets.get(email)).toBeDefined();
+    });
+
+    it('request: rejects a malformed email with 400', async () => {
+      const response = await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/password-reset/request`)
+        .send({ email: 'not-an-email' })
+        .expect(400);
+
+      expect(response.body.error).toBe('VALIDATION_ERROR');
+      expect(response.body.fields).toHaveProperty('email');
+    });
+
+    it('confirm: updates the password, auto-verifies, and revokes sessions', async () => {
+      const email = `e2e-pwreset-confirm-${Date.now()}@test.com`;
+      const oldPassword = 'Password123!';
+      const newPassword = 'NewPassword456!';
+
+      // Register but DO NOT verify — password reset should auto-verify.
+      await register({
+        email,
+        password: oldPassword,
+        fullName: 'Ada Obi',
+      }).expect(201);
+
+      // Issue a refresh token by logging in via a reset-free path? No —
+      // the user is unverified so login would fail. Instead, create a
+      // session directly.
+      const user = await prisma.user.findUniqueOrThrow({ where: { email } });
+      const sessionTokenHash = sha256('fake-session');
+      await prisma.refreshToken.create({
+        data: {
+          userId: user.id,
+          tokenHash: sessionTokenHash,
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        },
+      });
+
+      // Request a reset.
+      await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/password-reset/request`)
+        .send({ email })
+        .expect(204);
+
+      const token = capturedResets.get(email)!;
+
+      // Confirm the reset.
+      await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/password-reset/confirm`)
+        .send({ token, newPassword })
+        .expect(204);
+
+      // User is now verified and has the new password.
+      const updated = await prisma.user.findUniqueOrThrow({ where: { email } });
+      expect(updated.emailVerifiedAt).not.toBeNull();
+
+      // Old sessions revoked.
+      const live = await prisma.refreshToken.count({
+        where: { userId: user.id, revokedAt: null },
+      });
+      expect(live).toBe(0);
+
+      // Login with the new password works.
+      await login({ email, password: newPassword }).expect(200);
+
+      // Login with the old password fails.
+      await login({ email, password: oldPassword }).expect(401);
+    });
+
+    it('confirm: rejects a reused token', async () => {
+      const email = `e2e-pwreset-reuse-${Date.now()}@test.com`;
+      await registerAndVerify(email, 'Password123!');
+
+      await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/password-reset/request`)
+        .send({ email })
+        .expect(204);
+
+      const token = capturedResets.get(email)!;
+
+      await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/password-reset/confirm`)
+        .send({ token, newPassword: 'NewPassword456!' })
+        .expect(204);
+
+      await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/password-reset/confirm`)
+        .send({ token, newPassword: 'AnotherPassword789!' })
+        .expect(400);
+    });
+
+    it('confirm: rejects an expired token', async () => {
+      const email = `e2e-pwreset-expired-${Date.now()}@test.com`;
+      await registerAndVerify(email, 'Password123!');
+
+      await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/password-reset/request`)
+        .send({ email })
+        .expect(204);
+
+      await prisma.passwordResetToken.updateMany({
+        where: { user: { email } },
+        data: { expiresAt: new Date(Date.now() - 1000) },
+      });
+
+      const token = capturedResets.get(email)!;
+
+      await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/password-reset/confirm`)
+        .send({ token, newPassword: 'NewPassword456!' })
+        .expect(400);
+    });
+
+    it('confirm: rejects a garbage token', async () => {
+      await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/password-reset/confirm`)
+        .send({ token: 'not-a-real-token', newPassword: 'Password123!' })
+        .expect(400);
+    });
+
+    it('request: a new request invalidates the previous token', async () => {
+      const email = `e2e-pwreset-supersede-${Date.now()}@test.com`;
+      await registerAndVerify(email, 'Password123!');
+
+      await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/password-reset/request`)
+        .send({ email })
+        .expect(204);
+
+      const firstToken = capturedResets.get(email)!;
+
+      await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/password-reset/request`)
+        .send({ email })
+        .expect(204);
+
+      const secondToken = capturedResets.get(email)!;
+
+      expect(secondToken).not.toBe(firstToken);
+
+      // The first token must no longer work.
+      await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/password-reset/confirm`)
+        .send({ token: firstToken, newPassword: 'NewPassword456!' })
+        .expect(400);
+
+      await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/password-reset/confirm`)
+        .send({ token: secondToken, newPassword: 'NewPassword456!' })
+        .expect(204);
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────
+  // Authenticated session
+  // ──────────────────────────────────────────────────────────────
   describe('authenticated session', () => {
     beforeAll(async () => {
       const email = testUser.email;
@@ -393,6 +682,26 @@ describe('AuthController (e2e)', () => {
         .expect(401);
     });
 
+    it('/auth/me (GET) - garbage access token', async () => {
+      await request(app.getHttpServer())
+        .get(`${apiPrefix}/auth/me`)
+        .set('Authorization', 'Bearer not-a-real-jwt')
+        .expect(401);
+    });
+
+    it('/auth/me (GET) - access token for a deleted user', async () => {
+      const email = `e2e-me-deleted-${Date.now()}@test.com`;
+      const response = await registerAndVerify(email, 'Password123!');
+      const token = response.body.accessToken;
+
+      await prisma.user.delete({ where: { email } });
+
+      await request(app.getHttpServer())
+        .get(`${apiPrefix}/auth/me`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(401);
+    });
+
     it('/auth/refresh (POST) - rotates the refresh token', async () => {
       const response = await request(app.getHttpServer())
         .post(`${apiPrefix}/auth/refresh`)
@@ -419,6 +728,19 @@ describe('AuthController (e2e)', () => {
         .expect(401);
     });
 
+    it('/auth/refresh (POST) - garbage token is rejected', async () => {
+      await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/refresh`)
+        .set('Cookie', ['refreshToken=not-a-real-jwt'])
+        .expect(401);
+    });
+
+    it('/auth/refresh (POST) - missing cookie is rejected', async () => {
+      await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/refresh`)
+        .expect(401);
+    });
+
     it('/auth/logout (POST) - clears the cookie and revokes the token', async () => {
       await request(app.getHttpServer())
         .post(`${apiPrefix}/auth/logout`)
@@ -430,8 +752,18 @@ describe('AuthController (e2e)', () => {
         .set('Cookie', [`refreshToken=${refreshToken}`])
         .expect(401);
     });
+
+    it('/auth/logout (POST) - is idempotent for an unknown token', async () => {
+      await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/logout`)
+        .set('Cookie', ['refreshToken=not-a-real-jwt'])
+        .expect(204);
+    });
   });
 
+  // ──────────────────────────────────────────────────────────────
+  // Google login
+  // ──────────────────────────────────────────────────────────────
   describe('/auth/google (POST)', () => {
     it('authenticates with Google successfully and sets a refresh cookie for web clients', async () => {
       jest.spyOn(authService, 'googleLogin').mockResolvedValueOnce({
@@ -456,6 +788,26 @@ describe('AuthController (e2e)', () => {
       expect(refreshCookie).toContain(`Path=${apiPrefix}/auth`);
     });
 
+    it('returns tokens in the body for mobile clients', async () => {
+      jest.spyOn(authService, 'googleLogin').mockResolvedValueOnce({
+        user: registeredUser as never,
+        tokens: {
+          accessToken: 'google-access-token',
+          refreshToken: 'google-refresh-token',
+        },
+      });
+
+      const response = await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/google`)
+        .set('X-Client-Platform', 'mobile')
+        .send({ idToken: 'valid-google-id-token' })
+        .expect(200);
+
+      expect(response.body.accessToken).toBe('google-access-token');
+      expect(response.body.refreshToken).toBe('google-refresh-token');
+      expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
     it('rejects an invalid google id token', async () => {
       jest
         .spyOn(authService, 'googleLogin')
@@ -468,8 +820,21 @@ describe('AuthController (e2e)', () => {
         .send({ idToken: 'invalid-token' })
         .expect(401);
     });
+
+    it('rejects a missing idToken with 400', async () => {
+      const response = await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/google`)
+        .send({})
+        .expect(400);
+
+      expect(response.body.error).toBe('VALIDATION_ERROR');
+      expect(response.body.fields).toHaveProperty('idToken');
+    });
   });
 
+  // ──────────────────────────────────────────────────────────────
+  // Mobile clients
+  // ──────────────────────────────────────────────────────────────
   describe('mobile clients', () => {
     const mobileUser = {
       email: `e2e-mobile-${Date.now()}@test.com`,
@@ -485,7 +850,6 @@ describe('AuthController (e2e)', () => {
         .send({ ...mobileUser, fullName: 'Mobile User' })
         .expect(201);
 
-      // Still no tokens at register.
       expect(regResponse.body.accessToken).toBeUndefined();
       expect(regResponse.body.refreshToken).toBeUndefined();
 
@@ -555,6 +919,28 @@ describe('AuthController (e2e)', () => {
         .set('X-Client-Platform', 'desktop')
         .send({ refreshToken: mobileRefreshToken })
         .expect(400);
+    });
+
+    it('logout via body revokes the mobile refresh token', async () => {
+      const loginResponse = await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/login`)
+        .set('X-Client-Platform', 'mobile')
+        .send(mobileUser)
+        .expect(200);
+
+      const tokenToRevoke = loginResponse.body.refreshToken;
+
+      await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/logout`)
+        .set('X-Client-Platform', 'mobile')
+        .send({ refreshToken: tokenToRevoke })
+        .expect(204);
+
+      await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/refresh`)
+        .set('X-Client-Platform', 'mobile')
+        .send({ refreshToken: tokenToRevoke })
+        .expect(401);
     });
   });
 });

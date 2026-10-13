@@ -6,7 +6,13 @@ import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { apiPrefix as resolveApiPrefix, configureApp } from '../src/common';
 import { EnvironmentVariables } from '../src/config';
+import { NotificationService } from '../src/notifications';
 import { PrismaService } from '../src/prisma';
+import {
+  notificationMock,
+  registerAndVerify,
+  wireNotificationMock,
+} from './utils/auth';
 
 describe('Users (e2e)', () => {
   let app: INestApplication;
@@ -19,18 +25,6 @@ describe('Users (e2e)', () => {
 
   const password = 'Password123!';
 
-  const register = async (email: string) => {
-    const response = await request(app.getHttpServer())
-      .post(`${apiPrefix}/auth/register`)
-      .send({ email, password, fullName: 'Ada Obi' })
-      .expect(201);
-
-    return response.body as {
-      accessToken: string;
-      user: { id: string };
-    };
-  };
-
   const patchMe = () =>
     request(app.getHttpServer())
       .patch(`${apiPrefix}/users/me`)
@@ -39,7 +33,10 @@ describe('Users (e2e)', () => {
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(NotificationService)
+      .useValue(notificationMock)
+      .compile();
 
     app = moduleFixture.createNestApplication();
     configureApp(app);
@@ -51,12 +48,24 @@ describe('Users (e2e)', () => {
 
     await app.init();
 
-    const registration = await register(`e2e-profile-${Date.now()}@test.com`);
-    userId = registration.user.id;
-    accessToken = registration.accessToken;
+    wireNotificationMock();
 
-    const other = await register(`e2e-profile-other-${Date.now()}@test.com`);
-    otherUserId = other.user.id;
+    const registered = await registerAndVerify(app, apiPrefix, {
+      email: `e2e-profile-${Date.now()}@test.com`,
+      password,
+      fullName: 'Ada Obi',
+      platform: 'web',
+    });
+    userId = registered.id;
+    accessToken = registered.accessToken;
+
+    const other = await registerAndVerify(app, apiPrefix, {
+      email: `e2e-profile-other-${Date.now()}@test.com`,
+      password,
+      fullName: 'Ada Obi',
+      platform: 'web',
+    });
+    otherUserId = other.id;
   });
 
   afterAll(async () => {

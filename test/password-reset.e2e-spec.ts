@@ -7,7 +7,13 @@ import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { apiPrefix as resolveApiPrefix, configureApp } from '../src/common';
 import { EnvironmentVariables } from '../src/config';
+import { NotificationService } from '../src/notifications';
 import { PrismaService } from '../src/prisma';
+import {
+  notificationMock,
+  registerAndVerify,
+  wireNotificationMock,
+} from './utils/auth';
 
 describe('Password reset confirm (e2e)', () => {
   let app: INestApplication;
@@ -16,10 +22,10 @@ describe('Password reset confirm (e2e)', () => {
 
   let userId: string;
   let refreshToken: string;
+  let email: string;
 
   const oldPassword = 'Password123!';
   const newPassword = 'NewPassword456!';
-  const email = `e2e-reset-${Date.now()}@test.com`;
 
   const confirmUrl = () => `${apiPrefix}/auth/password-reset/confirm`;
 
@@ -42,10 +48,12 @@ describe('Password reset confirm (e2e)', () => {
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(NotificationService)
+      .useValue(notificationMock)
+      .compile();
 
     app = moduleFixture.createNestApplication();
-
     configureApp(app);
 
     apiPrefix = `/${resolveApiPrefix(
@@ -56,14 +64,18 @@ describe('Password reset confirm (e2e)', () => {
 
     prisma = app.get(PrismaService);
 
-    const response = await request(app.getHttpServer())
-      .post(`${apiPrefix}/auth/register`)
-      .set('X-Client-Platform', 'mobile')
-      .send({ email, password: oldPassword, fullName: 'Ada Obi' })
-      .expect(201);
+    wireNotificationMock();
 
-    userId = response.body.user.id;
-    refreshToken = response.body.refreshToken;
+    const registered = await registerAndVerify(app, apiPrefix, {
+      email: `e2e-reset-${Date.now()}@test.com`,
+      password: oldPassword,
+      fullName: 'Ada Obi',
+      platform: 'mobile',
+    });
+
+    userId = registered.id;
+    email = registered.email;
+    refreshToken = registered.refreshToken!;
   });
 
   afterAll(async () => {
