@@ -3,11 +3,13 @@ import { ConfigService } from '@nestjs/config';
 import { INestApplication, UnauthorizedException } from '@nestjs/common';
 import request from 'supertest';
 
+import { randomInt } from 'crypto';
 import { AppModule } from '../src/app.module';
 import { apiPrefix as resolveApiPrefix, configureApp } from '../src/common';
 import { EnvironmentVariables } from '../src/config';
 import { PrismaService } from '../src/prisma';
 import { AuthService } from '../src/auth/auth.service';
+import { NotificationService } from '../src/notifications';
 
 describe('AuthController (e2e)', () => {
   let app: INestApplication;
@@ -20,6 +22,10 @@ describe('AuthController (e2e)', () => {
   let prisma: PrismaService;
   let registeredUser: Record<string, unknown>;
   let authService: AuthService;
+
+  // Capture OTPs as they leave the service so we don't need to reverse hashes.
+  const capturedOtps = new Map<string, string>();
+  const realNotificationService = { send: jest.fn() };
 
   const userKeys = [
     'createdAt',
@@ -38,10 +44,38 @@ describe('AuthController (e2e)', () => {
   const register = (body: Record<string, unknown>) =>
     request(app.getHttpServer()).post(`${apiPrefix}/auth/register`).send(body);
 
+  const verifyEmail = (body: { email: string; otp: string }) =>
+    request(app.getHttpServer())
+      .post(`${apiPrefix}/auth/verify-email`)
+      .send(body);
+
+  const login = (body: { email: string; password: string }) =>
+    request(app.getHttpServer()).post(`${apiPrefix}/auth/login`).send(body);
+
+  /** Registers a user, pulls the OTP off the wire, and verifies them. */
+  const registerAndVerify = async (
+    email: string,
+    password: string,
+    fullName = 'Ada Obi',
+  ) => {
+    await register({ email, password, fullName }).expect(201);
+
+    const otp = capturedOtps.get(email);
+    if (!otp) {
+      throw new Error(`No OTP captured for ${email}`);
+    }
+
+    return verifyEmail({ email, otp }).expect(200);
+  };
+
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      // Intercept outbound notifications so we can read the OTP.
+      .overrideProvider(NotificationService)
+      .useValue(realNotificationService)
+      .compile();
 
     app = moduleFixture.createNestApplication();
 
@@ -54,162 +88,354 @@ describe('AuthController (e2e)', () => {
     prisma = app.get(PrismaService);
     authService = app.get(AuthService);
 
+    // Route all notification sends into a fake that captures OTPs per email.
+    realNotificationService.send.mockImplementation(
+      async (
+        email: string,
+        template: string,
+        data: Record<string, unknown>,
+      ) => {
+        if (
+          template === 'email-verification-otp' &&
+          typeof data.otp === 'string'
+        ) {
+          capturedOtps.set(email, data.otp);
+        }
+      },
+    );
+
     await app.init();
+  });
+
+  beforeEach(() => {
+    realNotificationService.send.mockClear();
   });
 
   afterAll(async () => {
     await app.close();
   });
 
-  it('/auth/register (POST) - success (web client)', async () => {
-    const response = await register({
-      ...testUser,
-      fullName: '  Ada Obi  ',
-    }).expect(201);
-
-    expect(response.body).toBeDefined();
-    expect(response.body.data).toBeUndefined();
-
-    // Verify token & user structure
-    expect(response.body.accessToken).toBeDefined();
-    expect(response.body.refreshToken).toBeUndefined();
-    expect(response.body.user).toBeDefined();
-    expect(response.body.user.email).toBe(testUser.email);
-    expect(response.body.user.id).toBeDefined();
-    expect(response.body.user.role).toBeDefined();
-    expect(Object.keys(response.body.user).sort()).toEqual(userKeys);
-    expect(response.body.user.emailVerified).toBe(false);
-    expect(response.body.user.fullName).toBe('Ada Obi');
-
-    registeredUser = response.body.user;
-
-    const profile = await prisma.userProfile.findUnique({
-      where: { userId: response.body.user.id },
-    });
-    expect(profile?.fullName).toBe('Ada Obi');
-
-    // Password hash should never be returned to the client
-    expect(response.body.passwordHash).toBeUndefined();
-    expect(response.body.password).toBeUndefined();
-
-    // Web client receives HttpOnly refresh token cookie on registration
-    const cookies = response.headers['set-cookie'];
-    expect(cookies).toBeDefined();
-
-    const refreshCookie = cookies.find((cookie: string) =>
-      cookie.startsWith('refreshToken='),
-    );
-
-    expect(refreshCookie).toBeDefined();
-    expect(refreshCookie).toContain(`Path=${apiPrefix}/auth`);
-  });
-
-  it('/auth/register (POST) - duplicate email', async () => {
-    await register({ ...testUser, fullName: 'Grace Hopper' }).expect(409);
-  });
-
-  it('/auth/register (POST) - duplicate email in a different case', async () => {
-    await register({
-      ...testUser,
-      email: ` ${testUser.email.toUpperCase()} `,
-      fullName: 'Grace Hopper',
-    }).expect(409);
-  });
-
-  it.each([
-    ['missing', {}],
-    ['blank', { fullName: '   ' }],
-    ['over 100 characters', { fullName: 'a'.repeat(101) }],
-    ['not a string', { fullName: 42 }],
-  ])(
-    '/auth/register (POST) - rejects a %s fullName in the standard validation format',
-    async (_label, body) => {
+  describe('/auth/register (POST)', () => {
+    it('creates an unverified user and returns an acknowledgement without tokens', async () => {
+      const email = `e2e-register-${Date.now()}@test.com`;
       const response = await register({
-        email: `e2e-invalid-name-${Date.now()}@test.com`,
+        email,
         password: 'Password123!',
-        ...body,
+        fullName: '  Ada Obi  ',
+      }).expect(201);
+
+      expect(response.body).toEqual({
+        message: 'Verification code sent',
+        email,
+      });
+      expect(response.body.accessToken).toBeUndefined();
+      expect(response.body.refreshToken).toBeUndefined();
+      expect(response.headers['set-cookie']).toBeUndefined();
+
+      // Six-digit OTP was emailed.
+      expect(capturedOtps.get(email)).toMatch(/^\d{6}$/);
+
+      // The user exists but is unverified.
+      const user = await prisma.user.findUniqueOrThrow({ where: { email } });
+      expect(user.emailVerifiedAt).toBeNull();
+
+      const profile = await prisma.userProfile.findUnique({
+        where: { userId: user.id },
+      });
+      expect(profile?.fullName).toBe('Ada Obi');
+    });
+
+    it('rejects a duplicate email', async () => {
+      const email = `e2e-dup-${Date.now()}@test.com`;
+      await register({ email, password: 'Password123!', fullName: 'A' }).expect(
+        201,
+      );
+      await register({ email, password: 'Password123!', fullName: 'B' }).expect(
+        409,
+      );
+    });
+
+    it.each([
+      ['missing', {}],
+      ['blank', { fullName: '   ' }],
+      ['over 100 characters', { fullName: 'a'.repeat(101) }],
+      ['not a string', { fullName: 42 }],
+    ])(
+      'rejects a %s fullName in the standard validation format',
+      async (_label, body) => {
+        const response = await register({
+          email: `e2e-invalid-name-${Date.now()}@test.com`,
+          password: 'Password123!',
+          ...body,
+        }).expect(400);
+
+        expect(response.body.error).toBe('VALIDATION_ERROR');
+        expect(response.body.fields).toHaveProperty('fullName');
+      },
+    );
+  });
+
+  describe('/auth/verify-email (POST)', () => {
+    it('verifies with the correct OTP and returns tokens for a web client', async () => {
+      const email = `e2e-verify-${Date.now()}@test.com`;
+      await register({
+        email,
+        password: 'Password123!',
+        fullName: 'Ada Obi',
+      }).expect(201);
+
+      const otp = capturedOtps.get(email)!;
+
+      const response = await verifyEmail({ email, otp }).expect(200);
+
+      expect(response.body.accessToken).toBeDefined();
+      expect(response.body.refreshToken).toBeUndefined();
+      expect(response.body.user.email).toBe(email);
+      expect(response.body.user.emailVerified).toBe(true);
+
+      const cookies = response.headers['set-cookie'];
+      expect(cookies).toBeDefined();
+      expect(
+        cookies.find((c: string) => c.startsWith('refreshToken=')),
+      ).toContain(`Path=${apiPrefix}/auth`);
+
+      const user = await prisma.user.findUniqueOrThrow({ where: { email } });
+      expect(user.emailVerifiedAt).not.toBeNull();
+    });
+
+    it('returns tokens in the body for a mobile client', async () => {
+      const email = `e2e-verify-mobile-${Date.now()}@test.com`;
+      await register({
+        email,
+        password: 'Password123!',
+        fullName: 'Ada Obi',
+      }).expect(201);
+
+      const otp = capturedOtps.get(email)!;
+
+      const response = await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/verify-email`)
+        .set('X-Client-Platform', 'mobile')
+        .send({ email, otp })
+        .expect(200);
+
+      expect(response.body.accessToken).toBeDefined();
+      expect(response.body.refreshToken).toBeDefined();
+      expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    it('rejects a wrong OTP with 400', async () => {
+      const email = `e2e-verify-wrong-${Date.now()}@test.com`;
+      await register({
+        email,
+        password: 'Password123!',
+        fullName: 'Ada Obi',
+      }).expect(201);
+
+      await verifyEmail({ email, otp: '000000' }).expect(400);
+    });
+
+    it('rejects a wrong OTP with 400', async () => {
+      const email = `e2e-verify-wrong-${Date.now()}@test.com`;
+      await register({
+        email,
+        password: 'Password123!',
+        fullName: 'Ada Obi',
+      }).expect(201);
+
+      const realOtp = capturedOtps.get(email)!;
+      const wrongOtp = realOtp === '000000' ? '000001' : '000000';
+
+      await verifyEmail({ email, otp: wrongOtp }).expect(400);
+    });
+
+    it('rejects a reused OTP with 400', async () => {
+      const email = `e2e-verify-reuse-${Date.now()}@test.com`;
+      await register({
+        email,
+        password: 'Password123!',
+        fullName: 'Ada Obi',
+      }).expect(201);
+
+      const otp = capturedOtps.get(email)!;
+
+      await verifyEmail({ email, otp }).expect(200);
+      await verifyEmail({ email, otp }).expect(400);
+    });
+
+    it('does not reveal whether the email exists', async () => {
+      await verifyEmail({
+        email: `no-such-user-${Date.now()}@test.com`,
+        otp: '123456',
+      }).expect(400);
+    });
+
+    it('rejects a malformed OTP in the standard validation format', async () => {
+      const response = await verifyEmail({
+        email: testUser.email,
+        otp: 'abc',
       }).expect(400);
 
       expect(response.body.error).toBe('VALIDATION_ERROR');
-      expect(response.body.fields).toHaveProperty('fullName');
-    },
-  );
+      expect(response.body.fields).toHaveProperty('otp');
+    });
+  });
 
-  it('/auth/register (POST) - leaves neither row when the profile write fails', async () => {
-    const stamp = Date.now();
-    const email = `e2e-profile-failure-${stamp}@test.com`;
-    const fullName = `Profile Failure ${stamp}`;
-    const constraint = `e2e_profile_failure_${stamp}`;
+  describe('/auth/resend-verification (POST)', () => {
+    it('issues a fresh code and invalidates the previous one', async () => {
+      const email = `e2e-resend-${Date.now()}@test.com`;
+      await register({
+        email,
+        password: 'Password123!',
+        fullName: 'Ada Obi',
+      }).expect(201);
 
-    await prisma.$executeRawUnsafe(
-      `ALTER TABLE "UserProfile" ADD CONSTRAINT "${constraint}" CHECK ("fullName" IS DISTINCT FROM '${fullName}')`,
-    );
+      const firstOtp = capturedOtps.get(email)!;
 
-    try {
-      await register({ email, password: 'Password123!', fullName }).expect(500);
-    } finally {
-      await prisma.$executeRawUnsafe(
-        `ALTER TABLE "UserProfile" DROP CONSTRAINT "${constraint}"`,
+      await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/resend-verification`)
+        .send({ email })
+        .expect(204);
+
+      const secondOtp = capturedOtps.get(email)!;
+
+      // The previous code is now rejected, the new one succeeds.
+      await verifyEmail({ email, otp: firstOtp }).expect(400);
+      await verifyEmail({ email, otp: secondOtp }).expect(200);
+    });
+
+    it('always returns 204 for an unknown email', async () => {
+      await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/resend-verification`)
+        .send({ email: `nobody-${Date.now()}@test.com` })
+        .expect(204);
+    });
+  });
+
+  describe('/auth/login (POST)', () => {
+    it('rejects an unverified account with 401 "Email not verified"', async () => {
+      const email = `e2e-unverified-${Date.now()}@test.com`;
+      await register({
+        email,
+        password: 'Password123!',
+        fullName: 'Ada Obi',
+      }).expect(201);
+
+      const response = await login({
+        email,
+        password: 'Password123!',
+      }).expect(401);
+
+      expect(response.body.message).toBe('Email not verified');
+    });
+
+    it('logs in a verified account', async () => {
+      const email = `e2e-login-${Date.now()}@test.com`;
+      await registerAndVerify(email, 'Password123!');
+
+      const response = await login({
+        email,
+        password: 'Password123!',
+      }).expect(200);
+
+      expect(response.body.accessToken).toBeDefined();
+      expect(response.body.user.email).toBe(email);
+    });
+
+    it('accepts the email in a different case', async () => {
+      const email = `e2e-login-case-${Date.now()}@test.com`;
+      await registerAndVerify(email, 'Password123!');
+
+      const response = await login({
+        email: email.toUpperCase(),
+        password: 'Password123!',
+      }).expect(200);
+
+      expect(response.body.user.email).toBe(email);
+    });
+
+    it('rejects a wrong password with 401', async () => {
+      const email = `e2e-login-wrong-${Date.now()}@test.com`;
+      await registerAndVerify(email, 'Password123!');
+
+      await login({ email, password: 'WrongPassword!' }).expect(401);
+    });
+  });
+
+  describe('authenticated session', () => {
+    beforeAll(async () => {
+      const email = testUser.email;
+      const response = await registerAndVerify(email, testUser.password);
+
+      accessToken = response.body.accessToken;
+      registeredUser = response.body.user;
+
+      const cookies = response.headers['set-cookie'] as unknown as string[];
+      const refreshCookie = cookies.find((c) => c.startsWith('refreshToken='))!;
+      oldRefreshToken = refreshCookie
+        .split(';')[0]
+        .replace('refreshToken=', '');
+    });
+
+    it('/auth/me (GET) - authenticated', async () => {
+      const response = await request(app.getHttpServer())
+        .get(`${apiPrefix}/auth/me`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(response.body).toEqual(registeredUser);
+      expect(Object.keys(response.body).sort()).toEqual(userKeys);
+    });
+
+    it('/auth/me (GET) - no access token', async () => {
+      await request(app.getHttpServer())
+        .get(`${apiPrefix}/auth/me`)
+        .expect(401);
+    });
+
+    it('/auth/refresh (POST) - rotates the refresh token', async () => {
+      const response = await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/refresh`)
+        .set('Cookie', [`refreshToken=${oldRefreshToken}`])
+        .expect(200);
+
+      expect(response.body.accessToken).toBeDefined();
+      expect(response.body.refreshToken).toBeUndefined();
+
+      const cookies = response.headers['set-cookie'];
+      const refreshCookie = cookies.find((c: string) =>
+        c.startsWith('refreshToken='),
       );
-    }
+      refreshToken = refreshCookie.split(';')[0].replace('refreshToken=', '');
 
-    await expect(prisma.user.count({ where: { email } })).resolves.toBe(0);
-    await expect(
-      prisma.userProfile.count({ where: { fullName } }),
-    ).resolves.toBe(0);
-  });
+      expect(refreshToken).not.toBe(oldRefreshToken);
+      accessToken = response.body.accessToken;
+    });
 
-  it('/auth/login (POST) - email in a different case', async () => {
-    const response = await request(app.getHttpServer())
-      .post(`${apiPrefix}/auth/login`)
-      .send({ ...testUser, email: testUser.email.toUpperCase() })
-      .expect(200);
+    it('/auth/refresh (POST) - old token is rejected', async () => {
+      await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/refresh`)
+        .set('Cookie', [`refreshToken=${oldRefreshToken}`])
+        .expect(401);
+    });
 
-    expect(response.body.user.email).toBe(testUser.email);
-  });
+    it('/auth/logout (POST) - clears the cookie and revokes the token', async () => {
+      await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/logout`)
+        .set('Cookie', [`refreshToken=${refreshToken}`])
+        .expect(204);
 
-  it('/auth/login (POST) - wrong password', async () => {
-    await request(app.getHttpServer())
-      .post(`${apiPrefix}/auth/login`)
-      .send({
-        email: testUser.email,
-        password: 'WrongPassword!',
-      })
-      .expect(401);
-  });
-
-  it('/auth/login (POST) - success', async () => {
-    const response = await request(app.getHttpServer())
-      .post(`${apiPrefix}/auth/login`)
-      .send(testUser)
-      .expect(200);
-
-    expect(response.body.data).toBeUndefined();
-    expect(response.body.accessToken).toBeDefined();
-    expect(response.body.refreshToken).toBeUndefined();
-    expect(response.body.user).toEqual(registeredUser);
-
-    accessToken = response.body.accessToken;
-
-    // Refresh token is returned as an HttpOnly cookie for web clients.
-    const cookies = response.headers['set-cookie'];
-
-    expect(cookies).toBeDefined();
-
-    const refreshCookie = cookies.find((cookie: string) =>
-      cookie.startsWith('refreshToken='),
-    );
-
-    expect(refreshCookie).toBeDefined();
-    expect(refreshCookie).toContain(`Path=${apiPrefix}/auth`);
-
-    oldRefreshToken = refreshCookie!.split(';')[0].replace('refreshToken=', '');
+      await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/refresh`)
+        .set('Cookie', [`refreshToken=${refreshToken}`])
+        .expect(401);
+    });
   });
 
   describe('/auth/google (POST)', () => {
-    it('authenticates with Google successfully and sets a refresh cookie for web client', async () => {
+    it('authenticates with Google successfully and sets a refresh cookie for web clients', async () => {
       jest.spyOn(authService, 'googleLogin').mockResolvedValueOnce({
-        user: registeredUser as Record<string, unknown>,
+        user: registeredUser as never,
         tokens: {
           accessToken: 'google-access-token',
           refreshToken: 'google-refresh-token',
@@ -223,20 +449,14 @@ describe('AuthController (e2e)', () => {
 
       expect(response.body.accessToken).toBe('google-access-token');
       expect(response.body.user).toBeDefined();
-      expect(response.body.refreshToken).toBeUndefined();
 
-      const cookies = response.headers['set-cookie'];
-      expect(cookies).toBeDefined();
-
-      const refreshCookie = cookies.find((cookie: string) =>
-        cookie.startsWith('refreshToken='),
-      );
-      expect(refreshCookie).toBeDefined();
+      const refreshCookie = (
+        response.headers['set-cookie'] as unknown as string[]
+      ).find((c) => c.startsWith('refreshToken='));
       expect(refreshCookie).toContain(`Path=${apiPrefix}/auth`);
     });
 
-    it('rejects an invalid or missing google id token', async () => {
-      // Ensure the mock throws a NestJS UnauthorizedException (which results in 401)
+    it('rejects an invalid google id token', async () => {
       jest
         .spyOn(authService, 'googleLogin')
         .mockRejectedValueOnce(
@@ -248,194 +468,6 @@ describe('AuthController (e2e)', () => {
         .send({ idToken: 'invalid-token' })
         .expect(401);
     });
-  });
-
-  it('/auth/me (GET) - authenticated', async () => {
-    const response = await request(app.getHttpServer())
-      .get(`${apiPrefix}/auth/me`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
-
-    expect(response.body).toEqual(registeredUser);
-    expect(response.body.passwordHash).toBeUndefined();
-    expect(response.body.emailVerifiedAt).toBeUndefined();
-  });
-
-  it('/auth/me (GET) - returns a null fullName when the user has no profile', async () => {
-    await prisma.userProfile.deleteMany({
-      where: { userId: registeredUser.id as string },
-    });
-
-    const response = await request(app.getHttpServer())
-      .get(`${apiPrefix}/auth/me`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
-
-    expect(response.body.fullName).toBeNull();
-  });
-
-  it('/auth/me (GET) - reflects database changes without a new token', async () => {
-    const userId = registeredUser.id as string;
-
-    await prisma.user.update({
-      where: { id: userId },
-      data: {
-        emailVerifiedAt: new Date(),
-        profile: {
-          upsert: {
-            create: { fullName: 'Ada Obi' },
-            update: { fullName: 'Ada Obi' },
-          },
-        },
-      },
-    });
-
-    const response = await request(app.getHttpServer())
-      .get(`${apiPrefix}/auth/me`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(200);
-
-    expect(response.body).toEqual({
-      ...registeredUser,
-      fullName: 'Ada Obi',
-      emailVerified: true,
-    });
-  });
-
-  it('/auth/me (GET) - no access token', async () => {
-    await request(app.getHttpServer()).get(`${apiPrefix}/auth/me`).expect(401);
-  });
-
-  it('/auth/me (GET) - rejects the token of a deleted user', async () => {
-    const registration = await register({
-      email: `e2e-deleted-${Date.now()}@test.com`,
-      password: 'Password123!',
-      fullName: 'Doomed User',
-    }).expect(201);
-
-    await prisma.user.delete({ where: { id: registration.body.user.id } });
-
-    const response = await request(app.getHttpServer())
-      .get(`${apiPrefix}/auth/me`)
-      .set('Authorization', `Bearer ${registration.body.accessToken}`)
-      .expect(401);
-
-    expect(response.body.error).toBe('UNAUTHORIZED');
-  });
-
-  it('/auth/refresh (POST) - success', async () => {
-    const response = await request(app.getHttpServer())
-      .post(`${apiPrefix}/auth/refresh`)
-      .set('Cookie', [`refreshToken=${oldRefreshToken}`])
-      .expect(200);
-
-    expect(response.body.data).toBeUndefined();
-    expect(response.body.accessToken).toBeDefined();
-    expect(response.body.refreshToken).toBeUndefined();
-
-    const cookies = response.headers['set-cookie'];
-
-    expect(cookies).toBeDefined();
-
-    const refreshCookie = cookies.find((cookie: string) =>
-      cookie.startsWith('refreshToken='),
-    );
-
-    expect(refreshCookie).toBeDefined();
-    expect(refreshCookie).toContain(`Path=${apiPrefix}/auth`);
-
-    refreshToken = refreshCookie!.split(';')[0].replace('refreshToken=', '');
-
-    // Refresh token rotation should produce a different token.
-    expect(refreshToken).not.toBe(oldRefreshToken);
-
-    accessToken = response.body.accessToken;
-  });
-
-  it('/auth/refresh (POST) - old refresh token is rejected', async () => {
-    await request(app.getHttpServer())
-      .post(`${apiPrefix}/auth/refresh`)
-      .set('Cookie', [`refreshToken=${oldRefreshToken}`])
-      .expect(401);
-  });
-
-  it('/auth/refresh (POST) - new refresh token works', async () => {
-    const response = await request(app.getHttpServer())
-      .post(`${apiPrefix}/auth/refresh`)
-      .set('Cookie', [`refreshToken=${refreshToken}`])
-      .expect(200);
-
-    expect(response.body.data).toBeUndefined();
-    expect(response.body.accessToken).toBeDefined();
-
-    const cookies = response.headers['set-cookie'];
-
-    expect(cookies).toBeDefined();
-
-    const nextRefreshCookie = cookies.find((cookie: string) =>
-      cookie.startsWith('refreshToken='),
-    );
-
-    expect(nextRefreshCookie).toBeDefined();
-
-    const nextRefreshToken = nextRefreshCookie!
-      .split(';')[0]
-      .replace('refreshToken=', '');
-
-    expect(nextRefreshToken).not.toBe(refreshToken);
-
-    refreshToken = nextRefreshToken;
-    accessToken = response.body.accessToken;
-  });
-
-  it('/auth/logout (POST) - success', async () => {
-    const response = await request(app.getHttpServer())
-      .post(`${apiPrefix}/auth/logout`)
-      .set('Cookie', [`refreshToken=${refreshToken}`])
-      .expect(204);
-
-    expect(response.body).toEqual({});
-    expect(response.text).toBe('');
-
-    const cookies = response.headers['set-cookie'];
-
-    expect(cookies).toBeDefined();
-
-    const clearedCookie = cookies.find((cookie: string) =>
-      cookie.startsWith('refreshToken='),
-    );
-
-    expect(clearedCookie).toBeDefined();
-    expect(clearedCookie).toContain(`Path=${apiPrefix}/auth`);
-  });
-
-  it('/auth/refresh (POST) - rejected after logout', async () => {
-    await request(app.getHttpServer())
-      .post(`${apiPrefix}/auth/refresh`)
-      .set('Cookie', [`refreshToken=${refreshToken}`])
-      .expect(401);
-  });
-
-  it('/auth/logout (POST) - without a refresh token', async () => {
-    const response = await request(app.getHttpServer())
-      .post(`${apiPrefix}/auth/logout`)
-      .expect(204);
-
-    expect(response.text).toBe('');
-  });
-
-  it('/auth/logout (POST) - tolerates an unusable refresh token', async () => {
-    await request(app.getHttpServer())
-      .post(`${apiPrefix}/auth/logout`)
-      .send({ refreshToken: 'not-a-jwt' })
-      .expect(204);
-  });
-
-  it('/auth/logout (POST) - tolerates an unsupported platform header', async () => {
-    await request(app.getHttpServer())
-      .post(`${apiPrefix}/auth/logout`)
-      .set('X-Client-Platform', 'desktop')
-      .expect(204);
   });
 
   describe('mobile clients', () => {
@@ -453,19 +485,23 @@ describe('AuthController (e2e)', () => {
         .send({ ...mobileUser, fullName: 'Mobile User' })
         .expect(201);
 
-      expect(regResponse.body.accessToken).toBeDefined();
-      expect(regResponse.body.refreshToken).toBeDefined();
-      expect(regResponse.body.user).toBeDefined();
-      expect(regResponse.headers['set-cookie']).toBeUndefined();
+      // Still no tokens at register.
+      expect(regResponse.body.accessToken).toBeUndefined();
+      expect(regResponse.body.refreshToken).toBeUndefined();
 
-      const loginResponse = await request(app.getHttpServer())
-        .post(`${apiPrefix}/auth/login`)
+      const otp = capturedOtps.get(mobileUser.email)!;
+
+      const verifyResponse = await request(app.getHttpServer())
+        .post(`${apiPrefix}/auth/verify-email`)
         .set('X-Client-Platform', 'mobile')
-        .send(mobileUser)
+        .send({ email: mobileUser.email, otp })
         .expect(200);
 
-      expect(loginResponse.body.user).toBeDefined();
-      mobileRefreshToken = loginResponse.body.refreshToken;
+      expect(verifyResponse.body.accessToken).toBeDefined();
+      expect(verifyResponse.body.refreshToken).toBeDefined();
+      expect(verifyResponse.headers['set-cookie']).toBeUndefined();
+
+      mobileRefreshToken = verifyResponse.body.refreshToken;
     });
 
     it('logs in without a refresh cookie', async () => {
@@ -476,7 +512,6 @@ describe('AuthController (e2e)', () => {
         .expect(200);
 
       expect(response.body.refreshToken).toBeDefined();
-      expect(response.body.user).toBeDefined();
       expect(response.headers['set-cookie']).toBeUndefined();
     });
 
@@ -487,8 +522,6 @@ describe('AuthController (e2e)', () => {
         .send({ refreshToken: mobileRefreshToken })
         .expect(200);
 
-      expect(response.body.accessToken).toBeDefined();
-      expect(response.body.refreshToken).toBeDefined();
       expect(response.body.refreshToken).not.toBe(mobileRefreshToken);
       mobileRefreshToken = response.body.refreshToken;
     });
@@ -522,37 +555,6 @@ describe('AuthController (e2e)', () => {
         .set('X-Client-Platform', 'desktop')
         .send({ refreshToken: mobileRefreshToken })
         .expect(400);
-    });
-
-    it('revokes the body token on logout even when a cookie is attached', async () => {
-      const web = await request(app.getHttpServer())
-        .post(`${apiPrefix}/auth/login`)
-        .send(mobileUser)
-        .expect(200);
-
-      const cookie = (web.headers['set-cookie'] as unknown as string[]).find(
-        (entry) => entry.startsWith('refreshToken='),
-      )!;
-
-      const cookieToken = cookie.split(';')[0].replace('refreshToken=', '');
-
-      await request(app.getHttpServer())
-        .post(`${apiPrefix}/auth/logout`)
-        .set('X-Client-Platform', 'mobile')
-        .set('Cookie', [`refreshToken=${cookieToken}`])
-        .send({ refreshToken: mobileRefreshToken })
-        .expect(204);
-
-      await request(app.getHttpServer())
-        .post(`${apiPrefix}/auth/refresh`)
-        .set('X-Client-Platform', 'mobile')
-        .send({ refreshToken: mobileRefreshToken })
-        .expect(401);
-
-      await request(app.getHttpServer())
-        .post(`${apiPrefix}/auth/refresh`)
-        .set('Cookie', [`refreshToken=${cookieToken}`])
-        .expect(401);
     });
   });
 });

@@ -5,15 +5,15 @@ import { ConfigService } from '@nestjs/config';
 import type { Response } from 'express';
 import { AuthController } from './auth.controller';
 import { AuthService, AuthResult } from './auth.service';
-import { LoginDto, RegisterDto, GoogleAuthDto } from './dto';
+import { LoginDto, RegisterDto, GoogleAuthDto, VerifyEmailDto } from './dto';
 import type { AuthenticatedUser } from '../common';
 import type { UserResponse } from '../users';
 
-type RegisterRequest = Parameters<AuthController['register']>[1];
 type LoginRequest = Parameters<AuthController['login']>[1];
 type RefreshRequest = Parameters<AuthController['refresh']>[0];
 type LogoutRequest = Parameters<AuthController['logout']>[0];
 type GoogleRequest = Parameters<AuthController['google']>[1];
+type VerifyEmailRequest = Parameters<AuthController['verifyEmail']>[1];
 
 const requestWith = (platform?: string, cookies: object = {}) => ({
   get: () => platform,
@@ -30,13 +30,15 @@ describe('AuthController', () => {
     email: 'dev@example.com',
     role: 'USER',
     fullName: 'Ada Obi',
-    emailVerified: false,
+    emailVerified: true,
     createdAt: new Date('2026-10-01T09:00:00.000Z'),
   };
 
   const mockAuthService = {
-    register: jest.fn<() => Promise<AuthResult>>(),
+    register: jest.fn<() => Promise<{ message: string; email: string }>>(),
     login: jest.fn<() => Promise<AuthResult>>(),
+    verifyEmail: jest.fn<() => Promise<AuthResult>>(),
+    resendVerificationEmail: jest.fn<() => Promise<void>>(),
     googleLogin: jest.fn<() => Promise<AuthResult>>(),
     refresh:
       jest.fn<() => Promise<{ accessToken: string; refreshToken: string }>>(),
@@ -85,72 +87,35 @@ describe('AuthController', () => {
       fullName: 'Ada Obi',
     };
 
-    it('sets a refresh token cookie and returns user with accessToken for web client', async () => {
+    it('delegates registration to AuthService and returns the acknowledgement body', async () => {
       mockAuthService.register.mockResolvedValue({
-        user: mockUser,
-        tokens: {
-          accessToken: 'access-token',
-          refreshToken: 'refresh-token',
-        },
+        message: 'Verification code sent',
+        email: 'dev@example.com',
       });
 
-      const result = await controller.register(
-        registerDto,
-        requestWith() as unknown as RegisterRequest,
-        mockResponse as unknown as Response,
-      );
+      const result = await controller.register(registerDto);
 
-      expect(mockResponse.cookie).toHaveBeenCalledWith(
-        'refreshToken',
-        'refresh-token',
-        expect.objectContaining({ path: cookiePath }),
-      );
+      expect(mockAuthService.register).toHaveBeenCalledWith(registerDto);
       expect(result).toEqual({
-        accessToken: 'access-token',
-        user: mockUser,
+        message: 'Verification code sent',
+        email: 'dev@example.com',
       });
     });
 
-    it('sets the refresh cookie lifetime from JWT_REFRESH_EXPIRY', async () => {
+    it('does not issue tokens or set a cookie at registration', async () => {
       mockAuthService.register.mockResolvedValue({
-        user: mockUser,
-        tokens: { accessToken: 'access-token', refreshToken: 'refresh-token' },
+        message: 'Verification code sent',
+        email: 'dev@example.com',
       });
 
-      await controller.register(
-        registerDto,
-        requestWith() as unknown as RegisterRequest,
-        mockResponse as unknown as Response,
-      );
+      const result = (await controller.register(registerDto)) as unknown as {
+        accessToken?: string;
+        refreshToken?: string;
+      };
 
-      expect(mockResponse.cookie).toHaveBeenCalledWith(
-        'refreshToken',
-        'refresh-token',
-        expect.objectContaining({ maxAge: 30 * 24 * 60 * 60 * 1000 }),
-      );
-    });
-
-    it('returns both tokens and user without setting cookie for mobile client', async () => {
-      mockAuthService.register.mockResolvedValue({
-        user: mockUser,
-        tokens: {
-          accessToken: 'access-token',
-          refreshToken: 'refresh-token',
-        },
-      });
-
-      const result = await controller.register(
-        registerDto,
-        requestWith('mobile') as unknown as RegisterRequest,
-        mockResponse as unknown as Response,
-      );
-
+      expect(result.accessToken).toBeUndefined();
+      expect(result.refreshToken).toBeUndefined();
       expect(mockResponse.cookie).not.toHaveBeenCalled();
-      expect(result).toEqual({
-        accessToken: 'access-token',
-        refreshToken: 'refresh-token',
-        user: mockUser,
-      });
     });
   });
 
@@ -224,6 +189,90 @@ describe('AuthController', () => {
         refreshToken: 'refresh-token',
         user: mockUser,
       });
+    });
+
+    it('propagates the unverified-email rejection from AuthService', async () => {
+      mockAuthService.login.mockRejectedValue(
+        new UnauthorizedException('Email not verified'),
+      );
+
+      await expect(
+        controller.login(
+          loginDto,
+          requestWith() as unknown as LoginRequest,
+          mockResponse as unknown as Response,
+        ),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe('verifyEmail', () => {
+    const verifyDto: VerifyEmailDto = {
+      email: 'dev@example.com',
+      otp: '123456',
+    };
+
+    it('delegates to AuthService and issues tokens for a web client', async () => {
+      mockAuthService.verifyEmail.mockResolvedValue({
+        user: mockUser,
+        tokens: {
+          accessToken: 'access-token',
+          refreshToken: 'refresh-token',
+        },
+      });
+
+      const result = await controller.verifyEmail(
+        verifyDto,
+        requestWith() as unknown as VerifyEmailRequest,
+        mockResponse as unknown as Response,
+      );
+
+      expect(mockAuthService.verifyEmail).toHaveBeenCalledWith(verifyDto);
+      expect(mockResponse.cookie).toHaveBeenCalledWith(
+        'refreshToken',
+        'refresh-token',
+        expect.objectContaining({ path: cookiePath }),
+      );
+      expect(result).toEqual({
+        accessToken: 'access-token',
+        user: mockUser,
+      });
+    });
+
+    it('returns both tokens and the user for a mobile client without a cookie', async () => {
+      mockAuthService.verifyEmail.mockResolvedValue({
+        user: mockUser,
+        tokens: {
+          accessToken: 'access-token',
+          refreshToken: 'refresh-token',
+        },
+      });
+
+      const result = await controller.verifyEmail(
+        verifyDto,
+        requestWith('mobile') as unknown as VerifyEmailRequest,
+        mockResponse as unknown as Response,
+      );
+
+      expect(mockResponse.cookie).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        accessToken: 'access-token',
+        refreshToken: 'refresh-token',
+        user: mockUser,
+      });
+    });
+  });
+
+  describe('resendVerification', () => {
+    it('delegates to AuthService and returns no body', async () => {
+      mockAuthService.resendVerificationEmail.mockResolvedValue();
+
+      const dto = { email: 'dev@example.com' };
+
+      const result = await controller.resendVerification(dto);
+
+      expect(mockAuthService.resendVerificationEmail).toHaveBeenCalledWith(dto);
+      expect(result).toBeUndefined();
     });
   });
 
