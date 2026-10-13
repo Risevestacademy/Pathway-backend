@@ -1,8 +1,8 @@
+import { NotificationService } from '../src/notifications';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { Controller, Get, INestApplication, UseGuards } from '@nestjs/common';
 import request from 'supertest';
-
 import { AppModule } from '../src/app.module';
 import {
   apiPrefix as resolveApiPrefix,
@@ -14,6 +14,11 @@ import {
 import { EnvironmentVariables } from '../src/config';
 import { Role } from '../src/generated/prisma/enums';
 import { PrismaService } from '../src/prisma';
+import {
+  notificationMock,
+  registerAndVerify,
+  wireNotificationMock,
+} from './utils/auth';
 
 @Controller('e2e-admin-probe')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -38,15 +43,6 @@ describe('RolesGuard (e2e)', () => {
 
   const password = 'Password123!';
 
-  const register = async (email: string) => {
-    const response = await request(app.getHttpServer())
-      .post(`${apiPrefix}/auth/register`)
-      .send({ email, password, fullName: 'Ada Obi' })
-      .expect(201);
-
-    return response.body as { accessToken: string; user: { id: string } };
-  };
-
   const login = async (email: string) => {
     const response = await request(app.getHttpServer())
       .post(`${apiPrefix}/auth/login`)
@@ -63,7 +59,10 @@ describe('RolesGuard (e2e)', () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
       controllers: [AdminProbeController],
-    }).compile();
+    })
+      .overrideProvider(NotificationService)
+      .useValue(notificationMock)
+      .compile();
 
     app = moduleFixture.createNestApplication();
     configureApp(app);
@@ -75,13 +74,27 @@ describe('RolesGuard (e2e)', () => {
 
     await app.init();
 
-    const user = await register(`e2e-roles-user-${Date.now()}@test.com`);
-    userId = user.user.id;
+    wireNotificationMock();
+
+    // Regular USER.
+    const user = await registerAndVerify(app, apiPrefix, {
+      email: `e2e-roles-user-${Date.now()}@test.com`,
+      password,
+      fullName: 'Ada Obi',
+      platform: 'web',
+    });
+    userId = user.id;
     userToken = user.accessToken;
 
+    // Second user, promoted to ADMIN below.
     adminEmail = `e2e-roles-admin-${Date.now()}@test.com`;
-    const admin = await register(adminEmail);
-    adminId = admin.user.id;
+    const admin = await registerAndVerify(app, apiPrefix, {
+      email: adminEmail,
+      password,
+      fullName: 'Admin Obi',
+      platform: 'web',
+    });
+    adminId = admin.id;
     preAdminToken = admin.accessToken;
 
     await prisma.user.update({

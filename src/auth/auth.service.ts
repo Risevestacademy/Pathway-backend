@@ -9,7 +9,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
-import { createHash, randomBytes, randomUUID } from 'crypto';
+import { createHash, randomBytes, randomInt, randomUUID } from 'crypto';
 import { StringValue } from 'ms';
 import ms from 'ms';
 import { UsersService, type UserResponse } from '../users';
@@ -28,7 +28,8 @@ import { GoogleOAuthService } from './oauth/google-oauth.service';
 type PrismaTransactionClient = Pick<PrismaService, 'refreshToken'>;
 
 const PASSWORD_RESET_TOKEN_TTL_MINUTES = 60;
-const EMAIL_VERIFICATION_TOKEN_TTL_MINUTES = 24 * 60;
+const OTP_TTL_MINUTES = 15;
+const OTP_MAX_ATTEMPTS = 5;
 
 const hashToken = (token: string) =>
   createHash('sha256').update(token).digest('hex');
@@ -58,7 +59,9 @@ export class AuthService {
   ) {}
 
   // Register a new user
-  async register(dto: RegisterDto): Promise<AuthResult> {
+  async register(
+    dto: RegisterDto,
+  ): Promise<{ message: string; email: string }> {
     const existingUser = await this.usersService.findByEmail(dto.email);
 
     if (existingUser) {
@@ -73,33 +76,29 @@ export class AuthService {
       fullName: dto.fullName,
     });
 
-    const user = this.usersService.toUserResponse(createdUser);
+    const otp = this.generateOtp();
 
-    const tokens = await this.issueTokens(user);
-    const verificationToken = randomBytes(32).toString('hex');
+    await this.prisma.$transaction(async (tx) => {
+      // Only one live OTP per user at a time.
+      await tx.emailVerificationOtp.updateMany({
+        where: { userId: createdUser.id, consumedAt: null },
+        data: { consumedAt: new Date() },
+      });
 
-    await this.prisma.emailVerificationToken.create({
-      data: {
-        userId: createdUser.id,
-        tokenHash: hashToken(verificationToken),
-        expiresAt: new Date(
-          Date.now() + EMAIL_VERIFICATION_TOKEN_TTL_MINUTES * 60 * 1000,
-        ),
-      },
+      await tx.emailVerificationOtp.create({
+        data: {
+          userId: createdUser.id,
+          codeHash: this.hashOtp(otp),
+          expiresAt: new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000),
+        },
+      });
     });
 
-    void this.sendEmailVerificationEmail(
-      createdUser.id,
-      createdUser.email,
-      verificationToken,
-    );
+    void this.sendEmailVerificationOtp(createdUser.id, createdUser.email, otp);
 
-    this.logger.log({ userId: user.id }, 'User registered');
+    this.logger.log({ userId: createdUser.id }, 'User registered');
 
-    return {
-      user,
-      tokens,
-    };
+    return { message: 'Verification code sent', email: createdUser.email };
   }
 
   // Login a user
@@ -114,6 +113,14 @@ export class AuthService {
       this.logger.warn({ email: dto.email }, 'Login failed');
 
       throw new UnauthorizedException('Invalid credentials');
+    }
+
+    if (!user.emailVerifiedAt) {
+      this.logger.warn(
+        { userId: user.id },
+        'Login blocked: email not verified',
+      );
+      throw new UnauthorizedException('Email not verified');
     }
 
     this.logger.log({ userId: user.id }, 'Login succeeded');
@@ -303,10 +310,10 @@ export class AuthService {
               },
             });
 
-            await tx.emailVerificationToken.deleteMany({
+            await tx.emailVerificationOtp.deleteMany({
               where: {
                 userId: user.id,
-                usedAt: null,
+                consumedAt: null,
               },
             });
 
@@ -549,76 +556,106 @@ export class AuthService {
     };
   }
 
-  private async sendEmailVerificationEmail(
+  private async sendEmailVerificationOtp(
     userId: string,
     email: string,
-    token: string,
+    otp: string,
   ): Promise<void> {
     try {
-      const verifyUrl = new URL(
-        this.configService.get<string>('EMAIL_VERIFICATION_URL')!,
-      );
-      verifyUrl.searchParams.set('token', token);
-
-      await this.notificationService.send(email, 'email-verification', {
-        verificationUrl: verifyUrl.toString(),
-        expiresInMinutes: EMAIL_VERIFICATION_TOKEN_TTL_MINUTES,
+      await this.notificationService.send(email, 'email-verification-otp', {
+        otp,
+        expiresInMinutes: OTP_TTL_MINUTES,
       });
 
-      this.logger.log({ userId }, 'Email verification email sent');
+      this.logger.log({ userId }, 'Email verification OTP sent');
     } catch (error) {
       this.logger.error(
         { userId, err: error },
-        'Email verification email failed',
+        'Email verification OTP send failed',
       );
     }
   }
 
-  async verifyEmail(dto: VerifyEmailDto): Promise<void> {
-    const tokenHash = hashToken(dto.token);
+  private generateOtp(): string {
+    // randomInt is cryptographically secure; Math.random is not.
+    // Zero-padding keeps codes a fixed 6 digits (e.g. 000042).
+    return randomInt(0, 1_000_000).toString().padStart(6, '0');
+  }
 
-    const userId = await this.prisma.$transaction(async (tx) => {
-      const now = new Date();
+  private hashOtp(otp: string): string {
+    return hashToken(otp);
+  }
 
-      const verificationToken = await tx.emailVerificationToken.findFirst({
-        where: { tokenHash, usedAt: null, expiresAt: { gt: now } },
-        select: { id: true, userId: true },
+  async verifyEmail(dto: VerifyEmailDto): Promise<AuthResult> {
+    const user = await this.usersService.findByEmail(dto.email);
+
+    if (!user || user.emailVerifiedAt) {
+      throw this.emailVerificationFailed();
+    }
+
+    const now = new Date();
+    const codeHash = this.hashOtp(dto.otp);
+
+    return this.prisma.$transaction(async (tx) => {
+      const row = await tx.emailVerificationOtp.findFirst({
+        where: { userId: user.id, consumedAt: null, expiresAt: { gt: now } },
+        orderBy: { createdAt: 'desc' },
       });
 
-      if (!verificationToken) {
+      if (!row || row.attempts >= OTP_MAX_ATTEMPTS) {
+        if (row && row.attempts >= OTP_MAX_ATTEMPTS) {
+          await tx.emailVerificationOtp.update({
+            where: { id: row.id },
+            data: { consumedAt: now },
+          });
+        }
         throw this.emailVerificationFailed();
       }
 
-      // Guard against two concurrent requests using the same token
-      const claimed = await tx.emailVerificationToken.updateMany({
-        where: { id: verificationToken.id, usedAt: null },
-        data: { usedAt: now },
-      });
-
-      if (claimed.count === 0) {
+      if (row.codeHash !== codeHash) {
+        const nextAttempts = row.attempts + 1;
+        await tx.emailVerificationOtp.update({
+          where: { id: row.id },
+          data: {
+            attempts: nextAttempts,
+            ...(nextAttempts >= OTP_MAX_ATTEMPTS ? { consumedAt: now } : {}),
+          },
+        });
         throw this.emailVerificationFailed();
       }
+
+      // Correct code — consume this and any other live OTPs, mark verified.
+      await tx.emailVerificationOtp.updateMany({
+        where: { userId: user.id, consumedAt: null },
+        data: { consumedAt: now },
+      });
 
       await tx.user.update({
-        where: { id: verificationToken.userId },
+        where: { id: user.id },
         data: { emailVerifiedAt: now },
       });
 
-      return verificationToken.userId;
-    });
+      const verifiedUser = { ...user, emailVerifiedAt: now };
 
-    this.logger.log({ userId }, 'Email verified');
+      const tokens = await this.issueTokens(verifiedUser, tx);
+
+      this.logger.log({ userId: user.id }, 'Email verified');
+
+      return {
+        user: this.usersService.toUserResponse(verifiedUser),
+        tokens,
+      };
+    });
   }
 
   private emailVerificationFailed(): BadRequestException {
     this.logger.warn('Email verification failed');
-    return new BadRequestException('Invalid or expired verification token');
+    return new BadRequestException('Invalid or expired verification code');
   }
 
   async resendVerificationEmail(dto: ResendVerificationDto): Promise<void> {
     const user = await this.usersService.findByEmail(dto.email);
 
-    // Same response whether the email is unknown or already verified — never reveal which
     if (!user || user.emailVerifiedAt) {
       this.logger.log(
         'Resend verification requested for an unknown or already-verified email',
@@ -626,24 +663,23 @@ export class AuthService {
       return;
     }
 
-    const token = randomBytes(32).toString('hex');
+    const otp = this.generateOtp();
 
     await this.prisma.$transaction(async (tx) => {
-      await tx.emailVerificationToken.deleteMany({
-        where: { userId: user.id, usedAt: null },
+      await tx.emailVerificationOtp.updateMany({
+        where: { userId: user.id, consumedAt: null },
+        data: { consumedAt: new Date() },
       });
 
-      await tx.emailVerificationToken.create({
+      await tx.emailVerificationOtp.create({
         data: {
           userId: user.id,
-          tokenHash: hashToken(token),
-          expiresAt: new Date(
-            Date.now() + EMAIL_VERIFICATION_TOKEN_TTL_MINUTES * 60 * 1000,
-          ),
+          codeHash: this.hashOtp(otp),
+          expiresAt: new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000),
         },
       });
     });
 
-    void this.sendEmailVerificationEmail(user.id, user.email, token);
+    void this.sendEmailVerificationOtp(user.id, user.email, otp);
   }
 }

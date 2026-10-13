@@ -111,7 +111,7 @@ model User {
   identities              AuthIdentity[]
   refreshTokens           RefreshToken[]
   passwordResetTokens     PasswordResetToken[]
-  emailVerificationTokens EmailVerificationToken[]
+  emailVerificationOtps   EmailVerificationOtp[]
   assessments             Assessment[]
   userSkills              UserSkill[]
   pathways                UserPathway[]
@@ -167,13 +167,14 @@ model PasswordResetToken {
   @@index([userId])
 }
 
-model EmailVerificationToken {
-  id        String    @id @default(uuid())
-  userId    String
-  tokenHash String    @unique
-  expiresAt DateTime
-  usedAt    DateTime?
-  createdAt DateTime  @default(now())
+model EmailVerificationOtp {
+  id          String    @id @default(uuid())
+  userId      String
+  codeHash    String
+  expiresAt   DateTime
+  attempts    Int       @default(0)
+  consumedAt  DateTime?
+  createdAt   DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

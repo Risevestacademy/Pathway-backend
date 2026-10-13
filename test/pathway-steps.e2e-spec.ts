@@ -4,9 +4,15 @@ import { ConfigService } from '@nestjs/config';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { PathwayStepsService } from '../src/catalog/pathway-steps';
+import { NotificationService } from '../src/notifications';
 import { apiPrefix as resolveApiPrefix, configureApp } from '../src/common';
 import { EnvironmentVariables } from '../src/config';
 import { PrismaService } from '../src/prisma';
+import {
+  notificationMock,
+  registerAndVerify,
+  wireNotificationMock,
+} from './utils/auth';
 
 describe('Pathway steps (e2e)', () => {
   let app: INestApplication;
@@ -55,9 +61,11 @@ describe('Pathway steps (e2e)', () => {
     })
       .overrideProvider(PathwayStepsService)
       .useValue(mockPathwayStepsService)
+      .overrideProvider(NotificationService)
+      .useValue(notificationMock)
       .compile();
-    app = moduleFixture.createNestApplication();
 
+    app = moduleFixture.createNestApplication();
     configureApp(app);
 
     apiPrefix = `/${resolveApiPrefix(
@@ -68,22 +76,20 @@ describe('Pathway steps (e2e)', () => {
 
     await app.init();
 
-    const registration = await request(app.getHttpServer())
-      .post(`${apiPrefix}/auth/register`)
-      .send({
-        email: `e2e-steps-${Date.now()}@test.com`,
-        password: 'Password123!',
-        fullName: 'Ada Obi',
-      })
-      .expect(201);
+    wireNotificationMock();
 
-    userId = registration.body.user.id;
-    accessToken = registration.body.accessToken;
+    const registered = await registerAndVerify(app, apiPrefix, {
+      email: `e2e-steps-${Date.now()}@test.com`,
+      platform: 'web',
+    });
+
+    userId = registered.id;
+    accessToken = registered.accessToken;
   });
 
   afterAll(async () => {
     if (userId) {
-      await prisma.user.delete({ where: { id: userId } });
+      await prisma.user.delete({ where: { id: userId } }).catch(() => {});
     }
     await app.close();
   });

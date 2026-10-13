@@ -29,6 +29,47 @@
         ]
       }
     },
+    "/users/me": {
+      "patch": {
+        "operationId": "UsersController_updateMe",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body failed validation"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "404": {
+            "description": "The user no longer exists"
+          }
+        },
+        "summary": "Update the signed-in user's profile",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
     "/auth/register": {
       "post": {
         "operationId": "AuthController_register",
@@ -59,20 +100,11 @@
         },
         "responses": {
           "201": {
-            "description": "User registered successfully. Sets a refresh token cookie for web clients.",
-            "headers": {
-              "Set-Cookie": {
-                "description": "HttpOnly refresh token cookie for web clients",
-                "schema": {
-                  "type": "string",
-                  "example": "refreshToken=eyJhbGciOiJIUzI1Ni...; Path=/api/v1/auth; HttpOnly; SameSite=Lax"
-                }
-              }
-            },
+            "description": "User created. A six-digit verification code has been emailed. No authentication tokens are issued until the email is verified.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AuthResponseDto"
+                  "$ref": "#/components/schemas/RegisterResponseDto"
                 }
               }
             }
@@ -84,7 +116,7 @@
             "description": "Email already registered"
           }
         },
-        "summary": "Register a new user",
+        "summary": "Register a new user and send a verification code",
         "tags": [
           "Auth"
         ]
@@ -142,10 +174,59 @@
             "description": "Unsupported X-Client-Platform value"
           },
           "401": {
-            "description": "Invalid Credentials"
+            "description": "Invalid credentials, or the email has not been verified."
           }
         },
         "summary": "Login a user",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/auth/google": {
+      "post": {
+        "operationId": "AuthController_google",
+        "parameters": [
+          {
+            "name": "X-Client-Platform",
+            "in": "header",
+            "description": "'mobile' carries the refresh token in the request body; 'web' or an absent header carries it in the HttpOnly cookie. Any other value is rejected with 400.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "web",
+                "mobile"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GoogleAuthDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Google sign-in succeeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Google ID token is invalid or the email is not verified."
+          }
+        },
+        "summary": "Sign in with Google",
         "tags": [
           "Auth"
         ]
@@ -246,15 +327,168 @@
         ]
       }
     },
+    "/auth/password-reset/request": {
+      "post": {
+        "operationId": "AuthController_requestPasswordReset",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestPasswordResetDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Always returned for a valid email, whether or not an account exists. A reset link is emailed only when one does."
+          },
+          "400": {
+            "description": "Email is missing or invalid"
+          }
+        },
+        "summary": "Request a password reset email",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/auth/password-reset/confirm": {
+      "post": {
+        "operationId": "AuthController_confirmPasswordReset",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmPasswordResetDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Password updated. The reset token is marked used and all existing sessions are revoked."
+          },
+          "400": {
+            "description": "Reset token is invalid, expired or already used, or the body failed validation"
+          }
+        },
+        "summary": "Set a new password using a password reset token",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/auth/verify-email": {
+      "post": {
+        "operationId": "AuthController_verifyEmail",
+        "parameters": [
+          {
+            "name": "X-Client-Platform",
+            "in": "header",
+            "description": "'mobile' carries the refresh token in the request body; 'web' or an absent header carries it in the HttpOnly cookie. Any other value is rejected with 400.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "web",
+                "mobile"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyEmailDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Email verified. Returns access (and for mobile, refresh) tokens, or sets a refresh token cookie for web clients.",
+            "headers": {
+              "Set-Cookie": {
+                "description": "HttpOnly refresh token cookie for web clients",
+                "schema": {
+                  "type": "string",
+                  "example": "refreshToken=eyJhbGciOiJIUzI1Ni...; Path=/api/v1/auth; HttpOnly; SameSite=Lax"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Verification code is invalid, expired or already used"
+          }
+        },
+        "summary": "Verify a user's email with a six-digit code",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/auth/resend-verification": {
+      "post": {
+        "operationId": "AuthController_resendVerification",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResendVerificationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Always returned, whether or not an account exists or is already verified. A new six-digit code is emailed only when appropriate."
+          },
+          "400": {
+            "description": "Email is missing or invalid"
+          }
+        },
+        "summary": "Resend the email verification code",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
     "/auth/me": {
       "get": {
         "operationId": "AuthController_getMe",
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Access token missing or invalid, or the user no longer exists"
           }
         },
+        "summary": "Get the signed-in user",
         "tags": [
           "Auth"
         ]
@@ -405,6 +639,47 @@
         ]
       }
     },
+    "/careers/{careerId}/pathway/steps": {
+      "get": {
+        "operationId": "CareersController_getCareerPathwaySteps",
+        "parameters": [
+          {
+            "name": "careerId",
+            "required": true,
+            "in": "path",
+            "description": "Career UUID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pathway steps in order, each with its skills. Returns an empty array if the career has no pathway yet.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PathwayStepListItemDto"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "careerId is not a valid UUID."
+          },
+          "404": {
+            "description": "Career does not exist, or exists but is not PUBLISHED."
+          }
+        },
+        "summary": "Get a published career's pathway steps without detail",
+        "tags": [
+          "Careers"
+        ]
+      }
+    },
     "/target-levels": {
       "get": {
         "operationId": "TargetLevelsController_getTargetLevels",
@@ -468,6 +743,9 @@
           "400": {
             "description": "stepId is not a valid UUID."
           },
+          "401": {
+            "description": "Access token missing or invalid."
+          },
           "404": {
             "description": "Step does not exist, or belongs to a career that is not PUBLISHED."
           }
@@ -502,6 +780,66 @@
           "Skills"
         ]
       }
+    },
+    "/pathways/{pathwayId}": {
+      "get": {
+        "operationId": "PathwaysController_getPathwayMetadata",
+        "parameters": [
+          {
+            "name": "pathwayId",
+            "required": true,
+            "in": "path",
+            "description": "Pathway UUID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pathway metadata with slim ordered step summaries. Resources and full step detail are served by GET /pathway-steps/:stepId.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PathwayMetadataDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "pathwayId is not a valid UUID."
+          },
+          "404": {
+            "description": "Pathway does not exist, or belongs to a career that is not PUBLISHED."
+          }
+        },
+        "summary": "Get a published pathway's metadata and slim ordered steps (no resources or full step detail)",
+        "tags": [
+          "Pathways"
+        ]
+      }
+    },
+    "/onboarding/options": {
+      "get": {
+        "operationId": "ReferenceController_getOptions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Education, internship, and experience options with labels, plus skills and fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReferenceOptionsDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Get all options for the second onboarding screen",
+        "tags": [
+          "Onboarding"
+        ]
+      }
     }
   },
   "info": {
@@ -514,6 +852,59 @@
   "servers": [],
   "components": {
     "schemas": {
+      "UpdateUserDto": {
+        "type": "object",
+        "properties": {
+          "fullName": {
+            "type": "string",
+            "example": "Ada Obi",
+            "description": "Full name, trimmed. 1 to 100 characters.",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "fullName"
+        ]
+      },
+      "UserResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "123e4567-e89b-12d3-a456-426614174000"
+          },
+          "email": {
+            "type": "string",
+            "example": "user@example.com"
+          },
+          "role": {
+            "type": "string",
+            "example": "USER"
+          },
+          "fullName": {
+            "type": "string",
+            "nullable": true,
+            "example": "Ada Obi"
+          },
+          "emailVerified": {
+            "type": "boolean",
+            "example": false
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "role",
+          "fullName",
+          "emailVerified",
+          "createdAt"
+        ]
+      },
       "RegisterDto": {
         "type": "object",
         "properties": {
@@ -542,26 +933,40 @@
           "password"
         ]
       },
-      "UserResponseDto": {
+      "RegisterResponseDto": {
         "type": "object",
         "properties": {
-          "id": {
+          "message": {
             "type": "string",
-            "example": "123e4567-e89b-12d3-a456-426614174000"
+            "example": "Verification code sent"
           },
           "email": {
             "type": "string",
             "example": "user@example.com"
-          },
-          "role": {
-            "type": "string",
-            "example": "USER"
           }
         },
         "required": [
-          "id",
+          "message",
+          "email"
+        ]
+      },
+      "LoginDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "example": "user@example.com",
+            "description": "User email address."
+          },
+          "password": {
+            "type": "string",
+            "example": "Password123!",
+            "description": "Account password. Must be at least 8 characters."
+          }
+        },
+        "required": [
           "email",
-          "role"
+          "password"
         ]
       },
       "AuthResponseDto": {
@@ -585,24 +990,9 @@
           "user"
         ]
       },
-      "LoginDto": {
+      "GoogleAuthDto": {
         "type": "object",
-        "properties": {
-          "email": {
-            "type": "string",
-            "example": "user@example.com",
-            "description": "User email address."
-          },
-          "password": {
-            "type": "string",
-            "example": "Password123!",
-            "description": "Account password. Must be at least 8 characters."
-          }
-        },
-        "required": [
-          "email",
-          "password"
-        ]
+        "properties": {}
       },
       "RefreshTokenDto": {
         "type": "object",
@@ -629,6 +1019,73 @@
         },
         "required": [
           "accessToken"
+        ]
+      },
+      "RequestPasswordResetDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "example": "user@example.com",
+            "description": "Email address of the account to reset."
+          }
+        },
+        "required": [
+          "email"
+        ]
+      },
+      "ConfirmPasswordResetDto": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "example": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+            "description": "Reset token from the password reset link."
+          },
+          "newPassword": {
+            "type": "string",
+            "example": "NewPassword123!",
+            "description": "New account password. Must be at least 8 characters.",
+            "minLength": 8
+          }
+        },
+        "required": [
+          "token",
+          "newPassword"
+        ]
+      },
+      "VerifyEmailDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "example": "user@example.com",
+            "description": "Email address of the account being verified."
+          },
+          "otp": {
+            "type": "string",
+            "example": "123456",
+            "description": "Six-digit verification code sent to the email address.",
+            "minLength": 6,
+            "maxLength": 6
+          }
+        },
+        "required": [
+          "email",
+          "otp"
+        ]
+      },
+      "ResendVerificationDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "example": "user@example.com",
+            "description": "Email address of the account to resend verification to."
+          }
+        },
+        "required": [
+          "email"
         ]
       },
       "FieldListItemDto": {
@@ -1126,6 +1583,32 @@
           "pathway"
         ]
       },
+      "PathwayStepListItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "order": {
+            "type": "number"
+          },
+          "title": {
+            "type": "string"
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CareerSkillDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "order",
+          "title",
+          "skills"
+        ]
+      },
       "PathwayStepSkillDto": {
         "type": "object",
         "properties": {
@@ -1295,6 +1778,130 @@
           "id",
           "name",
           "description"
+        ]
+      },
+      "PathwayStepSummaryDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "order": {
+            "type": "number",
+            "description": "Position of the step within its pathway"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "order",
+          "description"
+        ]
+      },
+      "PathwayMetadataDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "careerId": {
+            "type": "string",
+            "description": "Career the pathway belongs to"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "stepCount": {
+            "type": "number",
+            "description": "Number of steps in this pathway"
+          },
+          "steps": {
+            "description": "Ordered slim step summaries. Resources and full step detail are served by GET /pathway-steps/:stepId.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PathwayStepSummaryDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "careerId",
+          "title",
+          "description",
+          "stepCount",
+          "steps"
+        ]
+      },
+      "OptionDto": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string",
+            "description": "Enum value",
+            "example": "BACHELOR"
+          },
+          "label": {
+            "type": "string",
+            "description": "Human-readable label for the enum value",
+            "example": "Bachelor's degree"
+          }
+        },
+        "required": [
+          "value",
+          "label"
+        ]
+      },
+      "ReferenceOptionsDto": {
+        "type": "object",
+        "properties": {
+          "educationLevels": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OptionDto"
+            }
+          },
+          "internshipOptions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OptionDto"
+            }
+          },
+          "experienceOptions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OptionDto"
+            }
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SkillListItemDto"
+            }
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FieldListItemDto"
+            }
+          }
+        },
+        "required": [
+          "educationLevels",
+          "internshipOptions",
+          "experienceOptions",
+          "skills",
+          "fields"
         ]
       }
     }

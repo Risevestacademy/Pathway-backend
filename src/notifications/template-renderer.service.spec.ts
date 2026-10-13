@@ -41,6 +41,29 @@ describe('TemplateRenderer', () => {
     expect(text).toContain(resetUrl);
   });
 
+  it('renders the email verification OTP with the code and expiry', () => {
+    const { subject, html, text } = renderer.render('email-verification-otp', {
+      otp: '123456',
+      expiresInMinutes: 15,
+    });
+
+    expect(subject).toBe('Your Pathway verification code');
+    expect(html).toContain('123456');
+    expect(html).toContain('15 minutes');
+    expect(text).toContain('123456');
+    expect(text).toContain('15 minutes');
+  });
+
+  it('renders a zero-padded OTP with leading zeros intact', () => {
+    const { html, text } = renderer.render('email-verification-otp', {
+      otp: '000042',
+      expiresInMinutes: 15,
+    });
+
+    expect(html).toContain('000042');
+    expect(text).toContain('000042');
+  });
+
   it('renders the welcome email', () => {
     const { subject, text } = renderer.render('welcome', { name: 'Ada' });
 
@@ -60,11 +83,24 @@ describe('TemplateRenderer', () => {
     expect(() =>
       renderer.render('password-reset', { expiresInMinutes: 30 }),
     ).toThrow();
+
+    expect(() =>
+      renderer.render('email-verification-otp', { expiresInMinutes: 15 }),
+    ).toThrow();
   });
 
   it('throws for an unknown template', () => {
     expect(() => renderer.render('does-not-exist' as never, {})).toThrow(
       'Unknown notification template',
     );
+  });
+
+  it('no longer registers the old link-based email-verification template', () => {
+    expect(() =>
+      renderer.render('email-verification' as never, {
+        verificationUrl: 'http://localhost/verify?token=abc',
+        expiresInMinutes: 1440,
+      }),
+    ).toThrow('Unknown notification template');
   });
 });
