@@ -1,6 +1,6 @@
 import { jest } from '@jest/globals';
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { PathwaysService } from './pathways.service';
 import { PrismaService } from '../../prisma';
 import { CareerStatus } from '../../generated/prisma/client';
@@ -8,10 +8,25 @@ import { CareerStatus } from '../../generated/prisma/client';
 describe('PathwaysService', () => {
   let service: PathwaysService;
 
-  const mockPrisma = {
+  const mockPrismaService = {
     pathway: {
-      findFirst: jest.fn(),
+      findFirst: jest.fn<(args: unknown) => Promise<unknown>>(),
+      findUnique: jest.fn<(args: unknown) => Promise<unknown>>(),
     },
+    career: {
+      findFirst: jest.fn<(args: unknown) => Promise<unknown>>(),
+    },
+    userPathway: {
+      updateMany: jest.fn<(args: unknown) => Promise<unknown>>(),
+      upsert: jest.fn<(args: unknown) => Promise<unknown>>(),
+      findFirst: jest.fn<(args: unknown) => Promise<unknown>>(),
+    },
+    userPathwayStep: {
+      findMany: jest.fn<(args: unknown) => Promise<unknown>>(),
+    },
+    $transaction: jest.fn((callback: (tx: unknown) => unknown) =>
+      callback(mockPrismaService),
+    ),
   };
 
   beforeEach(async () => {
@@ -20,7 +35,7 @@ describe('PathwaysService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PathwaysService,
-        { provide: PrismaService, useValue: mockPrisma },
+        { provide: PrismaService, useValue: mockPrismaService },
       ],
     }).compile();
 
@@ -33,7 +48,7 @@ describe('PathwaysService', () => {
 
   describe('getPathwayMetadata', () => {
     it('returns pathway metadata with slim ordered steps and stepCount', async () => {
-      mockPrisma.pathway.findFirst.mockResolvedValue({
+      mockPrismaService.pathway.findFirst.mockResolvedValue({
         id: 'p1',
         careerId: 'c1',
         title: 'Frontend Path',
@@ -61,7 +76,7 @@ describe('PathwaysService', () => {
     });
 
     it('filters by pathway id and PUBLISHED career', async () => {
-      mockPrisma.pathway.findFirst.mockResolvedValue({
+      mockPrismaService.pathway.findFirst.mockResolvedValue({
         id: 'p1',
         careerId: 'c1',
         title: 't',
@@ -72,7 +87,7 @@ describe('PathwaysService', () => {
 
       await service.getPathwayMetadata('p1');
 
-      expect(mockPrisma.pathway.findFirst).toHaveBeenCalledWith(
+      expect(mockPrismaService.pathway.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
           where: {
             id: 'p1',
@@ -83,7 +98,7 @@ describe('PathwaysService', () => {
     });
 
     it('returns empty steps and stepCount 0 for a pathway with no steps', async () => {
-      mockPrisma.pathway.findFirst.mockResolvedValue({
+      mockPrismaService.pathway.findFirst.mockResolvedValue({
         id: 'p1',
         careerId: 'c1',
         title: 'Empty',
@@ -99,7 +114,7 @@ describe('PathwaysService', () => {
     });
 
     it('does not leak resources, skills, or full step detail', async () => {
-      mockPrisma.pathway.findFirst.mockResolvedValue({
+      mockPrismaService.pathway.findFirst.mockResolvedValue({
         id: 'p1',
         careerId: 'c1',
         title: 't',
@@ -119,11 +134,82 @@ describe('PathwaysService', () => {
     });
 
     it('throws NotFoundException when the pathway is missing or its career is not PUBLISHED', async () => {
-      mockPrisma.pathway.findFirst.mockResolvedValue(null);
+      mockPrismaService.pathway.findFirst.mockResolvedValue(null);
 
       await expect(service.getPathwayMetadata('missing')).rejects.toThrow(
         NotFoundException,
       );
+    });
+  });
+
+  describe('setActivePathway', () => {
+    it('throws NotFoundException for a draft, retired, or unknown career', async () => {
+      mockPrismaService.career.findFirst.mockResolvedValue(null);
+      await expect(
+        service.setActivePathway('user-1', 'career-1'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws ConflictException when the published career has no pathway', async () => {
+      mockPrismaService.career.findFirst.mockResolvedValue({ id: 'career-1' });
+      mockPrismaService.pathway.findUnique.mockResolvedValue(null);
+      await expect(
+        service.setActivePathway('user-1', 'career-1'),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('deactivates other pathways before upserting the new active one, in one transaction', async () => {
+      mockPrismaService.career.findFirst.mockResolvedValue({ id: 'career-1' });
+      mockPrismaService.pathway.findUnique.mockResolvedValue({
+        id: 'pathway-1',
+      });
+      mockPrismaService.userPathway.findFirst.mockResolvedValue(null);
+
+      await service.setActivePathway('user-1', 'career-1');
+
+      expect(mockPrismaService.$transaction).toHaveBeenCalledTimes(1);
+      expect(mockPrismaService.userPathway.updateMany).toHaveBeenCalledWith({
+        where: {
+          userId: 'user-1',
+          isActive: true,
+          careerId: { not: 'career-1' },
+        },
+        data: { isActive: false },
+      });
+      expect(mockPrismaService.userPathway.upsert).toHaveBeenCalledWith({
+        where: { userId_careerId: { userId: 'user-1', careerId: 'career-1' } },
+        create: { userId: 'user-1', careerId: 'career-1', isActive: true },
+        update: { isActive: true },
+      });
+    });
+  });
+
+  describe('getActivePathway', () => {
+    it('returns the null-shaped body when there is no active pathway', async () => {
+      mockPrismaService.userPathway.findFirst.mockResolvedValue(null);
+      const result = await service.getActivePathway('user-1');
+      expect(result).toEqual({
+        career: null,
+        pathway: null,
+        progress: null,
+        steps: [],
+      });
+    });
+
+    it('marks a RETIRED career as retired: true', async () => {
+      mockPrismaService.userPathway.findFirst.mockResolvedValue({
+        career: {
+          id: 'c1',
+          slug: 's',
+          title: 't',
+          roleSummary: 'r',
+          status: 'RETIRED',
+          pathway: { id: 'p1', title: 'pt', steps: [] },
+        },
+      });
+      mockPrismaService.userPathwayStep.findMany.mockResolvedValue([]);
+      const result = await service.getActivePathway('user-1');
+      expect(result.career?.retired).toBe(true);
     });
   });
 });
