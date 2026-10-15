@@ -17,6 +17,7 @@ import { SkillsModule } from './skills';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PathwaysModule } from './catalog/pathways/pathways.module';
 import { ReferenceModule } from './reference/reference.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { ReferenceModule } from './reference/reference.module';
     NotificationsModule,
     PathwaysModule,
     ReferenceModule,
+    AnalyticsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
