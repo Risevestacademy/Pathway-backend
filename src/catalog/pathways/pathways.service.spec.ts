@@ -20,6 +20,7 @@ describe('PathwaysService', () => {
       updateMany: jest.fn<(args: unknown) => Promise<unknown>>(),
       upsert: jest.fn<(args: unknown) => Promise<unknown>>(),
       findFirst: jest.fn<(args: unknown) => Promise<unknown>>(),
+      findMany: jest.fn<(args: unknown) => Promise<unknown>>(),
     },
     userPathwayStep: {
       findMany: jest.fn<(args: unknown) => Promise<unknown>>(),
@@ -210,6 +211,107 @@ describe('PathwaysService', () => {
       mockPrismaService.userPathwayStep.findMany.mockResolvedValue([]);
       const result = await service.getActivePathway('user-1');
       expect(result.career?.retired).toBe(true);
+    });
+  });
+
+  describe('getSavedPathways', () => {
+    it('returns each saved visible pathway with its progress and active flag', async () => {
+      mockPrismaService.userPathway.findMany.mockResolvedValue([
+        {
+          isActive: true,
+          career: {
+            id: 'c1',
+            slug: 's1',
+            title: 't1',
+            status: CareerStatus.PUBLISHED,
+            pathway: {
+              steps: [
+                { id: 'step-1', order: 1 },
+                { id: 'step-2', order: 2 },
+              ],
+            },
+          },
+        },
+        {
+          isActive: false,
+          career: {
+            id: 'c2',
+            slug: 's2',
+            title: 't2',
+            status: CareerStatus.RETIRED,
+            pathway: { steps: [{ id: 'step-3', order: 1 }] },
+          },
+        },
+      ]);
+      mockPrismaService.userPathwayStep.findMany.mockResolvedValue([
+        { pathwayStepId: 'step-1', status: 'COMPLETED' },
+        { pathwayStepId: 'step-3', status: 'COMPLETED' },
+      ]);
+
+      const result = await service.getSavedPathways('user-1');
+
+      expect(result).toEqual([
+        {
+          career: { id: 'c1', slug: 's1', title: 't1', retired: false },
+          isActive: true,
+          progress: { completed: 1, total: 2, percentage: 50 },
+        },
+        {
+          career: { id: 'c2', slug: 's2', title: 't2', retired: true },
+          isActive: false,
+          progress: { completed: 1, total: 1, percentage: 100 },
+        },
+      ]);
+    });
+
+    it('filters out a saved career with no pathway', async () => {
+      mockPrismaService.userPathway.findMany.mockResolvedValue([
+        {
+          isActive: false,
+          career: {
+            id: 'c1',
+            slug: 's1',
+            title: 't1',
+            status: CareerStatus.PUBLISHED,
+            pathway: null,
+          },
+        },
+      ]);
+      mockPrismaService.userPathwayStep.findMany.mockResolvedValue([]);
+
+      const result = await service.getSavedPathways('user-1');
+
+      expect(result).toEqual([]);
+    });
+
+    it('queries pathways and user steps exactly once each, regardless of saved count', async () => {
+      mockPrismaService.userPathway.findMany.mockResolvedValue([]);
+      mockPrismaService.userPathwayStep.findMany.mockResolvedValue([]);
+
+      await service.getSavedPathways('user-1');
+
+      expect(mockPrismaService.userPathway.findMany).toHaveBeenCalledTimes(1);
+      expect(mockPrismaService.userPathwayStep.findMany).toHaveBeenCalledTimes(
+        1,
+      );
+    });
+
+    it('only requests PUBLISHED or RETIRED careers', async () => {
+      mockPrismaService.userPathway.findMany.mockResolvedValue([]);
+      mockPrismaService.userPathwayStep.findMany.mockResolvedValue([]);
+
+      await service.getSavedPathways('user-1');
+
+      expect(mockPrismaService.userPathway.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            userId: 'user-1',
+            career: {
+              status: { in: [CareerStatus.PUBLISHED, CareerStatus.RETIRED] },
+            },
+          },
+        }),
+      );
     });
   });
 });

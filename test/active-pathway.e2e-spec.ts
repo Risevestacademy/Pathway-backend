@@ -403,4 +403,87 @@ describe('Active pathway (e2e)', () => {
       expect(bResponse.body.career.id).toBe(secondCareerWithPathwayId);
     });
   });
+
+  describe('GET /me/pathways', () => {
+    const savedPathwaysUrl = () => `${apiPrefix}/me/pathways`;
+
+    it('requires authentication', async () => {
+      await request(app.getHttpServer()).get(savedPathwaysUrl()).expect(401);
+    });
+
+    it('returns an empty array when nothing is saved', async () => {
+      const freshUser = await registerAndVerify(app, apiPrefix, {
+        email: `e2e-no-saved-${Date.now()}@test.com`,
+      });
+
+      const response = await request(app.getHttpServer())
+        .get(savedPathwaysUrl())
+        .set('Authorization', `Bearer ${freshUser.accessToken}`)
+        .expect(200);
+
+      expect(response.body).toEqual([]);
+    });
+
+    it('lists saved pathways with progress, marking the active one, and shows retired: true', async () => {
+      const savedUser = await registerAndVerify(app, apiPrefix, {
+        email: `e2e-saved-list-${Date.now()}@test.com`,
+      });
+      const authSaved = (req: request.Test) =>
+        req.set('Authorization', `Bearer ${savedUser.accessToken}`);
+
+      await authSaved(request(app.getHttpServer()).put(activePathwayUrl()))
+        .send({ careerId: careerWithPathwayId })
+        .expect(200);
+
+      await prisma.userPathway.create({
+        data: {
+          userId: savedUser.id,
+          careerId: retiredCareerId,
+          isActive: false,
+        },
+      });
+
+      const response = await authSaved(
+        request(app.getHttpServer()).get(savedPathwaysUrl()),
+      ).expect(200);
+
+      expect(response.body).toHaveLength(2);
+
+      const active = response.body.find(
+        (p: { isActive: boolean }) => p.isActive,
+      );
+      const retired = response.body.find(
+        (p: { career: { retired: boolean } }) => p.career.retired,
+      );
+
+      expect(active.career.id).toBe(careerWithPathwayId);
+      expect(active.progress).toEqual(
+        expect.objectContaining({ completed: 0, total: 2, percentage: 0 }),
+      );
+      expect(retired.career.id).toBe(retiredCareerId);
+      expect(retired.isActive).toBe(false);
+    });
+
+    it("does not return another user's saved pathways", async () => {
+      const userA = await registerAndVerify(app, apiPrefix, {
+        email: `e2e-saved-isolation-a-${Date.now()}@test.com`,
+      });
+      const userB = await registerAndVerify(app, apiPrefix, {
+        email: `e2e-saved-isolation-b-${Date.now()}@test.com`,
+      });
+
+      await request(app.getHttpServer())
+        .put(activePathwayUrl())
+        .set('Authorization', `Bearer ${userA.accessToken}`)
+        .send({ careerId: careerWithPathwayId })
+        .expect(200);
+
+      const bResponse = await request(app.getHttpServer())
+        .get(savedPathwaysUrl())
+        .set('Authorization', `Bearer ${userB.accessToken}`)
+        .expect(200);
+
+      expect(bResponse.body).toEqual([]);
+    });
+  });
 });
