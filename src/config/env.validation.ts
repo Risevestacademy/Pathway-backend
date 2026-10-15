@@ -2,6 +2,7 @@ import { plainToInstance, Transform, Type } from 'class-transformer';
 import {
   ArrayNotEmpty,
   IsArray,
+  IsBoolean,
   IsEnum,
   IsIn,
   IsInt,
@@ -196,6 +197,23 @@ export class EnvironmentVariables {
       'GOOGLE_CLIENT_IDS must be a comma-separated list of Google OAuth client IDs',
   })
   GOOGLE_CLIENT_IDS: string[];
+
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  ANALYTICS_ENABLED: boolean = false;
+
+  @ValidateIf((env: EnvironmentVariables) => env.ANALYTICS_ENABLED)
+  @IsString()
+  @IsNotEmpty()
+  POSTHOG_API_KEY: string;
+
+  @IsOptional()
+  @IsUrl({
+    require_tld: false,
+    require_protocol: true,
+    protocols: ['http', 'https'],
+  })
+  POSTHOG_HOST = 'https://eu.i.posthog.com';
 }
 
 export function validateEnv(
