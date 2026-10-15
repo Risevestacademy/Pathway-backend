@@ -339,4 +339,129 @@ describe('validateEnv', () => {
       validateEnv({ ...validEnv, MAIL_DRIVER: 'log', NODE_ENV: 'staging' }),
     ).toThrow('MAIL_DRIVER=log is only allowed');
   });
+
+  it('defaults EMAIL_FROM_NAME to "Pathway"', () => {
+    const config = validateEnv(validEnv);
+
+    expect(config.EMAIL_FROM_NAME).toBe('Pathway');
+  });
+
+  it('accepts a custom EMAIL_FROM_NAME', () => {
+    const config = validateEnv({
+      ...validEnv,
+      EMAIL_FROM_NAME: 'Pathway Careers',
+    });
+
+    expect(config.EMAIL_FROM_NAME).toBe('Pathway Careers');
+  });
+
+  // ─── EMAIL_FROM_ADDRESS ─────────────────────────────────────────────
+
+  it('throws when EMAIL_FROM_ADDRESS is missing', () => {
+    const { EMAIL_FROM_ADDRESS: _omit, ...withoutFrom } = validEnv;
+
+    expect(() => validateEnv(withoutFrom)).toThrow(/EMAIL_FROM_ADDRESS/);
+  });
+
+  it('throws when EMAIL_FROM_ADDRESS is empty', () => {
+    expect(() => validateEnv({ ...validEnv, EMAIL_FROM_ADDRESS: '' })).toThrow(
+      /EMAIL_FROM_ADDRESS/,
+    );
+  });
+
+  // ─── ANALYTICS_ENABLED ──────────────────────────────────────────────
+
+  it('defaults ANALYTICS_ENABLED to false', () => {
+    const config = validateEnv(validEnv);
+
+    expect(config.ANALYTICS_ENABLED).toBe(false);
+  });
+
+  it('coerces ANALYTICS_ENABLED from the string "true" to true', () => {
+    const config = validateEnv({
+      ...validEnv,
+      ANALYTICS_ENABLED: 'true',
+      POSTHOG_API_KEY: 'phc_test_key',
+    });
+
+    expect(config.ANALYTICS_ENABLED).toBe(true);
+  });
+
+  it('accepts a boolean ANALYTICS_ENABLED', () => {
+    const config = validateEnv({
+      ...validEnv,
+      ANALYTICS_ENABLED: true,
+      POSTHOG_API_KEY: 'phc_test_key',
+    });
+
+    expect(config.ANALYTICS_ENABLED).toBe(true);
+  });
+
+  // ─── POSTHOG_API_KEY ────────────────────────────────────────────────
+
+  it('does not require POSTHOG_API_KEY when analytics is disabled', () => {
+    const config = validateEnv({
+      ...validEnv,
+      ANALYTICS_ENABLED: 'false',
+      POSTHOG_API_KEY: undefined,
+    });
+
+    expect(config.ANALYTICS_ENABLED).toBe(false);
+    expect(config.POSTHOG_API_KEY).toBeUndefined();
+  });
+
+  it.each([undefined, ''])(
+    'requires POSTHOG_API_KEY when analytics is enabled (value: %j)',
+    (value) => {
+      expect(() =>
+        validateEnv({
+          ...validEnv,
+          ANALYTICS_ENABLED: 'true',
+          POSTHOG_API_KEY: value,
+        }),
+      ).toThrow(/POSTHOG_API_KEY/);
+    },
+  );
+
+  it('accepts a POSTHOG_API_KEY when analytics is enabled', () => {
+    const config = validateEnv({
+      ...validEnv,
+      ANALYTICS_ENABLED: 'true',
+      POSTHOG_API_KEY: 'phc_test_key',
+    });
+
+    expect(config.POSTHOG_API_KEY).toBe('phc_test_key');
+  });
+
+  // ─── POSTHOG_HOST ───────────────────────────────────────────────────
+
+  it('defaults POSTHOG_HOST to the EU host', () => {
+    const config = validateEnv(validEnv);
+
+    expect(config.POSTHOG_HOST).toBe('https://eu.i.posthog.com');
+  });
+
+  it('accepts a custom POSTHOG_HOST', () => {
+    const config = validateEnv({
+      ...validEnv,
+      POSTHOG_HOST: 'https://us.i.posthog.com',
+    });
+
+    expect(config.POSTHOG_HOST).toBe('https://us.i.posthog.com');
+  });
+
+  it('accepts a localhost POSTHOG_HOST for local development', () => {
+    const config = validateEnv({
+      ...validEnv,
+      POSTHOG_HOST: 'http://localhost:8000',
+    });
+
+    expect(config.POSTHOG_HOST).toBe('http://localhost:8000');
+  });
+
+  it('throws when POSTHOG_HOST is not a URL', () => {
+    expect(() =>
+      validateEnv({ ...validEnv, POSTHOG_HOST: 'not-a-url' }),
+    ).toThrow(/POSTHOG_HOST/);
+  });
 });
