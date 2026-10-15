@@ -8,6 +8,7 @@ import { CareerStatus, PathwayStepStatus } from '../../generated/prisma/client';
 import { PathwayMetadataDto } from './dto/pathway-metadata.dto';
 import { ActivePathwayResponseDto } from './dto/active-pathway-response.dto';
 import { computeProgress, computeStepStatuses } from './progress';
+import { SavedPathwayDto } from './dto/saved-pathway.dto';
 
 @Injectable()
 export class PathwaysService {
@@ -160,5 +161,64 @@ export class PathwaysService {
         status: statuses.get(step.id) ?? PathwayStepStatus.NOT_STARTED,
       })),
     };
+  }
+
+  async getSavedPathways(userId: string): Promise<SavedPathwayDto[]> {
+    const userPathways = await this.prisma.userPathway.findMany({
+      where: {
+        userId,
+        career: {
+          status: { in: [CareerStatus.PUBLISHED, CareerStatus.RETIRED] },
+        },
+      },
+      select: {
+        isActive: true,
+        career: {
+          select: {
+            id: true,
+            slug: true,
+            title: true,
+            status: true,
+            pathway: {
+              select: {
+                steps: { select: { id: true, order: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const allUserSteps = await this.prisma.userPathwayStep.findMany({
+      where: { userId },
+      select: { pathwayStepId: true, status: true },
+    });
+
+    return userPathways
+      .filter((up) => up.career.pathway !== null)
+      .map((up) => {
+        const { career } = up;
+        const steps = career.pathway!.steps;
+        const stepIds = new Set(steps.map((s) => s.id));
+        const relevantUserSteps = allUserSteps.filter((s) =>
+          stepIds.has(s.pathwayStepId),
+        );
+
+        const { completed, total, percentage } = computeProgress(
+          steps,
+          relevantUserSteps,
+        );
+
+        return {
+          career: {
+            id: career.id,
+            slug: career.slug,
+            title: career.title,
+            retired: career.status === CareerStatus.RETIRED,
+          },
+          isActive: up.isActive,
+          progress: { completed, total, percentage },
+        };
+      });
   }
 }
