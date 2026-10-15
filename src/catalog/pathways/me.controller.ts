@@ -8,6 +8,7 @@ import {
 import { PathwaysService } from './pathways.service';
 import { SetActivePathwayDto } from './dto/set-active-pathway.dto';
 import { ActivePathwayResponseDto } from './dto/active-pathway-response.dto';
+import { SavedPathwayDto } from './dto/saved-pathway.dto';
 
 @ApiTags('Me')
 @Controller('me')
@@ -37,5 +38,16 @@ export class MeController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<ActivePathwayResponseDto> {
     return this.pathwaysService.getActivePathway(user.id);
+  }
+
+  @ApiOperation({
+    summary: "List the signed-in user's saved, visible pathways",
+  })
+  @ApiResponse({ status: 200, type: [SavedPathwayDto] })
+  @Get('pathways')
+  async getSavedPathways(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<SavedPathwayDto[]> {
+    return this.pathwaysService.getSavedPathways(user.id);
   }
 }
