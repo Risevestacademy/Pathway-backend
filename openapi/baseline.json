@@ -639,47 +639,6 @@
         ]
       }
     },
-    "/careers/{careerId}/pathway/steps": {
-      "get": {
-        "operationId": "CareersController_getCareerPathwaySteps",
-        "parameters": [
-          {
-            "name": "careerId",
-            "required": true,
-            "in": "path",
-            "description": "Career UUID",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Pathway steps in order, each with its skills. Returns an empty array if the career has no pathway yet.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/PathwayStepListItemDto"
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "careerId is not a valid UUID."
-          },
-          "404": {
-            "description": "Career does not exist, or exists but is not PUBLISHED."
-          }
-        },
-        "summary": "Get a published career's pathway steps without detail",
-        "tags": [
-          "Careers"
-        ]
-      }
-    },
     "/target-levels": {
       "get": {
         "operationId": "TargetLevelsController_getTargetLevels",
@@ -1581,32 +1540,6 @@
         },
         "required": [
           "pathway"
-        ]
-      },
-      "PathwayStepListItemDto": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "order": {
-            "type": "number"
-          },
-          "title": {
-            "type": "string"
-          },
-          "skills": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/CareerSkillDto"
-            }
-          }
-        },
-        "required": [
-          "id",
-          "order",
-          "title",
-          "skills"
         ]
       },
       "PathwayStepSkillDto": {
