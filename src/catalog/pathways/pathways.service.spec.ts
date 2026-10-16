@@ -55,7 +55,6 @@ describe('PathwaysService', () => {
         careerId: 'c1',
         title: 'Frontend Path',
         description: 'Learn the frontend',
-        _count: { steps: 2 },
         steps: [
           { id: 's1', title: 'HTML', order: 1, description: 'Basics' },
           { id: 's2', title: 'CSS', order: 2, description: null },
@@ -83,7 +82,6 @@ describe('PathwaysService', () => {
         careerId: 'c1',
         title: 't',
         description: null,
-        _count: { steps: 0 },
         steps: [],
       });
 
@@ -105,7 +103,6 @@ describe('PathwaysService', () => {
         careerId: 'c1',
         title: 'Empty',
         description: null,
-        _count: { steps: 0 },
         steps: [],
       });
 
@@ -121,7 +118,6 @@ describe('PathwaysService', () => {
         careerId: 'c1',
         title: 't',
         description: null,
-        _count: { steps: 1 },
         steps: [{ id: 's1', title: 'HTML', order: 1, description: null }],
       });
 

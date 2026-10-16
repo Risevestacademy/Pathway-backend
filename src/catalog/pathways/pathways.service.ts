@@ -25,7 +25,6 @@ export class PathwaysService {
         careerId: true,
         title: true,
         description: true,
-        _count: { select: { steps: true } },
         steps: {
           orderBy: { order: 'asc' },
           select: {
@@ -47,7 +46,7 @@ export class PathwaysService {
       careerId: pathway.careerId,
       title: pathway.title,
       description: pathway.description,
-      stepCount: pathway._count.steps,
+      stepCount: pathway.steps.length,
       steps: pathway.steps,
     };
   }
