@@ -7,6 +7,7 @@ import { UsersService } from '../users';
 import {
   BadRequestException,
   ConflictException,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -24,22 +25,24 @@ describe('AuthService', () => {
   let service: AuthService;
 
   const mockUsersService = {
-    findByEmail: jest.fn(),
-    create: jest.fn(),
-    findById: jest.fn(),
+    findByEmail: jest.fn<(email: string) => Promise<unknown>>(),
+    create: jest.fn<(dto: unknown) => Promise<unknown>>(),
+    findById: jest.fn<(id: string) => Promise<unknown>>(),
     updatePasswordHash: jest.fn<(...args: unknown[]) => Promise<void>>(),
     toUserResponse: jest.fn(UsersService.prototype.toUserResponse),
   };
 
   const mockGoogleOAuthService = {
-    verifyIdToken: jest.fn(),
+    verifyIdToken: jest.fn<(idToken: string) => Promise<unknown>>(),
   };
 
   const createdAt = new Date('2026-10-01T09:00:00.000Z');
 
   const mockJwtService = {
-    signAsync: jest.fn().mockResolvedValue('mock-token'),
-    verifyAsync: jest.fn(),
+    signAsync: jest
+      .fn<(...args: unknown[]) => Promise<string>>()
+      .mockResolvedValue('mock-token'),
+    verifyAsync: jest.fn<(...args: unknown[]) => Promise<unknown>>(),
   };
 
   const mockConfigService = {
@@ -54,10 +57,16 @@ describe('AuthService', () => {
 
   const mockPrismaService = {
     refreshToken: {
-      create: jest.fn().mockResolvedValue({ id: 'token-1' }),
-      findFirst: jest.fn(),
-      update: jest.fn().mockResolvedValue({ id: 'token-1' }),
-      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      create: jest
+        .fn<(args: unknown) => Promise<unknown>>()
+        .mockResolvedValue({ id: 'token-1' }),
+      findFirst: jest.fn<(args: unknown) => Promise<unknown>>(),
+      update: jest
+        .fn<(args: unknown) => Promise<unknown>>()
+        .mockResolvedValue({ id: 'token-1' }),
+      updateMany: jest
+        .fn<(args: unknown) => Promise<unknown>>()
+        .mockResolvedValue({ count: 1 }),
     },
     passwordResetToken: {
       findFirst: jest.fn<(args: unknown) => Promise<unknown>>(),
@@ -1152,6 +1161,217 @@ describe('AuthService', () => {
       await expect(service.googleLogin(validIdToken)).rejects.toThrow(
         ConflictException,
       );
+    });
+  });
+
+  describe('logging', () => {
+    const email = 'dev@example.com';
+
+    let logSpy: jest.SpiedFunction<Logger['log']>;
+    let warnSpy: jest.SpiedFunction<Logger['warn']>;
+    let errorSpy: jest.SpiedFunction<Logger['error']>;
+
+    const loggedText = () =>
+      JSON.stringify([
+        ...logSpy.mock.calls,
+        ...warnSpy.mock.calls,
+        ...errorSpy.mock.calls,
+      ]);
+
+    // Mimic a network failure, whose error carries the request body
+    const failSendWithRequestBody = () =>
+      mockNotificationService.send.mockImplementation(
+        (to: unknown, template: unknown, data: unknown) => {
+          throw Object.assign(new Error('request failed'), {
+            config: { data: { to, template, data } },
+          });
+        },
+      );
+
+    beforeEach(() => {
+      logSpy = jest
+        .spyOn(Logger.prototype, 'log')
+        .mockImplementation(() => undefined);
+      warnSpy = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+      errorSpy = jest
+        .spyOn(Logger.prototype, 'error')
+        .mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      logSpy.mockRestore();
+      warnSpy.mockRestore();
+      errorSpy.mockRestore();
+    });
+
+    it('logs a failed login with a reason and never the email', async () => {
+      mockUsersService.findByEmail.mockResolvedValue(null);
+
+      await expect(
+        service.login({ email, password: 'wrongPassword' }),
+      ).rejects.toThrow(UnauthorizedException);
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        { reason: 'INVALID_CREDENTIALS' },
+        'Login failed',
+      );
+      expect(loggedText()).not.toContain(email);
+    });
+
+    it('logs a successful login with the user id', async () => {
+      mockUsersService.findByEmail.mockResolvedValue({
+        id: 'user-1',
+        email,
+        passwordHash: await bcrypt.hash('password123', 10),
+        role: Role.USER,
+        emailVerifiedAt: createdAt,
+        createdAt,
+        updatedAt: createdAt,
+        profile: null,
+      });
+
+      await service.login({ email, password: 'password123' });
+
+      expect(logSpy).toHaveBeenCalledWith(
+        { userId: 'user-1' },
+        'Login succeeded',
+      );
+      expect(loggedText()).not.toContain(email);
+    });
+
+    it('logs a password reset for an unknown email at warn, without the email', async () => {
+      mockUsersService.findByEmail.mockResolvedValue(null);
+
+      await service.requestPasswordReset({ email });
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        { reason: 'UNKNOWN_EMAIL' },
+        'Password reset requested for an unknown email',
+      );
+      expect(loggedText()).not.toContain(email);
+    });
+
+    it('logs a resend for an unknown email at warn, without the email', async () => {
+      mockUsersService.findByEmail.mockResolvedValue(null);
+
+      await service.resendVerificationEmail({ email });
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        { reason: 'UNKNOWN_OR_VERIFIED_EMAIL' },
+        'Resend verification requested for an unknown or already-verified email',
+      );
+      expect(loggedText()).not.toContain(email);
+    });
+
+    it('logs a failed reset email without the email address or the raw reset token', async () => {
+      mockUsersService.findByEmail.mockResolvedValue({
+        id: 'user-1',
+        email,
+        passwordHash: 'hash',
+        role: Role.USER,
+      });
+      mockPrismaService.passwordResetToken.deleteMany.mockResolvedValue({
+        count: 0,
+      });
+      mockPrismaService.passwordResetToken.create.mockResolvedValue({
+        id: 'reset-1',
+      });
+      failSendWithRequestBody();
+
+      await service.requestPasswordReset({ email });
+      await new Promise(process.nextTick);
+
+      const { resetUrl } = mockNotificationService.send.mock.calls[0][2] as {
+        resetUrl: string;
+      };
+      const token = new URL(resetUrl).searchParams.get('token')!;
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        {
+          userId: 'user-1',
+          error: { message: 'request failed', statusCode: undefined },
+        },
+        'Password reset email failed',
+      );
+      expect(loggedText()).not.toContain(email);
+      expect(loggedText()).not.toContain(token);
+    });
+
+    it('logs a failed OTP email without the email address or the raw OTP', async () => {
+      mockUsersService.findByEmail.mockResolvedValue({
+        id: 'user-1',
+        email,
+        emailVerifiedAt: null,
+      });
+      failSendWithRequestBody();
+
+      await service.resendVerificationEmail({ email });
+      await new Promise(process.nextTick);
+
+      const { otp } = mockNotificationService.send.mock.calls[0][2] as {
+        otp: string;
+      };
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        {
+          userId: 'user-1',
+          error: { message: 'request failed', statusCode: undefined },
+        },
+        'Email verification OTP send failed',
+      );
+      expect(loggedText()).not.toContain(email);
+      expect(loggedText()).not.toContain(otp);
+    });
+
+    it('keeps only the status code of an HTTP error from the email provider', async () => {
+      mockUsersService.findByEmail.mockResolvedValue({
+        id: 'user-1',
+        email,
+        emailVerifiedAt: null,
+      });
+      mockNotificationService.send.mockRejectedValue({
+        statusCode: 401,
+        body: { message: 'Unauthenticated.' },
+        headers: {},
+      });
+
+      await service.resendVerificationEmail({ email });
+      await new Promise(process.nextTick);
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        {
+          userId: 'user-1',
+          error: { message: 'Email provider request failed', statusCode: 401 },
+        },
+        'Email verification OTP send failed',
+      );
+    });
+
+    it('logs each email verification failure with its reason', async () => {
+      mockUsersService.findByEmail.mockResolvedValue({
+        id: 'user-1',
+        email,
+        role: Role.USER,
+        emailVerifiedAt: null,
+      });
+      mockPrismaService.emailVerificationOtp.findFirst.mockResolvedValue({
+        id: 'otp-1',
+        codeHash: sha256('999999'),
+        attempts: 0,
+      });
+      mockPrismaService.emailVerificationOtp.update.mockResolvedValue({});
+
+      await expect(
+        service.verifyEmail({ email, otp: '123456' }),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        { userId: 'user-1', reason: 'INVALID_OTP' },
+        'Email verification failed',
+      );
+      expect(loggedText()).not.toContain(email);
     });
   });
 });
