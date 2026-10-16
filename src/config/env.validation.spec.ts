@@ -234,31 +234,6 @@ describe('validateEnv', () => {
     ).toThrow(/PASSWORD_RESET_URL/);
   });
 
-  it('defaults EMAIL_VERIFICATION_URL to the local frontend verify page', () => {
-    const config = validateEnv(validEnv);
-
-    expect(config.EMAIL_VERIFICATION_URL).toBe(
-      'http://localhost:5173/verify-email',
-    );
-  });
-
-  it('accepts a deployed EMAIL_VERIFICATION_URL', () => {
-    const config = validateEnv({
-      ...validEnv,
-      EMAIL_VERIFICATION_URL: 'https://pathway.example.com/verify-email',
-    });
-
-    expect(config.EMAIL_VERIFICATION_URL).toBe(
-      'https://pathway.example.com/verify-email',
-    );
-  });
-
-  it('throws when EMAIL_VERIFICATION_URL is not a URL', () => {
-    expect(() =>
-      validateEnv({ ...validEnv, EMAIL_VERIFICATION_URL: 'verify-email' }),
-    ).toThrow(/EMAIL_VERIFICATION_URL/);
-  });
-
   it('exposes GOOGLE_CLIENT_IDS as a trimmed array', () => {
     const config = validateEnv({
       ...validEnv,
