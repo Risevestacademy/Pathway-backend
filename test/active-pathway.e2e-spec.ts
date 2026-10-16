@@ -311,24 +311,27 @@ describe('Active pathway (e2e)', () => {
       const authConcurrent = (req: request.Test) =>
         req.set('Authorization', `Bearer ${concurrentUser.accessToken}`);
 
-      await Promise.allSettled([
-        authConcurrent(
-          request(app.getHttpServer()).put(activePathwayUrl()),
-        ).send({
-          careerId: careerWithPathwayId,
-        }),
-        authConcurrent(
-          request(app.getHttpServer()).put(activePathwayUrl()),
-        ).send({
-          careerId: secondCareerWithPathwayId,
-        }),
-      ]);
+      const statuses: number[] = [];
+
+      for (let round = 0; round < 10; round++) {
+        const responses = await Promise.all(
+          [careerWithPathwayId, secondCareerWithPathwayId].map((careerId) =>
+            authConcurrent(
+              request(app.getHttpServer()).put(activePathwayUrl()),
+            ).send({ careerId }),
+          ),
+        );
+
+        statuses.push(...responses.map((response) => response.status));
+      }
+
+      expect(statuses.every((status) => status === 200)).toBe(true);
 
       const activeRows = await prisma.userPathway.findMany({
         where: { userId: concurrentUser.id, isActive: true },
       });
 
-      expect(activeRows.length).toBeLessThanOrEqual(1);
+      expect(activeRows).toHaveLength(1);
     });
 
     it("cannot change another user's active pathway", async () => {
