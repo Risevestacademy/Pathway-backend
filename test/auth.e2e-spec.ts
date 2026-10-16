@@ -328,6 +328,56 @@ describe('AuthController (e2e)', () => {
       }).expect(400);
     });
 
+    it('locks the OTP after five wrong attempts, even for the correct code', async () => {
+      const email = `e2e-verify-lockout-${Date.now()}@test.com`;
+      await register({
+        email,
+        password: 'Password123!',
+        fullName: 'Ada Obi',
+      }).expect(201);
+
+      const otp = capturedOtps.get(email)!;
+      const wrongOtp = otp === '000000' ? '000001' : '000000';
+
+      for (let attempt = 0; attempt < 5; attempt++) {
+        await verifyEmail({ email, otp: wrongOtp }).expect(400);
+      }
+
+      const row = await prisma.emailVerificationOtp.findFirstOrThrow({
+        where: { user: { email } },
+      });
+      expect(row.attempts).toBe(5);
+
+      await verifyEmail({ email, otp }).expect(400);
+
+      const user = await prisma.user.findUniqueOrThrow({ where: { email } });
+      expect(user.emailVerifiedAt).toBeNull();
+    });
+
+    it('never counts more than five attempts from concurrent wrong guesses', async () => {
+      const email = `e2e-verify-concurrent-${Date.now()}@test.com`;
+      await register({
+        email,
+        password: 'Password123!',
+        fullName: 'Ada Obi',
+      }).expect(201);
+
+      const otp = capturedOtps.get(email)!;
+      const wrongOtp = otp === '000000' ? '000001' : '000000';
+
+      const responses = await Promise.all(
+        Array.from({ length: 10 }, () => verifyEmail({ email, otp: wrongOtp })),
+      );
+      expect(responses.every((response) => response.status === 400)).toBe(true);
+
+      const row = await prisma.emailVerificationOtp.findFirstOrThrow({
+        where: { user: { email } },
+      });
+      expect(row.attempts).toBe(5);
+
+      await verifyEmail({ email, otp }).expect(400);
+    });
+
     it('rejects a malformed OTP in the standard validation format', async () => {
       const response = await verifyEmail({
         email: testUser.email,

@@ -1,12 +1,13 @@
-export type AuthMethod = 'password' | 'google';
+export type SignUpMethod = 'email' | 'google';
+export type LoginMethod = 'password' | 'google';
 
 /**
  * Event name -> property shape.
  * `undefined` means the event has no properties.
  */
 export interface AnalyticsEventMap {
-  user_signed_up: { method: AuthMethod };
-  user_logged_in: { method: AuthMethod };
+  user_signed_up: { method: SignUpMethod };
+  user_logged_in: { method: LoginMethod };
   email_verified: undefined;
   password_reset_completed: undefined;
   pathway_saved: { careerId: string };

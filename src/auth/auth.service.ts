@@ -24,8 +24,12 @@ import { NotificationService } from '../notifications';
 import { VerifyEmailDto } from './dto/verify-email.dto';
 import { ResendVerificationDto } from './dto/resend-verification.dto';
 import { GoogleOAuthService } from './oauth/google-oauth.service';
+import { AnalyticsService } from '../analytics';
 
 type PrismaTransactionClient = Pick<PrismaService, 'refreshToken'>;
+
+type EmailVerificationFailure =
+  'UNKNOWN_OR_VERIFIED_EMAIL' | 'OTP_EXPIRED_OR_LOCKED' | 'INVALID_OTP';
 
 const PASSWORD_RESET_TOKEN_TTL_MINUTES = 60;
 const OTP_TTL_MINUTES = 15;
@@ -66,6 +70,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly notificationService: NotificationService,
     private readonly googleOAuthService: GoogleOAuthService,
+    private readonly analytics: AnalyticsService,
   ) {}
 
   // Register a new user
@@ -107,6 +112,9 @@ export class AuthService {
     void this.sendEmailVerificationOtp(createdUser.id, createdUser.email, otp);
 
     this.logger.log({ userId: createdUser.id }, 'User registered');
+    this.analytics.capture('user_signed_up', createdUser.id, {
+      method: 'email',
+    });
 
     return { message: 'Verification code sent', email: createdUser.email };
   }
@@ -133,9 +141,10 @@ export class AuthService {
       throw new UnauthorizedException('Email not verified');
     }
 
-    this.logger.log({ userId: user.id }, 'Login succeeded');
-
     const tokens = await this.issueTokens(user);
+
+    this.logger.log({ userId: user.id }, 'Login succeeded');
+    this.analytics.capture('user_logged_in', user.id, { method: 'password' });
 
     return {
       user: this.usersService.toUserResponse(user),
@@ -263,8 +272,11 @@ export class AuthService {
     const email = googleProfile.email.trim().toLowerCase();
     const now = new Date();
 
+    let isNewUser = false;
+    let result: AuthResult;
+
     try {
-      return await this.prisma.$transaction(async (tx) => {
+      result = await this.prisma.$transaction(async (tx) => {
         // The Google subject is the stable identity key.
         const identity = await tx.authIdentity.findUnique({
           where: {
@@ -362,6 +374,7 @@ export class AuthService {
             },
             include: { profile: true },
           });
+          isNewUser = true;
         }
 
         const tokens = await this.issueTokens(user, tx);
@@ -387,6 +400,17 @@ export class AuthService {
 
       throw error;
     }
+
+    const userId = result.user.id;
+
+    this.logger.log({ userId, isNewUser }, 'Google sign-in succeeded');
+
+    if (isNewUser) {
+      this.analytics.capture('user_signed_up', userId, { method: 'google' });
+    }
+    this.analytics.capture('user_logged_in', userId, { method: 'google' });
+
+    return result;
   }
 
   // Email a password reset link if the account exists
@@ -498,6 +522,7 @@ export class AuthService {
     });
 
     this.logger.log({ userId }, 'Password reset');
+    this.analytics.capture('password_reset_completed', userId);
   }
 
   private passwordResetFailed(): BadRequestException {
@@ -615,61 +640,74 @@ export class AuthService {
     const now = new Date();
     const codeHash = this.hashOtp(dto.otp);
 
-    return this.prisma.$transaction(async (tx) => {
-      const row = await tx.emailVerificationOtp.findFirst({
-        where: { userId: user.id, consumedAt: null, expiresAt: { gt: now } },
-        orderBy: { createdAt: 'desc' },
-      });
-
-      if (!row || row.attempts >= OTP_MAX_ATTEMPTS) {
-        if (row && row.attempts >= OTP_MAX_ATTEMPTS) {
-          await tx.emailVerificationOtp.update({
-            where: { id: row.id },
-            data: { consumedAt: now },
-          });
-        }
-        throw this.emailVerificationFailed('OTP_EXPIRED_OR_LOCKED', user.id);
-      }
-
-      if (row.codeHash !== codeHash) {
-        const nextAttempts = row.attempts + 1;
-        await tx.emailVerificationOtp.update({
-          where: { id: row.id },
-          data: {
-            attempts: nextAttempts,
-            ...(nextAttempts >= OTP_MAX_ATTEMPTS ? { consumedAt: now } : {}),
-          },
+    // Failures are returned, not thrown, so the attempt count commits
+    const outcome = await this.prisma.$transaction(
+      async (
+        tx,
+      ): Promise<
+        | { verified: true; result: AuthResult }
+        | { verified: false; reason: EmailVerificationFailure }
+      > => {
+        const row = await tx.emailVerificationOtp.findFirst({
+          where: { userId: user.id, consumedAt: null, expiresAt: { gt: now } },
+          orderBy: { createdAt: 'desc' },
         });
-        throw this.emailVerificationFailed('INVALID_OTP', user.id);
-      }
 
-      // Correct code — consume this and any other live OTPs, mark verified.
-      await tx.emailVerificationOtp.updateMany({
-        where: { userId: user.id, consumedAt: null },
-        data: { consumedAt: now },
-      });
+        if (!row) {
+          return { verified: false, reason: 'OTP_EXPIRED_OR_LOCKED' };
+        }
 
-      await tx.user.update({
-        where: { id: user.id },
-        data: { emailVerifiedAt: now },
-      });
+        // One conditional update, so concurrent guesses can't pass the cap
+        const counted = await tx.emailVerificationOtp.updateMany({
+          where: { id: row.id, attempts: { lt: OTP_MAX_ATTEMPTS } },
+          data: { attempts: { increment: 1 } },
+        });
 
-      const verifiedUser = { ...user, emailVerifiedAt: now };
+        if (counted.count === 0) {
+          return { verified: false, reason: 'OTP_EXPIRED_OR_LOCKED' };
+        }
 
-      const tokens = await this.issueTokens(verifiedUser, tx);
+        if (row.codeHash !== codeHash) {
+          return { verified: false, reason: 'INVALID_OTP' };
+        }
 
-      this.logger.log({ userId: user.id }, 'Email verified');
+        // Correct code — consume this and any other live OTPs, mark verified.
+        await tx.emailVerificationOtp.updateMany({
+          where: { userId: user.id, consumedAt: null },
+          data: { consumedAt: now },
+        });
 
-      return {
-        user: this.usersService.toUserResponse(verifiedUser),
-        tokens,
-      };
-    });
+        await tx.user.update({
+          where: { id: user.id },
+          data: { emailVerifiedAt: now },
+        });
+
+        const verifiedUser = { ...user, emailVerifiedAt: now };
+
+        const tokens = await this.issueTokens(verifiedUser, tx);
+
+        return {
+          verified: true,
+          result: {
+            user: this.usersService.toUserResponse(verifiedUser),
+            tokens,
+          },
+        };
+      },
+    );
+
+    if (!outcome.verified) {
+      throw this.emailVerificationFailed(outcome.reason, user.id);
+    }
+
+    this.logger.log({ userId: user.id }, 'Email verified');
+    this.analytics.capture('email_verified', user.id);
+
+    return outcome.result;
   }
 
   private emailVerificationFailed(
-    reason:
-      'UNKNOWN_OR_VERIFIED_EMAIL' | 'OTP_EXPIRED_OR_LOCKED' | 'INVALID_OTP',
+    reason: EmailVerificationFailure,
     userId?: string,
   ): BadRequestException {
     this.logger.warn({ userId, reason }, 'Email verification failed');
