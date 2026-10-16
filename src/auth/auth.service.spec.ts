@@ -17,6 +17,7 @@ import { NotificationService } from '../notifications';
 import { Role } from '../generated/prisma/enums';
 import * as bcrypt from 'bcrypt';
 import { GoogleOAuthService } from './oauth/google-oauth.service';
+import { AnalyticsService } from '../analytics';
 
 const sha256 = (value: string) =>
   createHash('sha256').update(value).digest('hex');
@@ -35,6 +36,15 @@ describe('AuthService', () => {
   const mockGoogleOAuthService = {
     verifyIdToken: jest.fn<(idToken: string) => Promise<unknown>>(),
   };
+
+  const mockAnalyticsService = {
+    capture:
+      jest.fn<
+        (event: string, distinctId: string, properties?: unknown) => void
+      >(),
+  };
+
+  let capturesInsideTransaction = 0;
 
   const createdAt = new Date('2026-10-01T09:00:00.000Z');
 
@@ -94,9 +104,13 @@ describe('AuthService', () => {
       findUnique: jest.fn<(args: unknown) => Promise<unknown>>(),
       create: jest.fn<(args: unknown) => Promise<unknown>>(),
     },
-    $transaction: jest.fn((callback: (tx: unknown) => unknown) =>
-      callback(mockPrismaService),
-    ),
+    $transaction: jest.fn(async (callback: (tx: unknown) => unknown) => {
+      const before = mockAnalyticsService.capture.mock.calls.length;
+      const result = await callback(mockPrismaService);
+      capturesInsideTransaction +=
+        mockAnalyticsService.capture.mock.calls.length - before;
+      return result;
+    }),
   };
 
   const mockNotificationService = {
@@ -105,6 +119,7 @@ describe('AuthService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    capturesInsideTransaction = 0;
 
     mockPrismaService.emailVerificationOtp.updateMany.mockResolvedValue({
       count: 0,
@@ -123,6 +138,7 @@ describe('AuthService', () => {
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: NotificationService, useValue: mockNotificationService },
         { provide: GoogleOAuthService, useValue: mockGoogleOAuthService },
+        { provide: AnalyticsService, useValue: mockAnalyticsService },
       ],
     }).compile();
 
@@ -457,7 +473,18 @@ describe('AuthService', () => {
       ).not.toHaveBeenCalled();
     });
 
-    it('increments attempts and rejects on a wrong code', async () => {
+    it('counts the attempt with a conditional increment below the cap', async () => {
+      await service.verifyEmail(dto);
+
+      expect(
+        mockPrismaService.emailVerificationOtp.updateMany,
+      ).toHaveBeenCalledWith({
+        where: { id: 'otp-1', attempts: { lt: 5 } },
+        data: { attempts: { increment: 1 } },
+      });
+    });
+
+    it('rejects a wrong code without verifying, after counting the attempt', async () => {
       mockPrismaService.emailVerificationOtp.findFirst.mockResolvedValue({
         ...otpRow,
         codeHash: sha256('999999'),
@@ -468,53 +495,41 @@ describe('AuthService', () => {
       );
 
       expect(
-        mockPrismaService.emailVerificationOtp.update,
-      ).toHaveBeenCalledWith({
-        where: { id: 'otp-1' },
-        data: { attempts: 1 },
-      });
+        mockPrismaService.emailVerificationOtp.updateMany,
+      ).toHaveBeenCalledTimes(1);
       expect(mockPrismaService.user.update).not.toHaveBeenCalled();
+      expect(mockPrismaService.refreshToken.create).not.toHaveBeenCalled();
     });
 
-    it('consumes the OTP when the final allowed attempt is used', async () => {
+    it('returns the failure from the transaction instead of throwing inside it', async () => {
       mockPrismaService.emailVerificationOtp.findFirst.mockResolvedValue({
         ...otpRow,
         codeHash: sha256('999999'),
-        attempts: 4,
       });
 
       await expect(service.verifyEmail(dto)).rejects.toThrow(
         BadRequestException,
       );
 
-      expect(
-        mockPrismaService.emailVerificationOtp.update,
-      ).toHaveBeenCalledWith({
-        where: { id: 'otp-1' },
-        data: {
-          attempts: 5,
-          consumedAt: expect.any(Date),
-        },
+      const transaction = mockPrismaService.$transaction.mock.results[0]
+        .value as Promise<unknown>;
+      await expect(transaction).resolves.toEqual({
+        verified: false,
+        reason: 'INVALID_OTP',
       });
     });
 
-    it('rejects when the OTP has already hit the attempt cap', async () => {
-      mockPrismaService.emailVerificationOtp.findFirst.mockResolvedValue({
-        ...otpRow,
-        attempts: 5,
+    it('rejects even the correct code once the attempt cap is reached', async () => {
+      mockPrismaService.emailVerificationOtp.updateMany.mockResolvedValue({
+        count: 0,
       });
 
       await expect(service.verifyEmail(dto)).rejects.toThrow(
         BadRequestException,
       );
 
-      expect(
-        mockPrismaService.emailVerificationOtp.update,
-      ).toHaveBeenCalledWith({
-        where: { id: 'otp-1' },
-        data: { consumedAt: expect.any(Date) },
-      });
       expect(mockPrismaService.user.update).not.toHaveBeenCalled();
+      expect(mockPrismaService.refreshToken.create).not.toHaveBeenCalled();
     });
   });
 
@@ -1361,7 +1376,9 @@ describe('AuthService', () => {
         codeHash: sha256('999999'),
         attempts: 0,
       });
-      mockPrismaService.emailVerificationOtp.update.mockResolvedValue({});
+      mockPrismaService.emailVerificationOtp.updateMany.mockResolvedValue({
+        count: 1,
+      });
 
       await expect(
         service.verifyEmail({ email, otp: '123456' }),
@@ -1372,6 +1389,274 @@ describe('AuthService', () => {
         'Email verification failed',
       );
       expect(loggedText()).not.toContain(email);
+    });
+  });
+
+  describe('analytics events', () => {
+    const password = 'password123';
+
+    const verifiedUser = async () => ({
+      id: 'user-1',
+      email: 'test@test.com',
+      passwordHash: await bcrypt.hash(password, 10),
+      role: Role.USER,
+      emailVerifiedAt: createdAt,
+      createdAt,
+      updatedAt: createdAt,
+      profile: null,
+    });
+
+    const googleProfile = {
+      googleId: 'google-sub-123',
+      email: 'test@test.com',
+      emailVerified: true,
+      fullName: 'Ada Obi',
+    };
+
+    const googleUser = {
+      id: 'user-1',
+      email: 'test@test.com',
+      role: Role.USER,
+      emailVerifiedAt: createdAt,
+      createdAt,
+      updatedAt: createdAt,
+      profile: { fullName: 'Ada Obi' },
+    };
+
+    afterEach(() => {
+      expect(capturesInsideTransaction).toBe(0);
+    });
+
+    it('emits user_signed_up with method email after registration', async () => {
+      mockUsersService.findByEmail.mockResolvedValue(null);
+      mockUsersService.create.mockResolvedValue(googleUser);
+
+      await service.register({
+        email: 'test@test.com',
+        password,
+        fullName: 'Ada Obi',
+      });
+
+      expect(mockAnalyticsService.capture).toHaveBeenCalledTimes(1);
+      expect(mockAnalyticsService.capture).toHaveBeenCalledWith(
+        'user_signed_up',
+        'user-1',
+        { method: 'email' },
+      );
+    });
+
+    it('emits nothing when registration fails on a duplicate email', async () => {
+      mockUsersService.findByEmail.mockResolvedValue({ id: 'user-1' });
+
+      await expect(
+        service.register({
+          email: 'test@test.com',
+          password,
+          fullName: 'Ada Obi',
+        }),
+      ).rejects.toThrow(ConflictException);
+
+      expect(mockAnalyticsService.capture).not.toHaveBeenCalled();
+    });
+
+    it('emits user_logged_in with method password after the tokens are issued', async () => {
+      mockUsersService.findByEmail.mockResolvedValue(await verifiedUser());
+
+      await service.login({ email: 'test@test.com', password });
+
+      expect(mockAnalyticsService.capture).toHaveBeenCalledTimes(1);
+      expect(mockAnalyticsService.capture).toHaveBeenCalledWith(
+        'user_logged_in',
+        'user-1',
+        { method: 'password' },
+      );
+      expect(
+        mockPrismaService.refreshToken.create.mock.invocationCallOrder[0],
+      ).toBeLessThan(mockAnalyticsService.capture.mock.invocationCallOrder[0]);
+    });
+
+    it.each([
+      ['an unknown email', async () => null, password],
+      ['a wrong password', verifiedUser, 'wrongPassword'],
+      [
+        'an unverified account',
+        async () => ({ ...(await verifiedUser()), emailVerifiedAt: null }),
+        password,
+      ],
+    ])(
+      'emits nothing on a failed login with %s',
+      async (_label, loadUser, attempt) => {
+        mockUsersService.findByEmail.mockResolvedValue(await loadUser());
+
+        await expect(
+          service.login({ email: 'test@test.com', password: attempt }),
+        ).rejects.toThrow(UnauthorizedException);
+
+        expect(mockAnalyticsService.capture).not.toHaveBeenCalled();
+      },
+    );
+
+    it('emits user_signed_up then user_logged_in for a brand-new Google user', async () => {
+      mockGoogleOAuthService.verifyIdToken.mockResolvedValue(googleProfile);
+      mockPrismaService.authIdentity.findUnique.mockResolvedValue(null);
+      mockPrismaService.user.findUnique.mockResolvedValue(null);
+      mockPrismaService.user.create.mockResolvedValue(googleUser);
+
+      await service.googleLogin('valid-google-id-token');
+
+      expect(mockAnalyticsService.capture.mock.calls).toEqual([
+        ['user_signed_up', 'user-1', { method: 'google' }],
+        ['user_logged_in', 'user-1', { method: 'google' }],
+      ]);
+    });
+
+    it('emits only user_logged_in for a returning Google user', async () => {
+      mockGoogleOAuthService.verifyIdToken.mockResolvedValue(googleProfile);
+      mockPrismaService.authIdentity.findUnique.mockResolvedValue({
+        user: googleUser,
+      });
+
+      await service.googleLogin('valid-google-id-token');
+
+      expect(mockAnalyticsService.capture.mock.calls).toEqual([
+        ['user_logged_in', 'user-1', { method: 'google' }],
+      ]);
+    });
+
+    it('emits only user_logged_in when Google links an existing account', async () => {
+      mockGoogleOAuthService.verifyIdToken.mockResolvedValue(googleProfile);
+      mockPrismaService.authIdentity.findUnique.mockResolvedValue(null);
+      mockPrismaService.user.findUnique.mockResolvedValue(googleUser);
+
+      await service.googleLogin('valid-google-id-token');
+
+      expect(mockAnalyticsService.capture.mock.calls).toEqual([
+        ['user_logged_in', 'user-1', { method: 'google' }],
+      ]);
+    });
+
+    it('emits nothing when Google token verification fails', async () => {
+      mockGoogleOAuthService.verifyIdToken.mockRejectedValue(
+        new UnauthorizedException('Invalid Google ID token'),
+      );
+
+      await expect(service.googleLogin('bad-token')).rejects.toThrow(
+        UnauthorizedException,
+      );
+
+      expect(mockAnalyticsService.capture).not.toHaveBeenCalled();
+    });
+
+    it('emits nothing on a P2002 conflict during Google sign-in', async () => {
+      mockGoogleOAuthService.verifyIdToken.mockResolvedValue(googleProfile);
+      mockPrismaService.authIdentity.findUnique.mockResolvedValue(null);
+      mockPrismaService.user.findUnique.mockResolvedValue(null);
+      mockPrismaService.user.create.mockRejectedValue({ code: 'P2002' });
+
+      await expect(
+        service.googleLogin('valid-google-id-token'),
+      ).rejects.toThrow(ConflictException);
+
+      expect(mockAnalyticsService.capture).not.toHaveBeenCalled();
+    });
+
+    describe('email verification', () => {
+      const dto = { email: 'test@test.com', otp: '123456' };
+
+      beforeEach(() => {
+        mockUsersService.findByEmail.mockResolvedValue({
+          ...googleUser,
+          emailVerifiedAt: null,
+        });
+        mockPrismaService.emailVerificationOtp.findFirst.mockResolvedValue({
+          id: 'otp-1',
+          codeHash: sha256(dto.otp),
+          attempts: 0,
+        });
+        mockPrismaService.emailVerificationOtp.updateMany.mockResolvedValue({
+          count: 1,
+        });
+        mockPrismaService.user.update.mockResolvedValue({ id: 'user-1' });
+      });
+
+      it('emits email_verified after the transaction succeeds', async () => {
+        await service.verifyEmail(dto);
+
+        expect(mockAnalyticsService.capture.mock.calls).toEqual([
+          ['email_verified', 'user-1'],
+        ]);
+      });
+
+      it.each([
+        [
+          'an invalid OTP',
+          () =>
+            mockPrismaService.emailVerificationOtp.findFirst.mockResolvedValue({
+              id: 'otp-1',
+              codeHash: sha256('999999'),
+              attempts: 0,
+            }),
+        ],
+        [
+          'an expired OTP',
+          () =>
+            mockPrismaService.emailVerificationOtp.findFirst.mockResolvedValue(
+              null,
+            ),
+        ],
+        [
+          'a locked OTP',
+          () =>
+            mockPrismaService.emailVerificationOtp.updateMany.mockResolvedValue(
+              { count: 0 },
+            ),
+        ],
+        [
+          'an unknown email',
+          () => mockUsersService.findByEmail.mockResolvedValue(null),
+        ],
+      ])('emits nothing for %s', async (_label, arrange) => {
+        arrange();
+
+        await expect(service.verifyEmail(dto)).rejects.toThrow(
+          BadRequestException,
+        );
+
+        expect(mockAnalyticsService.capture).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('password reset confirmation', () => {
+      const dto = { token: 'raw-reset-token', newPassword: 'NewPassword123!' };
+
+      beforeEach(() => {
+        mockPrismaService.passwordResetToken.findFirst.mockResolvedValue({
+          id: 'reset-1',
+          userId: 'user-1',
+        });
+        mockPrismaService.passwordResetToken.updateMany.mockResolvedValue({
+          count: 1,
+        });
+        mockUsersService.updatePasswordHash.mockResolvedValue(undefined);
+      });
+
+      it('emits password_reset_completed after the transaction succeeds', async () => {
+        await service.confirmPasswordReset(dto);
+
+        expect(mockAnalyticsService.capture.mock.calls).toEqual([
+          ['password_reset_completed', 'user-1'],
+        ]);
+      });
+
+      it('emits nothing for an invalid or expired reset token', async () => {
+        mockPrismaService.passwordResetToken.findFirst.mockResolvedValue(null);
+
+        await expect(service.confirmPasswordReset(dto)).rejects.toThrow(
+          BadRequestException,
+        );
+
+        expect(mockAnalyticsService.capture).not.toHaveBeenCalled();
+      });
     });
   });
 });
