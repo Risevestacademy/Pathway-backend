@@ -9,6 +9,7 @@ describe('PathwaysService', () => {
   let service: PathwaysService;
 
   const mockPrismaService = {
+    $queryRaw: jest.fn<(...args: unknown[]) => Promise<unknown>>(),
     pathway: {
       findFirst: jest.fn<(args: unknown) => Promise<unknown>>(),
       findUnique: jest.fn<(args: unknown) => Promise<unknown>>(),
@@ -159,7 +160,7 @@ describe('PathwaysService', () => {
       ).rejects.toThrow(ConflictException);
     });
 
-    it('deactivates other pathways before upserting the new active one, in one transaction', async () => {
+    it('locks the user, then deactivates other pathways before upserting the new active one, in one transaction', async () => {
       mockPrismaService.career.findFirst.mockResolvedValue({ id: 'career-1' });
       mockPrismaService.pathway.findUnique.mockResolvedValue({
         id: 'pathway-1',
@@ -169,6 +170,11 @@ describe('PathwaysService', () => {
       await service.setActivePathway('user-1', 'career-1');
 
       expect(mockPrismaService.$transaction).toHaveBeenCalledTimes(1);
+      expect(
+        mockPrismaService.$queryRaw.mock.invocationCallOrder[0],
+      ).toBeLessThan(
+        mockPrismaService.userPathway.updateMany.mock.invocationCallOrder[0],
+      );
       expect(mockPrismaService.userPathway.updateMany).toHaveBeenCalledWith({
         where: {
           userId: 'user-1',

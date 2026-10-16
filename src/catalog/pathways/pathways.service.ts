@@ -75,6 +75,8 @@ export class PathwaysService {
     }
 
     await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT 1 FROM "User" WHERE "id" = ${userId} FOR UPDATE`;
+
       await tx.userPathway.updateMany({
         where: { userId, isActive: true, careerId: { not: careerId } },
         data: { isActive: false },
