@@ -34,6 +34,16 @@ const OTP_MAX_ATTEMPTS = 5;
 const hashToken = (token: string) =>
   createHash('sha256').update(token).digest('hex');
 
+// Provider errors can carry the recipient and the rendered email
+const describeSendError = (error: unknown) => ({
+  message:
+    error instanceof Error ? error.message : 'Email provider request failed',
+  statusCode:
+    typeof error === 'object' && error !== null && 'statusCode' in error
+      ? error.statusCode
+      : undefined,
+});
+
 export interface AuthResult {
   user: UserResponse;
   tokens: {
@@ -110,14 +120,14 @@ export class AuthService {
     const isPasswordValid = await bcrypt.compare(dto.password, passwordHash);
 
     if (!user || !isPasswordValid) {
-      this.logger.warn({ email: dto.email }, 'Login failed');
+      this.logger.warn({ reason: 'INVALID_CREDENTIALS' }, 'Login failed');
 
       throw new UnauthorizedException('Invalid credentials');
     }
 
     if (!user.emailVerifiedAt) {
       this.logger.warn(
-        { userId: user.id },
+        { userId: user.id, reason: 'EMAIL_NOT_VERIFIED' },
         'Login blocked: email not verified',
       );
       throw new UnauthorizedException('Email not verified');
@@ -384,7 +394,10 @@ export class AuthService {
     const user = await this.usersService.findByEmail(dto.email);
 
     if (!user) {
-      this.logger.log('Password reset requested for an unknown email');
+      this.logger.warn(
+        { reason: 'UNKNOWN_EMAIL' },
+        'Password reset requested for an unknown email',
+      );
 
       return;
     }
@@ -429,7 +442,10 @@ export class AuthService {
 
       this.logger.log({ userId }, 'Password reset email sent');
     } catch (error) {
-      this.logger.error({ userId, err: error }, 'Password reset email failed');
+      this.logger.error(
+        { userId, error: describeSendError(error) },
+        'Password reset email failed',
+      );
     }
   }
 
@@ -485,7 +501,10 @@ export class AuthService {
   }
 
   private passwordResetFailed(): BadRequestException {
-    this.logger.warn('Password reset failed');
+    this.logger.warn(
+      { reason: 'INVALID_OR_EXPIRED_TOKEN' },
+      'Password reset failed',
+    );
 
     return new BadRequestException('Invalid or expired reset token');
   }
@@ -570,7 +589,7 @@ export class AuthService {
       this.logger.log({ userId }, 'Email verification OTP sent');
     } catch (error) {
       this.logger.error(
-        { userId, err: error },
+        { userId, error: describeSendError(error) },
         'Email verification OTP send failed',
       );
     }
@@ -590,7 +609,7 @@ export class AuthService {
     const user = await this.usersService.findByEmail(dto.email);
 
     if (!user || user.emailVerifiedAt) {
-      throw this.emailVerificationFailed();
+      throw this.emailVerificationFailed('UNKNOWN_OR_VERIFIED_EMAIL', user?.id);
     }
 
     const now = new Date();
@@ -609,7 +628,7 @@ export class AuthService {
             data: { consumedAt: now },
           });
         }
-        throw this.emailVerificationFailed();
+        throw this.emailVerificationFailed('OTP_EXPIRED_OR_LOCKED', user.id);
       }
 
       if (row.codeHash !== codeHash) {
@@ -621,7 +640,7 @@ export class AuthService {
             ...(nextAttempts >= OTP_MAX_ATTEMPTS ? { consumedAt: now } : {}),
           },
         });
-        throw this.emailVerificationFailed();
+        throw this.emailVerificationFailed('INVALID_OTP', user.id);
       }
 
       // Correct code — consume this and any other live OTPs, mark verified.
@@ -648,8 +667,12 @@ export class AuthService {
     });
   }
 
-  private emailVerificationFailed(): BadRequestException {
-    this.logger.warn('Email verification failed');
+  private emailVerificationFailed(
+    reason:
+      'UNKNOWN_OR_VERIFIED_EMAIL' | 'OTP_EXPIRED_OR_LOCKED' | 'INVALID_OTP',
+    userId?: string,
+  ): BadRequestException {
+    this.logger.warn({ userId, reason }, 'Email verification failed');
     return new BadRequestException('Invalid or expired verification code');
   }
 
@@ -657,7 +680,8 @@ export class AuthService {
     const user = await this.usersService.findByEmail(dto.email);
 
     if (!user || user.emailVerifiedAt) {
-      this.logger.log(
+      this.logger.warn(
+        { reason: 'UNKNOWN_OR_VERIFIED_EMAIL' },
         'Resend verification requested for an unknown or already-verified email',
       );
       return;
