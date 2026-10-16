@@ -13,7 +13,6 @@ import {
 import { CareerDetailDto } from './dto/career-detail.dto';
 import { CareerListItemDto } from './dto/list-careers.dto';
 import { CareerPathwayResponseDto } from './pathways/dto/career-pathway.dto';
-import { PathwayStepListItemDto } from './pathways/dto/list-pathway-steps.dto';
 
 describe('CareersController', () => {
   let controller: CareersController;
@@ -26,8 +25,6 @@ describe('CareersController', () => {
   const mockPathwaysService = {
     getCareerPathway:
       jest.fn<(id: string) => Promise<CareerPathwayResponseDto>>(),
-    getCareerPathwaySteps:
-      jest.fn<(id: string) => Promise<PathwayStepListItemDto[]>>(),
   };
 
   beforeEach(async () => {
@@ -230,31 +227,6 @@ describe('CareersController', () => {
       const result = await controller.getCareerPathway('career-1');
 
       expect(mockPathwaysService.getCareerPathway).toHaveBeenCalledWith(
-        'career-1',
-      );
-      expect(result).toEqual(mockResult);
-    });
-  });
-
-  describe('getCareerPathwaySteps', () => {
-    it('should delegate the career id to pathwaysService.getCareerPathwaySteps', async () => {
-      const mockResult: PathwayStepListItemDto[] = [
-        {
-          id: 'step-1',
-          order: 1,
-          title: 'Learn TypeScript',
-          skills: [{ id: 'skill-ts', name: 'TypeScript' }],
-        },
-      ];
-
-      mockPathwaysService.getCareerPathwaySteps.mockResolvedValue(mockResult);
-
-      const result = await controller.getCareerPathwaySteps('career-1');
-
-      expect(mockPathwaysService.getCareerPathwaySteps).toHaveBeenCalledTimes(
-        1,
-      );
-      expect(mockPathwaysService.getCareerPathwaySteps).toHaveBeenCalledWith(
         'career-1',
       );
       expect(result).toEqual(mockResult);
