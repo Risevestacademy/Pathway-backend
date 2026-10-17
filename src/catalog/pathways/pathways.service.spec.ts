@@ -19,6 +19,7 @@ describe('PathwaysService', () => {
   let capturesInsideTransaction = 0;
 
   const mockPrismaService = {
+    $queryRaw: jest.fn<(...args: unknown[]) => Promise<unknown>>(),
     pathway: {
       findFirst: jest.fn<(args: unknown) => Promise<unknown>>(),
       findUnique: jest.fn<(args: unknown) => Promise<unknown>>(),
@@ -70,7 +71,6 @@ describe('PathwaysService', () => {
         careerId: 'c1',
         title: 'Frontend Path',
         description: 'Learn the frontend',
-        _count: { steps: 2 },
         steps: [
           { id: 's1', title: 'HTML', order: 1, description: 'Basics' },
           { id: 's2', title: 'CSS', order: 2, description: null },
@@ -98,7 +98,6 @@ describe('PathwaysService', () => {
         careerId: 'c1',
         title: 't',
         description: null,
-        _count: { steps: 0 },
         steps: [],
       });
 
@@ -120,7 +119,6 @@ describe('PathwaysService', () => {
         careerId: 'c1',
         title: 'Empty',
         description: null,
-        _count: { steps: 0 },
         steps: [],
       });
 
@@ -136,7 +134,6 @@ describe('PathwaysService', () => {
         careerId: 'c1',
         title: 't',
         description: null,
-        _count: { steps: 1 },
         steps: [{ id: 's1', title: 'HTML', order: 1, description: null }],
       });
 
@@ -175,7 +172,7 @@ describe('PathwaysService', () => {
       ).rejects.toThrow(ConflictException);
     });
 
-    it('deactivates other pathways before upserting the new active one, in one transaction', async () => {
+    it('locks the user, then deactivates other pathways before upserting the new active one, in one transaction', async () => {
       mockPrismaService.career.findFirst.mockResolvedValue({ id: 'career-1' });
       mockPrismaService.pathway.findUnique.mockResolvedValue({
         id: 'pathway-1',
@@ -185,6 +182,11 @@ describe('PathwaysService', () => {
       await service.setActivePathway('user-1', 'career-1');
 
       expect(mockPrismaService.$transaction).toHaveBeenCalledTimes(1);
+      expect(
+        mockPrismaService.$queryRaw.mock.invocationCallOrder[0],
+      ).toBeLessThan(
+        mockPrismaService.userPathway.updateMany.mock.invocationCallOrder[0],
+      );
       expect(mockPrismaService.userPathway.updateMany).toHaveBeenCalledWith({
         where: {
           userId: 'user-1',

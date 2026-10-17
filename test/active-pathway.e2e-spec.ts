@@ -33,6 +33,16 @@ describe('Active pathway (e2e)', () => {
   const auth = (req: request.Test) =>
     req.set('Authorization', `Bearer ${user.accessToken}`);
   const timestamp = Date.now();
+  const createdUserIds: string[] = [];
+  const createdCareerIds: string[] = [];
+
+  const registerUser = async (
+    options: Parameters<typeof registerAndVerify>[2],
+  ) => {
+    const registered = await registerAndVerify(app, apiPrefix, options);
+    createdUserIds.push(registered.id);
+    return registered;
+  };
 
   const createCareer = async (
     status: CareerStatus,
@@ -53,6 +63,7 @@ describe('Active pathway (e2e)', () => {
           : {}),
       },
     });
+    createdCareerIds.push(career.id);
 
     if (withPathway) {
       await prisma.pathway.create({
@@ -123,18 +134,25 @@ describe('Active pathway (e2e)', () => {
     draftCareerId = await createCareer(CareerStatus.DRAFT, 'd', true);
     retiredCareerId = await createCareer(CareerStatus.RETIRED, 'e', true);
 
-    user = await registerAndVerify(app, apiPrefix, {
+    user = await registerUser({
       email: `e2e-active-pathway-${Date.now()}@test.com`,
     });
   });
 
   afterAll(async () => {
+    await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
+    await prisma.career.deleteMany({ where: { id: { in: createdCareerIds } } });
+
+    if (fieldId) {
+      await prisma.field.delete({ where: { id: fieldId } });
+    }
+
     await app.close();
   });
 
   describe('GET /me/active-pathway with none set', () => {
     it('returns the null-shaped 200 body', async () => {
-      const freshUser = await registerAndVerify(app, apiPrefix, {
+      const freshUser = await registerUser({
         email: `e2e-no-active-${Date.now()}@test.com`,
       });
 
@@ -305,34 +323,37 @@ describe('Active pathway (e2e)', () => {
     });
 
     it('never leaves two active rows under concurrent switches', async () => {
-      const concurrentUser = await registerAndVerify(app, apiPrefix, {
+      const concurrentUser = await registerUser({
         email: `e2e-concurrent-${Date.now()}@test.com`,
       });
       const authConcurrent = (req: request.Test) =>
         req.set('Authorization', `Bearer ${concurrentUser.accessToken}`);
 
-      await Promise.allSettled([
-        authConcurrent(
-          request(app.getHttpServer()).put(activePathwayUrl()),
-        ).send({
-          careerId: careerWithPathwayId,
-        }),
-        authConcurrent(
-          request(app.getHttpServer()).put(activePathwayUrl()),
-        ).send({
-          careerId: secondCareerWithPathwayId,
-        }),
-      ]);
+      const statuses: number[] = [];
+
+      for (let round = 0; round < 10; round++) {
+        const responses = await Promise.all(
+          [careerWithPathwayId, secondCareerWithPathwayId].map((careerId) =>
+            authConcurrent(
+              request(app.getHttpServer()).put(activePathwayUrl()),
+            ).send({ careerId }),
+          ),
+        );
+
+        statuses.push(...responses.map((response) => response.status));
+      }
+
+      expect(statuses.every((status) => status === 200)).toBe(true);
 
       const activeRows = await prisma.userPathway.findMany({
         where: { userId: concurrentUser.id, isActive: true },
       });
 
-      expect(activeRows.length).toBeLessThanOrEqual(1);
+      expect(activeRows).toHaveLength(1);
     });
 
     it("cannot change another user's active pathway", async () => {
-      const otherUser = await registerAndVerify(app, apiPrefix, {
+      const otherUser = await registerUser({
         email: `e2e-other-${Date.now()}@test.com`,
       });
 
@@ -370,10 +391,10 @@ describe('Active pathway (e2e)', () => {
     });
 
     it("returns only the caller's own active pathway, not another user's", async () => {
-      const userA = await registerAndVerify(app, apiPrefix, {
+      const userA = await registerUser({
         email: `e2e-get-isolation-a-${Date.now()}@test.com`,
       });
-      const userB = await registerAndVerify(app, apiPrefix, {
+      const userB = await registerUser({
         email: `e2e-get-isolation-b-${Date.now()}@test.com`,
       });
 
@@ -412,7 +433,7 @@ describe('Active pathway (e2e)', () => {
     });
 
     it('returns an empty array when nothing is saved', async () => {
-      const freshUser = await registerAndVerify(app, apiPrefix, {
+      const freshUser = await registerUser({
         email: `e2e-no-saved-${Date.now()}@test.com`,
       });
 
@@ -425,7 +446,7 @@ describe('Active pathway (e2e)', () => {
     });
 
     it('lists saved pathways with progress, marking the active one, and shows retired: true', async () => {
-      const savedUser = await registerAndVerify(app, apiPrefix, {
+      const savedUser = await registerUser({
         email: `e2e-saved-list-${Date.now()}@test.com`,
       });
       const authSaved = (req: request.Test) =>
@@ -465,10 +486,10 @@ describe('Active pathway (e2e)', () => {
     });
 
     it("does not return another user's saved pathways", async () => {
-      const userA = await registerAndVerify(app, apiPrefix, {
+      const userA = await registerUser({
         email: `e2e-saved-isolation-a-${Date.now()}@test.com`,
       });
-      const userB = await registerAndVerify(app, apiPrefix, {
+      const userB = await registerUser({
         email: `e2e-saved-isolation-b-${Date.now()}@test.com`,
       });
 

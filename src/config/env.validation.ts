@@ -184,10 +184,6 @@ export class EnvironmentVariables {
   @IsUrl(FRONTEND_URL_OPTIONS)
   PASSWORD_RESET_URL = 'http://localhost:5173/reset-password';
 
-  @IsOptional()
-  @IsUrl(FRONTEND_URL_OPTIONS)
-  EMAIL_VERIFICATION_URL = 'http://localhost:5173/verify-email';
-
   @Transform(splitCommaList)
   @IsArray()
   @ArrayNotEmpty()
