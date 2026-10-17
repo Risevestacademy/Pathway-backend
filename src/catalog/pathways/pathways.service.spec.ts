@@ -4,9 +4,19 @@ import { ConflictException, NotFoundException } from '@nestjs/common';
 import { PathwaysService } from './pathways.service';
 import { PrismaService } from '../../prisma';
 import { CareerStatus } from '../../generated/prisma/client';
+import { AnalyticsService } from '../../analytics';
 
 describe('PathwaysService', () => {
   let service: PathwaysService;
+
+  const mockAnalyticsService = {
+    capture:
+      jest.fn<
+        (event: string, distinctId: string, properties?: unknown) => void
+      >(),
+  };
+
+  let capturesInsideTransaction = 0;
 
   const mockPrismaService = {
     pathway: {
@@ -25,18 +35,24 @@ describe('PathwaysService', () => {
     userPathwayStep: {
       findMany: jest.fn<(args: unknown) => Promise<unknown>>(),
     },
-    $transaction: jest.fn((callback: (tx: unknown) => unknown) =>
-      callback(mockPrismaService),
-    ),
+    $transaction: jest.fn(async (callback: (tx: unknown) => unknown) => {
+      const before = mockAnalyticsService.capture.mock.calls.length;
+      const result = await callback(mockPrismaService);
+      capturesInsideTransaction +=
+        mockAnalyticsService.capture.mock.calls.length - before;
+      return result;
+    }),
   };
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    capturesInsideTransaction = 0;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PathwaysService,
         { provide: PrismaService, useValue: mockPrismaService },
+        { provide: AnalyticsService, useValue: mockAnalyticsService },
       ],
     }).compile();
 
@@ -181,6 +197,80 @@ describe('PathwaysService', () => {
         where: { userId_careerId: { userId: 'user-1', careerId: 'career-1' } },
         create: { userId: 'user-1', careerId: 'career-1', isActive: true },
         update: { isActive: true },
+      });
+    });
+
+    describe('pathway_saved event', () => {
+      beforeEach(() => {
+        mockPrismaService.career.findFirst.mockResolvedValue({
+          id: 'career-1',
+        });
+        mockPrismaService.pathway.findUnique.mockResolvedValue({
+          id: 'pathway-1',
+        });
+        mockPrismaService.userPathway.findFirst.mockResolvedValue(null);
+      });
+
+      afterEach(() => {
+        expect(capturesInsideTransaction).toBe(0);
+      });
+
+      it.each([
+        ['a first save', { count: 0 }],
+        ['a switch from another pathway', { count: 1 }],
+      ])(
+        'emits pathway_saved with the careerId on %s',
+        async (_label, deactivated) => {
+          mockPrismaService.userPathway.updateMany.mockResolvedValue(
+            deactivated,
+          );
+
+          await service.setActivePathway('user-1', 'career-1');
+
+          expect(mockAnalyticsService.capture.mock.calls).toEqual([
+            ['pathway_saved', 'user-1', { careerId: 'career-1' }],
+          ]);
+        },
+      );
+
+      it('emits after the transaction and before the active pathway read', async () => {
+        await service.setActivePathway('user-1', 'career-1');
+
+        const [captureOrder] =
+          mockAnalyticsService.capture.mock.invocationCallOrder;
+
+        expect(
+          mockPrismaService.userPathway.upsert.mock.invocationCallOrder[0],
+        ).toBeLessThan(captureOrder);
+        expect(captureOrder).toBeLessThan(
+          mockPrismaService.userPathway.findFirst.mock.invocationCallOrder[0],
+        );
+      });
+
+      it('leaves the response unchanged', async () => {
+        await expect(
+          service.setActivePathway('user-1', 'career-1'),
+        ).resolves.toEqual(await service.getActivePathway('user-1'));
+      });
+
+      it('emits nothing when the career is not found or not published', async () => {
+        mockPrismaService.career.findFirst.mockResolvedValue(null);
+
+        await expect(
+          service.setActivePathway('user-1', 'career-1'),
+        ).rejects.toThrow(NotFoundException);
+
+        expect(mockAnalyticsService.capture).not.toHaveBeenCalled();
+      });
+
+      it('emits nothing when the career has no pathway', async () => {
+        mockPrismaService.pathway.findUnique.mockResolvedValue(null);
+
+        await expect(
+          service.setActivePathway('user-1', 'career-1'),
+        ).rejects.toThrow(ConflictException);
+
+        expect(mockAnalyticsService.capture).not.toHaveBeenCalled();
       });
     });
   });
