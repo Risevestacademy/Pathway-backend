@@ -9,10 +9,14 @@ import { PathwayMetadataDto } from './dto/pathway-metadata.dto';
 import { ActivePathwayResponseDto } from './dto/active-pathway-response.dto';
 import { computeProgress, computeStepStatuses } from './progress';
 import { SavedPathwayDto } from './dto/saved-pathway.dto';
+import { AnalyticsService } from '../../analytics';
 
 @Injectable()
 export class PathwaysService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly analytics: AnalyticsService,
+  ) {}
 
   async getPathwayMetadata(pathwayId: string): Promise<PathwayMetadataDto> {
     const pathway = await this.prisma.pathway.findFirst({
@@ -86,6 +90,8 @@ export class PathwaysService {
         update: { isActive: true },
       });
     });
+
+    this.analytics.capture('pathway_saved', userId, { careerId });
 
     return this.getActivePathway(userId);
   }
