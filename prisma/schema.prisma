@@ -304,11 +304,12 @@ model PathwayStep {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  pathway     Pathway               @relation(fields: [pathwayId], references: [id], onDelete: Cascade)
-  skills      PathwayStepSkill[]
-  resources   PathwayStepResource[]
-  progress    UserPathwayStep[]
-  assessments Assessment[]
+  pathway      Pathway               @relation(fields: [pathwayId], references: [id], onDelete: Cascade)
+  skills       PathwayStepSkill[]
+  resources    PathwayStepResource[]
+  progress     UserPathwayStep[]
+  assessments  Assessment[]
+  userPathways UserPathway[]
 
   @@unique([pathwayId, order])
 }
@@ -366,16 +367,19 @@ model ResourceSkill {
 }
 
 model UserPathway {
-  id        String   @id @default(uuid())
-  userId    String
-  careerId  String
-  isActive  Boolean  @default(false)
-  startedAt DateTime @default(now())
+  id          String   @id @default(uuid())
+  userId      String
+  careerId    String
+  isActive    Boolean  @default(false)
+  startedAt   DateTime @default(now())
+  startStepId String?
 
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  career Career @relation(fields: [careerId], references: [id], onDelete: Cascade)
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  career    Career       @relation(fields: [careerId], references: [id], onDelete: Cascade)
+  startStep PathwayStep? @relation(fields: [startStepId], references: [id], onDelete: SetNull)
 
   @@unique([userId, careerId])
+  @@index([startStepId])
 }
 
 model UserPathwayStep {
