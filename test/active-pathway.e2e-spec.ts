@@ -507,4 +507,56 @@ describe('Active pathway (e2e)', () => {
       expect(bResponse.body).toEqual([]);
     });
   });
+
+  describe('UserPathway.startStepId', () => {
+    it('defaults to null for a newly saved pathway', async () => {
+      const saver = await registerUser({
+        email: `e2e-start-step-default-${Date.now()}@test.com`,
+      });
+
+      await request(app.getHttpServer())
+        .put(activePathwayUrl())
+        .set('Authorization', `Bearer ${saver.accessToken}`)
+        .send({ careerId: careerWithPathwayId })
+        .expect(200);
+
+      const saved = await prisma.userPathway.findUniqueOrThrow({
+        where: {
+          userId_careerId: { userId: saver.id, careerId: careerWithPathwayId },
+        },
+      });
+      expect(saved.startStepId).toBeNull();
+    });
+
+    it('is cleared, not blocked, when the referenced step is deleted', async () => {
+      const careerId = await createCareer(
+        CareerStatus.PUBLISHED,
+        'start-step',
+        true,
+      );
+      const owner = await registerUser({
+        email: `e2e-start-step-delete-${Date.now()}@test.com`,
+      });
+      const step = await prisma.pathwayStep.findFirstOrThrow({
+        where: { pathway: { careerId }, order: 2 },
+      });
+
+      await prisma.userPathway.create({
+        data: {
+          userId: owner.id,
+          careerId,
+          isActive: true,
+          startStepId: step.id,
+        },
+      });
+
+      await prisma.pathwayStep.delete({ where: { id: step.id } });
+
+      const saved = await prisma.userPathway.findUniqueOrThrow({
+        where: { userId_careerId: { userId: owner.id, careerId } },
+      });
+      expect(saved.startStepId).toBeNull();
+      expect(saved.isActive).toBe(true);
+    });
+  });
 });
