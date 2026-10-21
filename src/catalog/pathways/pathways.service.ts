@@ -7,7 +7,11 @@ import { PrismaService } from '../../prisma';
 import { CareerStatus, PathwayStepStatus } from '../../generated/prisma/client';
 import { PathwayMetadataDto } from './dto/pathway-metadata.dto';
 import { ActivePathwayResponseDto } from './dto/active-pathway-response.dto';
-import { computeProgress, computeStepStatuses } from './progress';
+import {
+  computeProgress,
+  computeStepStatuses,
+  findStepOrder,
+} from './progress';
 import { SavedPathwayDto } from './dto/saved-pathway.dto';
 import { AnalyticsService } from '../../analytics';
 
@@ -101,6 +105,7 @@ export class PathwaysService {
     const activeUserPathway = await this.prisma.userPathway.findFirst({
       where: { userId, isActive: true },
       select: {
+        startStepId: true,
         career: {
           select: {
             id: true,
@@ -134,7 +139,7 @@ export class PathwaysService {
       return { career: null, pathway: null, progress: null, steps: [] };
     }
 
-    const { career } = activeUserPathway;
+    const { career, startStepId } = activeUserPathway;
 
     if (!career.pathway) {
       return { career: null, pathway: null, progress: null, steps: [] };
@@ -148,7 +153,11 @@ export class PathwaysService {
     });
 
     const statuses = computeStepStatuses(pathway.steps, userSteps);
-    const progress = computeProgress(pathway.steps, userSteps);
+    const progress = computeProgress(
+      pathway.steps,
+      userSteps,
+      findStepOrder(pathway.steps, startStepId),
+    );
 
     return {
       career: {
@@ -159,7 +168,7 @@ export class PathwaysService {
         retired: career.status === CareerStatus.RETIRED,
       },
       pathway: { id: pathway.id, title: pathway.title },
-      progress,
+      progress: { ...progress, startStepId },
       steps: pathway.steps.map((step) => ({
         id: step.id,
         order: step.order,
@@ -180,6 +189,7 @@ export class PathwaysService {
       },
       select: {
         isActive: true,
+        startStepId: true,
         career: {
           select: {
             id: true,
@@ -214,6 +224,7 @@ export class PathwaysService {
         const { completed, total, percentage } = computeProgress(
           steps,
           relevantUserSteps,
+          findStepOrder(steps, up.startStepId),
         );
 
         return {

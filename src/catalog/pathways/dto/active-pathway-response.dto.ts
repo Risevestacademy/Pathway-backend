@@ -21,7 +21,16 @@ export class ActivePathwayProgressDto {
   @ApiProperty() percentage: number;
   @ApiPropertyOptional({ type: String, nullable: true }) nextStepId:
     string | null;
-  @ApiProperty() selfReported: boolean;
+  @ApiProperty({
+    description: 'Always true: progress is self-reported, not verified.',
+  })
+  selfReported: boolean;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: "The user's saved starting step for this pathway.",
+  })
+  startStepId: string | null;
 }
 
 export class ActivePathwayStepDto {
