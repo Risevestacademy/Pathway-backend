@@ -15,7 +15,7 @@ export interface ProgressSummary {
   total: number;
   percentage: number;
   nextStepId: string | null;
-  selfReported: boolean;
+  selfReported: true;
 }
 
 /**
@@ -37,35 +37,43 @@ export function computeStepStatuses(
 }
 
 /**
- * Aggregates completion across a pathway's steps.
- *
- * `selfReported` reflects whether the user has recorded any progress at all
- * (at least one UserPathwayStep row) as opposed to a freshly-activated
- * pathway with no progress yet. This is an assumption since we didn't
- * explicity decide in the ticket scope.
+ * Aggregates completion across all of a pathway's steps. With a `startOrder`,
+ * `nextStepId` is the earliest incomplete step at or after it, falling back to
+ * the earliest incomplete step overall.
  */
 export function computeProgress(
   steps: StepForProgress[],
   userSteps: UserStepProgress[],
+  startOrder?: number | null,
 ): ProgressSummary {
   const statuses = computeStepStatuses(steps, userSteps);
   const orderedSteps = [...steps].sort((a, b) => a.order - b.order);
 
-  const completed = orderedSteps.filter(
-    (step) => statuses.get(step.id) === PathwayStepStatus.COMPLETED,
-  ).length;
-
-  const total = orderedSteps.length;
-
-  const nextStep = orderedSteps.find(
+  const incompleteSteps = orderedSteps.filter(
     (step) => statuses.get(step.id) !== PathwayStepStatus.COMPLETED,
   );
+
+  const total = orderedSteps.length;
+  const completed = total - incompleteSteps.length;
+
+  const nextFromStart =
+    startOrder == null
+      ? undefined
+      : incompleteSteps.find((step) => step.order >= startOrder);
+  const nextStep = nextFromStart ?? incompleteSteps[0];
 
   return {
     completed,
     total,
     percentage: total === 0 ? 0 : Math.round((completed / total) * 100),
     nextStepId: nextStep?.id ?? null,
-    selfReported: userSteps.length > 0,
+    selfReported: true,
   };
+}
+
+export function findStepOrder(
+  steps: StepForProgress[],
+  stepId: string | null,
+): number | null {
+  return steps.find((step) => step.id === stepId)?.order ?? null;
 }

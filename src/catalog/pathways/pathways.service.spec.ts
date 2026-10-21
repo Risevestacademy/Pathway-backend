@@ -304,6 +304,78 @@ describe('PathwaysService', () => {
       const result = await service.getActivePathway('user-1');
       expect(result.career?.retired).toBe(true);
     });
+
+    describe('progress with a starting point', () => {
+      const activeRow = (startStepId: string | null) => ({
+        startStepId,
+        career: {
+          id: 'c1',
+          slug: 's',
+          title: 't',
+          roleSummary: 'r',
+          status: CareerStatus.PUBLISHED,
+          pathway: {
+            id: 'p1',
+            title: 'pt',
+            steps: [
+              { id: 'step-1', order: 1, title: 'One', skills: [] },
+              { id: 'step-2', order: 2, title: 'Two', skills: [] },
+              { id: 'step-3', order: 3, title: 'Three', skills: [] },
+            ],
+          },
+        },
+      });
+
+      beforeEach(() => {
+        mockPrismaService.userPathwayStep.findMany.mockResolvedValue([
+          { pathwayStepId: 'step-3', status: 'COMPLETED' },
+        ]);
+      });
+
+      it('selects the stored startStepId', async () => {
+        mockPrismaService.userPathway.findFirst.mockResolvedValue(
+          activeRow(null),
+        );
+
+        await service.getActivePathway('user-1');
+
+        expect(mockPrismaService.userPathway.findFirst).toHaveBeenCalledWith(
+          expect.objectContaining({
+            select: expect.objectContaining({ startStepId: true }),
+          }),
+        );
+      });
+
+      it('exposes startStepId and picks nextStepId from the starting point', async () => {
+        mockPrismaService.userPathway.findFirst.mockResolvedValue(
+          activeRow('step-2'),
+        );
+
+        const result = await service.getActivePathway('user-1');
+
+        expect(result.progress).toEqual({
+          completed: 1,
+          total: 3,
+          percentage: 33,
+          nextStepId: 'step-2',
+          selfReported: true,
+          startStepId: 'step-2',
+        });
+      });
+
+      it('exposes a null startStepId and the earliest incomplete step without one', async () => {
+        mockPrismaService.userPathway.findFirst.mockResolvedValue(
+          activeRow(null),
+        );
+
+        const result = await service.getActivePathway('user-1');
+
+        expect(result.progress).toMatchObject({
+          nextStepId: 'step-1',
+          startStepId: null,
+        });
+      });
+    });
   });
 
   describe('getSavedPathways', () => {
@@ -386,6 +458,58 @@ describe('PathwaysService', () => {
       expect(mockPrismaService.userPathwayStep.findMany).toHaveBeenCalledTimes(
         1,
       );
+    });
+
+    it('selects startStepId and reports the same totals as the active pathway read', async () => {
+      const steps = [
+        { id: 'step-1', order: 1 },
+        { id: 'step-2', order: 2 },
+      ];
+      const userSteps = [{ pathwayStepId: 'step-1', status: 'COMPLETED' }];
+
+      mockPrismaService.userPathway.findMany.mockResolvedValue([
+        {
+          isActive: true,
+          startStepId: 'step-2',
+          career: {
+            id: 'c1',
+            slug: 's1',
+            title: 't1',
+            status: CareerStatus.PUBLISHED,
+            pathway: { steps },
+          },
+        },
+      ]);
+      mockPrismaService.userPathway.findFirst.mockResolvedValue({
+        startStepId: 'step-2',
+        career: {
+          id: 'c1',
+          slug: 's1',
+          title: 't1',
+          roleSummary: 'r',
+          status: CareerStatus.PUBLISHED,
+          pathway: {
+            id: 'p1',
+            title: 'pt',
+            steps: steps.map((s) => ({ ...s, title: s.id, skills: [] })),
+          },
+        },
+      });
+      mockPrismaService.userPathwayStep.findMany.mockResolvedValue(userSteps);
+
+      const [saved] = await service.getSavedPathways('user-1');
+      const active = await service.getActivePathway('user-1');
+
+      expect(mockPrismaService.userPathway.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: expect.objectContaining({ startStepId: true }),
+        }),
+      );
+      expect(saved.progress).toEqual({
+        completed: active.progress!.completed,
+        total: active.progress!.total,
+        percentage: active.progress!.percentage,
+      });
     });
 
     it('only requests PUBLISHED or RETIRED careers', async () => {
