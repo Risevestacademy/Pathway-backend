@@ -228,7 +228,8 @@ describe('Active pathway (e2e)', () => {
         total: 2,
         percentage: 0,
         nextStepId: putResponse.body.steps[0].id,
-        selfReported: false,
+        selfReported: true,
+        startStepId: null,
       });
 
       const getResponse = await auth(
@@ -557,6 +558,113 @@ describe('Active pathway (e2e)', () => {
       });
       expect(saved.startStepId).toBeNull();
       expect(saved.isActive).toBe(true);
+    });
+  });
+
+  describe('progress with a saved starting point', () => {
+    const stepsOf = (careerId: string) =>
+      prisma.pathwayStep.findMany({
+        where: { pathway: { careerId } },
+        orderBy: { order: 'asc' },
+      });
+
+    it('picks nextStepId from the starting point, and both reads report the same totals', async () => {
+      const reader = await registerUser({
+        email: `e2e-start-step-progress-${Date.now()}@test.com`,
+      });
+      const [, secondStep] = await stepsOf(careerWithPathwayId);
+
+      await request(app.getHttpServer())
+        .put(activePathwayUrl())
+        .set('Authorization', `Bearer ${reader.accessToken}`)
+        .send({ careerId: careerWithPathwayId })
+        .expect(200);
+
+      await prisma.userPathway.update({
+        where: {
+          userId_careerId: {
+            userId: reader.id,
+            careerId: careerWithPathwayId,
+          },
+        },
+        data: { startStepId: secondStep.id },
+      });
+
+      const active = await request(app.getHttpServer())
+        .get(activePathwayUrl())
+        .set('Authorization', `Bearer ${reader.accessToken}`)
+        .expect(200);
+
+      expect(active.body.progress).toEqual({
+        completed: 0,
+        total: 2,
+        percentage: 0,
+        nextStepId: secondStep.id,
+        selfReported: true,
+        startStepId: secondStep.id,
+      });
+
+      const saved = await request(app.getHttpServer())
+        .get(`${apiPrefix}/me/pathways`)
+        .set('Authorization', `Bearer ${reader.accessToken}`)
+        .expect(200);
+
+      expect(saved.body).toHaveLength(1);
+      expect(saved.body[0].progress).toEqual({
+        completed: active.body.progress.completed,
+        total: active.body.progress.total,
+        percentage: active.body.progress.percentage,
+      });
+    });
+
+    it('keeps the starting point and step progress when switching away and back', async () => {
+      const switcher = await registerUser({
+        email: `e2e-start-step-switch-${Date.now()}@test.com`,
+      });
+      const [firstStep, secondStep] = await stepsOf(careerWithPathwayId);
+      const put = (careerId: string) =>
+        request(app.getHttpServer())
+          .put(activePathwayUrl())
+          .set('Authorization', `Bearer ${switcher.accessToken}`)
+          .send({ careerId })
+          .expect(200);
+
+      await put(careerWithPathwayId);
+      await prisma.userPathway.update({
+        where: {
+          userId_careerId: {
+            userId: switcher.id,
+            careerId: careerWithPathwayId,
+          },
+        },
+        data: { startStepId: secondStep.id },
+      });
+      await prisma.userPathwayStep.create({
+        data: {
+          userId: switcher.id,
+          pathwayStepId: firstStep.id,
+          status: 'COMPLETED',
+        },
+      });
+
+      await put(secondCareerWithPathwayId);
+      const switchBack = await put(careerWithPathwayId);
+
+      expect(switchBack.body.progress).toMatchObject({
+        completed: 1,
+        startStepId: secondStep.id,
+        nextStepId: secondStep.id,
+      });
+
+      const step = await prisma.userPathwayStep.findUniqueOrThrow({
+        where: {
+          userId_pathwayStepId: {
+            userId: switcher.id,
+            pathwayStepId: firstStep.id,
+          },
+        },
+      });
+      expect(step.status).toBe('COMPLETED');
     });
   });
 });

@@ -1,5 +1,9 @@
 import { PathwayStepStatus } from '../../generated/prisma/client';
-import { computeProgress, computeStepStatuses } from './progress';
+import {
+  computeProgress,
+  computeStepStatuses,
+  findStepOrder,
+} from './progress';
 
 const steps = [
   { id: 's1', order: 1 },
@@ -22,14 +26,14 @@ describe('computeStepStatuses', () => {
 });
 
 describe('computeProgress', () => {
-  it('reports zero progress and selfReported false with no user steps', () => {
+  it('reports zero progress with no user steps, still selfReported', () => {
     const result = computeProgress(steps, []);
     expect(result).toEqual({
       completed: 0,
       total: 3,
       percentage: 0,
       nextStepId: 's1',
-      selfReported: false,
+      selfReported: true,
     });
   });
 
@@ -63,7 +67,7 @@ describe('computeProgress', () => {
       total: 0,
       percentage: 0,
       nextStepId: null,
-      selfReported: false,
+      selfReported: true,
     });
   });
 
@@ -73,5 +77,76 @@ describe('computeProgress', () => {
       { pathwayStepId: 's1', status: PathwayStepStatus.COMPLETED },
     ]);
     expect(result.nextStepId).toBe('s2');
+  });
+
+  describe('with a starting point', () => {
+    it('picks the earliest incomplete step at or after the start', () => {
+      const result = computeProgress(steps, [], 2);
+      expect(result.nextStepId).toBe('s2');
+    });
+
+    it('skips completed steps at or after the start', () => {
+      const result = computeProgress(
+        steps,
+        [{ pathwayStepId: 's2', status: PathwayStepStatus.COMPLETED }],
+        2,
+      );
+      expect(result.nextStepId).toBe('s3');
+    });
+
+    it('still counts incomplete steps before the start in the totals', () => {
+      const result = computeProgress(
+        steps,
+        [{ pathwayStepId: 's3', status: PathwayStepStatus.COMPLETED }],
+        3,
+      );
+      expect(result).toMatchObject({ completed: 1, total: 3, percentage: 33 });
+    });
+
+    it('falls back to the earliest incomplete step overall when none remain from the start', () => {
+      const result = computeProgress(
+        steps,
+        [
+          { pathwayStepId: 's2', status: PathwayStepStatus.COMPLETED },
+          { pathwayStepId: 's3', status: PathwayStepStatus.COMPLETED },
+        ],
+        2,
+      );
+      expect(result.nextStepId).toBe('s1');
+    });
+
+    it('returns nextStepId null for a completed pathway', () => {
+      const result = computeProgress(
+        steps,
+        steps.map((s) => ({
+          pathwayStepId: s.id,
+          status: PathwayStepStatus.COMPLETED,
+        })),
+        2,
+      );
+      expect(result.nextStepId).toBeNull();
+      expect(result.percentage).toBe(100);
+    });
+
+    it('behaves as before when the start is null', () => {
+      expect(computeProgress(steps, [], null)).toEqual(
+        computeProgress(steps, []),
+      );
+    });
+
+    it('handles an empty pathway', () => {
+      expect(computeProgress([], [], 1)).toEqual(computeProgress([], []));
+    });
+  });
+});
+
+describe('findStepOrder', () => {
+  it("returns the step's order", () => {
+    expect(findStepOrder(steps, 's2')).toBe(2);
+  });
+
+  it('returns null for a null or unknown step id', () => {
+    expect(findStepOrder(steps, null)).toBeNull();
+    expect(findStepOrder(steps, 'other-pathway-step')).toBeNull();
   });
 });
