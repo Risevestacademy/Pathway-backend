@@ -54,6 +54,8 @@ jobs:
       JWT_ACCESS_EXPIRY: 15m
       JWT_REFRESH_SECRET: refresh-secret
       JWT_REFRESH_EXPIRY: 7d
+      MAIL_DRIVER: resend
+      RESEND_API_KEY: test-resend-key
       MAILERSEND_API_KEY: test-key
       EMAIL_FROM_ADDRESS: noreply@pathway.dev
       GOOGLE_CLIENT_IDS: test-client-id.apps.googleusercontent.com
@@ -96,6 +98,8 @@ jobs:
       JWT_ACCESS_EXPIRY: 15m
       JWT_REFRESH_SECRET: refresh-secret
       JWT_REFRESH_EXPIRY: 7d
+      MAIL_DRIVER: resend
+      RESEND_API_KEY: test-resend-key
       MAILERSEND_API_KEY: test-key
       EMAIL_FROM_ADDRESS: noreply@pathway.dev
       GOOGLE_CLIENT_IDS: test-client-id.apps.googleusercontent.com

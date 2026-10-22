@@ -107,15 +107,15 @@ model User {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  profile                 UserProfile?
-  identities              AuthIdentity[]
-  refreshTokens           RefreshToken[]
-  passwordResetTokens     PasswordResetToken[]
-  emailVerificationOtps   EmailVerificationOtp[]
-  assessments             Assessment[]
-  userSkills              UserSkill[]
-  pathways                UserPathway[]
-  pathwayProgress         UserPathwayStep[]
+  profile               UserProfile?
+  identities            AuthIdentity[]
+  refreshTokens         RefreshToken[]
+  passwordResetTokens   PasswordResetToken[]
+  emailVerificationOtps EmailVerificationOtp[]
+  assessments           Assessment[]
+  userSkills            UserSkill[]
+  pathways              UserPathway[]
+  pathwayProgress       UserPathwayStep[]
 }
 
 model UserProfile {
@@ -168,13 +168,13 @@ model PasswordResetToken {
 }
 
 model EmailVerificationOtp {
-  id          String    @id @default(uuid())
-  userId      String
-  codeHash    String
-  expiresAt   DateTime
-  attempts    Int       @default(0)
-  consumedAt  DateTime?
-  createdAt   DateTime  @default(now())
+  id         String    @id @default(uuid())
+  userId     String
+  codeHash   String
+  expiresAt  DateTime
+  attempts   Int       @default(0)
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

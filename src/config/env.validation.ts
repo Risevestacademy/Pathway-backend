@@ -28,6 +28,7 @@ export enum NodeEnv {
 
 export enum MailDriver {
   MailerSend = 'mailersend',
+  Resend = 'resend',
   Log = 'log',
 }
 
@@ -163,7 +164,7 @@ export class EnvironmentVariables {
 
   @IsEnum(MailDriver)
   @LogDriverOnlyInLocalEnvs()
-  MAIL_DRIVER: MailDriver = MailDriver.MailerSend;
+  MAIL_DRIVER: MailDriver = MailDriver.Resend;
 
   @ValidateIf(
     (env: EnvironmentVariables) => env.MAIL_DRIVER === MailDriver.MailerSend,
@@ -210,6 +211,13 @@ export class EnvironmentVariables {
     protocols: ['http', 'https'],
   })
   POSTHOG_HOST = 'https://eu.i.posthog.com';
+
+  @ValidateIf(
+    (env: EnvironmentVariables) => env.MAIL_DRIVER === MailDriver.Resend,
+  )
+  @IsString()
+  @IsNotEmpty()
+  RESEND_API_KEY: string;
 }
 
 export function validateEnv(

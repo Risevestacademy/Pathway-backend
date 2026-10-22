@@ -5,36 +5,41 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{{subject}}</title>
     <link
-      href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600&family=El+Messiri:wght@600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&family=El+Messiri:wght@600&display=swap"
       rel="stylesheet"
     />
-    <style>
-      a { color: #3F1386; }
-    </style>
   </head>
-  <body style="margin:0;padding:24px 12px;background-color:#E0CDFF;font-family:'Be Vietnam Pro',Arial,Helvetica,sans-serif;color:#101010;line-height:1.6;">
+  <body style="margin:0; padding:40px 16px; background-color:#F4F2F7; font-family:'Be Vietnam Pro',Arial,Helvetica,sans-serif; color:#101010; line-height:1.6;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
       <tr>
         <td align="center">
-          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#FFFFFF;border-radius:8px;overflow:hidden;">
-            <!-- Header -->
+          <!-- Main Email Card Container with subtle border/shadow styling -->
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px; width:100%; background-color:#FFFFFF; border-radius:12px; border:1px solid #EAE5F2; overflow:hidden;">
+            
+            <!-- Header with Logo -->
             <tr>
-              <td bgcolor="#3F1386" style="background-color:#3F1386;padding:20px 32px;border-bottom:4px solid #9E67F7;">
-                <span style="font-family:'El Messiri',Georgia,serif;font-size:26px;font-weight:600;color:#FFFFFF;">Pathway</span>
+              <td align="center" style="padding:40px 32px 24px 32px; background-color:#FFFFFF;">
+                <a href="https://github.com/Risevestacademy/Pathway-frontend" target="_blank" style="text-decoration:none;">
+                  <img src="https://raw.githubusercontent.com/Risevestacademy/Pathway-frontend/main/public/brand-logo-lavender.svg" alt="Pathway" width="260" style="display:block; border:0; outline:none; text-decoration:none; width:260px; height:auto;" />
+                </a>
               </td>
             </tr>
-            <!-- Content -->
+
+            <!-- Content Area -->
             <tr>
-              <td style="padding:32px;font-family:'Be Vietnam Pro',Arial,Helvetica,sans-serif;font-size:16px;color:#101010;">
+              <td style="padding:16px 48px 40px 48px; font-family:'Be Vietnam Pro',Arial,Helvetica,sans-serif; font-size:16px; color:#333333;">
                 {{{body}}}
               </td>
             </tr>
+
             <!-- Footer -->
             <tr>
-              <td style="padding:16px 32px;background-color:#E0CDFF;font-family:'Be Vietnam Pro',Arial,Helvetica,sans-serif;font-size:12px;color:#01245B;">
-                This is an automated message from Pathway.
+              <td align="center" style="padding:24px 32px; background-color:#FAFAFC; border-top:1px solid #EAE5F2; font-family:'Be Vietnam Pro',Arial,Helvetica,sans-serif; font-size:12px; color:#888888;">
+                <p style="margin:0 0 4px 0;">This is an automated message from Pathway.</p>
+                <p style="margin:0;">&copy; 2026 Pathway. All rights reserved.</p>
               </td>
             </tr>
+
           </table>
         </td>
       </tr>

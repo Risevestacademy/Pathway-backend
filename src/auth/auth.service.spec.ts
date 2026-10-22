@@ -1340,25 +1340,50 @@ describe('AuthService', () => {
       expect(loggedText()).not.toContain(otp);
     });
 
-    it('keeps only the status code of an HTTP error from the email provider', async () => {
-      mockUsersService.findByEmail.mockResolvedValue({
+    it('preserves both the status code and the message of an HTTP error from the email provider', async () => {
+      // Arrange: a user that will trigger sendEmailVerificationOtp
+      mockUsersService.findByEmail.mockResolvedValue(null);
+      mockUsersService.create.mockResolvedValue({
         id: 'user-1',
-        email,
+        email: 'test@test.com',
+        role: Role.USER,
         emailVerifiedAt: null,
+        createdAt,
+        updatedAt: createdAt,
+        profile: { fullName: 'Ada Obi' },
       });
+      mockPrismaService.emailVerificationOtp.updateMany.mockResolvedValue({
+        count: 0,
+      });
+      mockPrismaService.emailVerificationOtp.create.mockResolvedValue({
+        id: 'otp-1',
+      });
+
+      // A non-Error throw with a status code — the shape MailerSend/Resend produce
       mockNotificationService.send.mockRejectedValue({
         statusCode: 401,
         body: { message: 'Unauthenticated.' },
         headers: {},
       });
 
-      await service.resendVerificationEmail({ email });
+      // Act: register triggers `void this.sendEmailVerificationOtp(...)`
+      await service.register({
+        email: 'test@test.com',
+        password: 'password123',
+        fullName: 'Ada Obi',
+      });
+
+      // Flush the fire-and-forget promise before asserting
       await new Promise(process.nextTick);
 
+      // Assert
       expect(errorSpy).toHaveBeenCalledWith(
         {
           userId: 'user-1',
-          error: { message: 'Email provider request failed', statusCode: 401 },
+          error: {
+            message: expect.stringContaining('"statusCode":401'),
+            statusCode: 401,
+          },
         },
         'Email verification OTP send failed',
       );

@@ -11,7 +11,8 @@ import {
   type EmailProvider,
 } from './interfaces/email-provider.interface';
 import { MailDriver, type EnvironmentVariables } from '../config';
-
+import { Resend } from 'resend';
+import { ResendProvider } from './providers/resend.provider';
 // CommonJS (production) has __dirname; Jest's ESM mode does not.
 // `typeof` is safe on an undeclared variable, so it doesn't throw.
 const moduleDir =
@@ -30,8 +31,17 @@ const moduleDir =
       useFactory: (
         config: ConfigService<EnvironmentVariables, true>,
       ): EmailProvider => {
-        if (config.get('MAIL_DRIVER', { infer: true }) === MailDriver.Log) {
+        const driver = config.get('MAIL_DRIVER', { infer: true });
+
+        if (driver === MailDriver.Log) {
           return new LogEmailProvider();
+        }
+
+        if (driver === MailDriver.Resend) {
+          return new ResendProvider(
+            new Resend(config.get('RESEND_API_KEY', { infer: true })),
+            config,
+          );
         }
 
         return new MailerSendProvider(
