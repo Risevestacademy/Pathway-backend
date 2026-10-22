@@ -11,6 +11,7 @@ describe('validateEnv', () => {
     JWT_REFRESH_SECRET: 'refresh-secret',
     JWT_REFRESH_EXPIRY: '7d',
     MAILERSEND_API_KEY: 'test-key',
+    RESEND_API_KEY: 'test-resend-key',
     EMAIL_FROM_ADDRESS: 'noreply@pathway.dev',
     GOOGLE_CLIENT_IDS: 'web-client.apps.googleusercontent.com',
   };
@@ -38,6 +39,7 @@ describe('validateEnv', () => {
       JWT_REFRESH_SECRET: validEnv.JWT_REFRESH_SECRET,
       JWT_REFRESH_EXPIRY: validEnv.JWT_REFRESH_EXPIRY,
       MAILERSEND_API_KEY: validEnv.MAILERSEND_API_KEY,
+      RESEND_API_KEY: validEnv.RESEND_API_KEY,
       EMAIL_FROM_ADDRESS: validEnv.EMAIL_FROM_ADDRESS,
       GOOGLE_CLIENT_IDS: validEnv.GOOGLE_CLIENT_IDS,
     });
@@ -266,10 +268,10 @@ describe('validateEnv', () => {
     ).toThrow(/GOOGLE_CLIENT_IDS/);
   });
 
-  it('defaults MAIL_DRIVER to mailersend', () => {
+  it('defaults MAIL_DRIVER to resend', () => {
     const config = validateEnv(validEnv);
 
-    expect(config.MAIL_DRIVER).toBe(MailDriver.MailerSend);
+    expect(config.MAIL_DRIVER).toBe(MailDriver.Resend);
   });
 
   it('throws when MAIL_DRIVER is not a known driver', () => {
@@ -438,5 +440,64 @@ describe('validateEnv', () => {
     expect(() =>
       validateEnv({ ...validEnv, POSTHOG_HOST: 'not-a-url' }),
     ).toThrow(/POSTHOG_HOST/);
+  });
+
+  describe('MAIL_DRIVER=resend', () => {
+    it('requires RESEND_API_KEY', () => {
+      expect(() =>
+        validateEnv({
+          ...validEnv,
+          MAIL_DRIVER: 'resend',
+          MAILERSEND_API_KEY: undefined,
+        }),
+      ).toThrow(/RESEND_API_KEY/);
+    });
+
+    it('throws when RESEND_API_KEY is empty', () => {
+      expect(() =>
+        validateEnv({
+          ...validEnv,
+          MAIL_DRIVER: 'resend',
+          MAILERSEND_API_KEY: undefined,
+          RESEND_API_KEY: '',
+        }),
+      ).toThrow(/RESEND_API_KEY/);
+    });
+
+    it('accepts RESEND_API_KEY when set', () => {
+      const config = validateEnv({
+        ...validEnv,
+        MAIL_DRIVER: 'resend',
+        MAILERSEND_API_KEY: undefined,
+        RESEND_API_KEY: 're_test_key',
+      });
+
+      expect(config.MAIL_DRIVER).toBe(MailDriver.Resend);
+      expect(config.RESEND_API_KEY).toBe('re_test_key');
+    });
+
+    it('does not require MAILERSEND_API_KEY when the resend driver is selected', () => {
+      const config = validateEnv({
+        ...validEnv,
+        MAIL_DRIVER: 'resend',
+        MAILERSEND_API_KEY: undefined,
+        RESEND_API_KEY: 're_test_key',
+      });
+
+      expect(config.MAILERSEND_API_KEY).toBeUndefined();
+    });
+
+    it('is still restricted by LogDriverOnlyInLocalEnvs when NODE_ENV is production', () => {
+      // log is the only restricted driver — resend is not restricted.
+      // This test proves the restriction was not accidentally extended.
+      expect(() =>
+        validateEnv({
+          ...validEnv,
+          MAIL_DRIVER: 'resend',
+          MAILERSEND_API_KEY: undefined,
+          RESEND_API_KEY: 're_test_key',
+        }),
+      ).not.toThrow();
+    });
   });
 });
