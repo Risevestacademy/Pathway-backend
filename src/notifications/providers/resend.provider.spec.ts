@@ -93,6 +93,8 @@ describe('ResendProvider', () => {
         html: '<p>Hi</p>',
         text: 'Hi',
       }),
-    ).rejects.toThrow('Resend send failed: domain not verified');
+    ).rejects.toThrow(
+      /Resend send failed: Resend API error: .*domain not verified/,
+    );
   });
 });

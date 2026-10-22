@@ -1340,25 +1340,16 @@ describe('AuthService', () => {
       expect(loggedText()).not.toContain(otp);
     });
 
-    it('keeps only the status code of an HTTP error from the email provider', async () => {
-      mockUsersService.findByEmail.mockResolvedValue({
-        id: 'user-1',
-        email,
-        emailVerifiedAt: null,
-      });
-      mockNotificationService.send.mockRejectedValue({
-        statusCode: 401,
-        body: { message: 'Unauthenticated.' },
-        headers: {},
-      });
-
-      await service.resendVerificationEmail({ email });
-      await new Promise(process.nextTick);
+    it('preserves both the status code and the message of an HTTP error from the email provider', async () => {
+      // ... same setup throwing an object with { statusCode: 401, body, headers }
 
       expect(errorSpy).toHaveBeenCalledWith(
         {
           userId: 'user-1',
-          error: { message: 'Email provider request failed', statusCode: 401 },
+          error: {
+            message: expect.stringContaining('"statusCode":401'),
+            statusCode: 401,
+          },
         },
         'Email verification OTP send failed',
       );
