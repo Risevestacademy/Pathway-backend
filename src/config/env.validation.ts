@@ -162,6 +162,11 @@ export class EnvironmentVariables {
   @Min(1)
   THROTTLE_AUTH_LIMIT: number = 10;
 
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  THROTTLE_FEEDBACK_LIMIT: number = 5;
+
   @IsEnum(MailDriver)
   @LogDriverOnlyInLocalEnvs()
   MAIL_DRIVER: MailDriver = MailDriver.Resend;

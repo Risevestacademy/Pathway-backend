@@ -163,6 +163,7 @@ describe('validateEnv', () => {
     expect(config.THROTTLE_TTL_MS).toBe(60000);
     expect(config.THROTTLE_LIMIT).toBe(100);
     expect(config.THROTTLE_AUTH_LIMIT).toBe(10);
+    expect(config.THROTTLE_FEEDBACK_LIMIT).toBe(5);
   });
 
   it('throws when THROTTLE_LIMIT is not a positive integer', () => {
