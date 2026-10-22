@@ -449,6 +449,7 @@ describe('validateEnv', () => {
           ...validEnv,
           MAIL_DRIVER: 'resend',
           MAILERSEND_API_KEY: undefined,
+          RESEND_API_KEY: undefined,
         }),
       ).toThrow(/RESEND_API_KEY/);
     });
