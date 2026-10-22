@@ -1,6 +1,7 @@
 import {
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma';
@@ -13,10 +14,16 @@ import {
   findStepOrder,
 } from './progress';
 import { SavedPathwayDto } from './dto/saved-pathway.dto';
+import {
+  type StepCompletionStatus,
+  StepStatusResponseDto,
+} from './dto/step-status-response.dto';
 import { AnalyticsService } from '../../analytics';
 
 @Injectable()
 export class PathwaysService {
+  private readonly logger = new Logger(PathwaysService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly analytics: AnalyticsService,
@@ -99,6 +106,118 @@ export class PathwaysService {
     this.analytics.capture('pathway_saved', userId, { careerId });
 
     return this.getActivePathway(userId);
+  }
+
+  async setStepStatus(
+    userId: string,
+    stepId: string,
+    status: StepCompletionStatus,
+  ): Promise<StepStatusResponseDto> {
+    const step = await this.prisma.pathwayStep.findFirst({
+      where: {
+        id: stepId,
+        pathway: {
+          career: {
+            OR: [
+              { status: CareerStatus.PUBLISHED },
+              {
+                status: CareerStatus.RETIRED,
+                userPathways: { some: { userId } },
+              },
+            ],
+          },
+        },
+      },
+      select: { pathwayId: true, pathway: { select: { careerId: true } } },
+    });
+
+    if (!step) {
+      this.logger.warn(
+        { userId, stepId, reason: 'STEP_NOT_FOUND' },
+        'Step status update rejected',
+      );
+      throw new NotFoundException('Step not found');
+    }
+
+    const { careerId } = step.pathway;
+
+    const userPathway = await this.prisma.userPathway.findUnique({
+      where: { userId_careerId: { userId, careerId } },
+      select: { startStepId: true },
+    });
+
+    if (!userPathway) {
+      this.logger.warn(
+        { userId, stepId, reason: 'CAREER_NOT_SAVED' },
+        'Step status update rejected',
+      );
+      throw new ConflictException('Save this career before tracking its steps');
+    }
+
+    const changed = await this.writeStepStatus(userId, stepId, status);
+
+    if (changed) {
+      this.logger.log({ userId, stepId, status }, 'Step status changed');
+      this.analytics.capture('step_completion_changed', userId, {
+        careerId,
+        stepId,
+        status,
+      });
+    }
+
+    const [steps, userSteps] = await Promise.all([
+      this.prisma.pathwayStep.findMany({
+        where: { pathwayId: step.pathwayId },
+        select: { id: true, order: true },
+      }),
+      this.prisma.userPathwayStep.findMany({
+        where: { userId, pathwayStep: { pathwayId: step.pathwayId } },
+        select: { pathwayStepId: true, status: true },
+      }),
+    ]);
+
+    const progress = computeProgress(
+      steps,
+      userSteps,
+      findStepOrder(steps, userPathway.startStepId),
+    );
+
+    return {
+      stepId,
+      status,
+      progress: { ...progress, startStepId: userPathway.startStepId },
+    };
+  }
+
+  // Conditional writes, so only a real change returns true
+  private async writeStepStatus(
+    userId: string,
+    pathwayStepId: string,
+    status: StepCompletionStatus,
+  ): Promise<boolean> {
+    const completedAt =
+      status === PathwayStepStatus.COMPLETED ? new Date() : null;
+
+    const updated = await this.prisma.userPathwayStep.updateMany({
+      where: { userId, pathwayStepId, status: { not: status } },
+      data: { status, completedAt },
+    });
+
+    if (updated.count > 0) {
+      return true;
+    }
+
+    // A missing row already reads as NOT_STARTED
+    if (status === PathwayStepStatus.NOT_STARTED) {
+      return false;
+    }
+
+    const created = await this.prisma.userPathwayStep.createMany({
+      data: [{ userId, pathwayStepId, status, completedAt }],
+      skipDuplicates: true,
+    });
+
+    return created.count > 0;
   }
 
   async getActivePathway(userId: string): Promise<ActivePathwayResponseDto> {
