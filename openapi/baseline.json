@@ -778,6 +778,89 @@
         ]
       }
     },
+    "/me/active-pathway": {
+      "put": {
+        "operationId": "MeController_setActivePathway",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetActivePathwayDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivePathwayResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Career does not exist or is not PUBLISHED"
+          },
+          "409": {
+            "description": "The career has no pathway yet"
+          }
+        },
+        "summary": "Set the signed-in user's active pathway",
+        "tags": [
+          "Me"
+        ]
+      },
+      "get": {
+        "operationId": "MeController_getActivePathway",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivePathwayResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Get the signed-in user's active pathway",
+        "tags": [
+          "Me"
+        ]
+      }
+    },
+    "/me/pathways": {
+      "get": {
+        "operationId": "MeController_getSavedPathways",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SavedPathwayDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "List the signed-in user's saved, visible pathways",
+        "tags": [
+          "Me"
+        ]
+      }
+    },
     "/onboarding/options": {
       "get": {
         "operationId": "ReferenceController_getOptions",
@@ -1774,6 +1857,231 @@
           "description",
           "stepCount",
           "steps"
+        ]
+      },
+      "SetActivePathwayDto": {
+        "type": "object",
+        "properties": {
+          "careerId": {
+            "type": "string",
+            "description": "UUID of the career to make active"
+          }
+        },
+        "required": [
+          "careerId"
+        ]
+      },
+      "ActivePathwayCareerDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "roleSummary": {
+            "type": "string"
+          },
+          "retired": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "title",
+          "roleSummary",
+          "retired"
+        ]
+      },
+      "ActivePathwaySummaryDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ]
+      },
+      "ActivePathwayProgressDto": {
+        "type": "object",
+        "properties": {
+          "completed": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number"
+          },
+          "percentage": {
+            "type": "number"
+          },
+          "nextStepId": {
+            "type": "string",
+            "nullable": true
+          },
+          "selfReported": {
+            "type": "boolean",
+            "description": "Always true: progress is self-reported, not verified."
+          },
+          "startStepId": {
+            "type": "string",
+            "nullable": true,
+            "description": "The user's saved starting step for this pathway."
+          }
+        },
+        "required": [
+          "completed",
+          "total",
+          "percentage",
+          "selfReported",
+          "startStepId"
+        ]
+      },
+      "ActivePathwayStepDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "order": {
+            "type": "number"
+          },
+          "title": {
+            "type": "string"
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CareerSkillDto"
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "NOT_STARTED",
+              "IN_PROGRESS",
+              "COMPLETED"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "order",
+          "title",
+          "skills",
+          "status"
+        ]
+      },
+      "ActivePathwayResponseDto": {
+        "type": "object",
+        "properties": {
+          "career": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ActivePathwayCareerDto"
+              }
+            ]
+          },
+          "pathway": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ActivePathwaySummaryDto"
+              }
+            ]
+          },
+          "progress": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ActivePathwayProgressDto"
+              }
+            ]
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActivePathwayStepDto"
+            }
+          }
+        },
+        "required": [
+          "steps"
+        ]
+      },
+      "SavedPathwayCareerDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "retired": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "title",
+          "retired"
+        ]
+      },
+      "SavedPathwayProgressDto": {
+        "type": "object",
+        "properties": {
+          "completed": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number"
+          },
+          "percentage": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "completed",
+          "total",
+          "percentage"
+        ]
+      },
+      "SavedPathwayDto": {
+        "type": "object",
+        "properties": {
+          "career": {
+            "$ref": "#/components/schemas/SavedPathwayCareerDto"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "progress": {
+            "$ref": "#/components/schemas/SavedPathwayProgressDto"
+          }
+        },
+        "required": [
+          "career",
+          "isActive",
+          "progress"
         ]
       },
       "OptionDto": {
