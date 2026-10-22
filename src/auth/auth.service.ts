@@ -39,14 +39,32 @@ const hashToken = (token: string) =>
   createHash('sha256').update(token).digest('hex');
 
 // Provider errors can carry the recipient and the rendered email
-const describeSendError = (error: unknown) => ({
-  message:
-    error instanceof Error ? error.message : 'Email provider request failed',
-  statusCode:
-    typeof error === 'object' && error !== null && 'statusCode' in error
-      ? error.statusCode
-      : undefined,
-});
+const describeSendError = (error: unknown) => {
+  if (error instanceof Error) {
+    return {
+      message: error.message,
+      statusCode:
+        'statusCode' in error
+          ? (error as { statusCode?: number }).statusCode
+          : undefined,
+    };
+  }
+
+  if (typeof error === 'object' && error !== null) {
+    const obj = error as Record<string, unknown>;
+    return {
+      message:
+        typeof obj.message === 'string' ? obj.message : JSON.stringify(obj),
+      statusCode:
+        typeof obj.statusCode === 'number' ? obj.statusCode : undefined,
+    };
+  }
+
+  return {
+    message: typeof error === 'string' ? error : String(error),
+    statusCode: undefined,
+  };
+};
 
 export interface AuthResult {
   user: UserResponse;
