@@ -18,6 +18,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { PathwaysModule } from './catalog/pathways/pathways.module';
 import { ReferenceModule } from './reference/reference.module';
 import { AnalyticsModule } from './analytics/analytics.module';
+import { FeedbackModule } from './feedback';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
     PathwaysModule,
     ReferenceModule,
     AnalyticsModule,
+    FeedbackModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

@@ -5,6 +5,7 @@ process.env.DATABASE_URL ??=
   'postgresql://pathway_user:pathway_password@localhost:5432/pathway_test?schema=public';
 process.env.THROTTLE_LIMIT = '100000';
 process.env.THROTTLE_AUTH_LIMIT = '100000';
+process.env.THROTTLE_FEEDBACK_LIMIT = '100000';
 process.env.MAILERSEND_API_KEY ??= 'test-key';
 process.env.EMAIL_FROM_ADDRESS ??= 'noreply@pathway.dev';
 process.env.GOOGLE_CLIENT_IDS ??= 'test-client-id.apps.googleusercontent.com';

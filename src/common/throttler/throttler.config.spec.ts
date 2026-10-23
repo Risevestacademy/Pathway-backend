@@ -1,6 +1,7 @@
 import type { ExecutionContext } from '@nestjs/common';
 import {
   AuthThrottle,
+  FeedbackThrottle,
   SkipRateLimit,
   throttlerOptionsFactory,
 } from './throttler.config';
@@ -8,6 +9,9 @@ import {
 class Sample {
   @AuthThrottle()
   strict() {}
+
+  @FeedbackThrottle()
+  feedback() {}
 
   loose() {}
 }
@@ -28,12 +32,12 @@ describe('throttlerOptionsFactory', () => {
     THROTTLE_TTL_MS: 60000,
     THROTTLE_LIMIT: 100,
     THROTTLE_AUTH_LIMIT: 10,
+    THROTTLE_FEEDBACK_LIMIT: 5,
   };
   const config = { get: (key: keyof typeof values) => values[key] };
 
-  const [defaultThrottler, authThrottler] = throttlerOptionsFactory(
-    config as never,
-  );
+  const [defaultThrottler, authThrottler, feedbackThrottler] =
+    throttlerOptionsFactory(config as never);
 
   it('builds the default throttler from config', () => {
     expect(defaultThrottler).toMatchObject({
@@ -59,6 +63,22 @@ describe('throttlerOptionsFactory', () => {
     expect(skip(contextFor(Sample.prototype.loose))).toBe(true);
   });
 
+  it('builds a stricter feedback throttler from config', () => {
+    expect(feedbackThrottler).toMatchObject({
+      name: 'feedback',
+      ttl: 60000,
+      limit: 5,
+    });
+  });
+
+  it('applies the feedback limit only to routes tagged with @FeedbackThrottle()', () => {
+    const skip = feedbackThrottler.skipIf!;
+
+    expect(skip(contextFor(Sample.prototype.feedback))).toBe(false);
+    expect(skip(contextFor(Sample.prototype.strict))).toBe(true);
+    expect(skip(contextFor(Sample.prototype.loose))).toBe(true);
+  });
+
   it('applies the default limit to routes that are not exempt', () => {
     expect(defaultThrottler.skipIf!(contextFor(Sample.prototype.loose))).toBe(
       false,
@@ -70,5 +90,6 @@ describe('throttlerOptionsFactory', () => {
 
     expect(defaultThrottler.skipIf!(context)).toBe(true);
     expect(authThrottler.skipIf!(context)).toBe(true);
+    expect(feedbackThrottler.skipIf!(context)).toBe(true);
   });
 });

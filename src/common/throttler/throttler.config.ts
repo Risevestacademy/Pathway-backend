@@ -5,10 +5,14 @@ import type { EnvironmentVariables } from '../../config';
 
 export const AUTH_THROTTLER = 'auth';
 const AUTH_THROTTLE_KEY = 'authThrottle';
+export const FEEDBACK_THROTTLER = 'feedback';
+const FEEDBACK_THROTTLE_KEY = 'feedbackThrottle';
 const SKIP_RATE_LIMIT_KEY = 'skipRateLimit';
 
 /** Marks a route as subject to the stricter `auth` rate limit. */
 export const AuthThrottle = () => SetMetadata(AUTH_THROTTLE_KEY, true);
+
+export const FeedbackThrottle = () => SetMetadata(FEEDBACK_THROTTLE_KEY, true);
 
 /** Exempts a route or controller from all rate limiting (e.g. /health). */
 export const SkipRateLimit = () => SetMetadata(SKIP_RATE_LIMIT_KEY, true);
@@ -39,6 +43,14 @@ export const throttlerOptionsFactory = (
       skipIf: (context) =>
         hasFlag(SKIP_RATE_LIMIT_KEY, context) ||
         !hasFlag(AUTH_THROTTLE_KEY, context),
+    },
+    {
+      name: FEEDBACK_THROTTLER,
+      ttl,
+      limit: config.get('THROTTLE_FEEDBACK_LIMIT', { infer: true }),
+      skipIf: (context) =>
+        hasFlag(SKIP_RATE_LIMIT_KEY, context) ||
+        !hasFlag(FEEDBACK_THROTTLE_KEY, context),
     },
   ];
 };
