@@ -1,6 +1,7 @@
 import {
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma';
@@ -17,6 +18,8 @@ import { AnalyticsService } from '../../analytics';
 
 @Injectable()
 export class PathwaysService {
+  private readonly logger = new Logger(PathwaysService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly analytics: AnalyticsService,

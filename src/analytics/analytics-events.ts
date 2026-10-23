@@ -1,5 +1,6 @@
 export type SignUpMethod = 'email' | 'google';
 export type LoginMethod = 'password' | 'google';
+export type StepCompletionStatus = 'COMPLETED' | 'NOT_STARTED';
 
 /**
  * Event name -> property shape.
@@ -11,6 +12,11 @@ export interface AnalyticsEventMap {
   email_verified: undefined;
   password_reset_completed: undefined;
   pathway_saved: { careerId: string };
+  step_completion_changed: {
+    careerId: string;
+    stepId: string;
+    status: StepCompletionStatus;
+  };
 }
 
 export type AnalyticsEventName = keyof AnalyticsEventMap;

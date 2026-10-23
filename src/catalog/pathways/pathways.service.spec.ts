@@ -32,9 +32,12 @@ describe('PathwaysService', () => {
       upsert: jest.fn<(args: unknown) => Promise<unknown>>(),
       findFirst: jest.fn<(args: unknown) => Promise<unknown>>(),
       findMany: jest.fn<(args: unknown) => Promise<unknown>>(),
+      findUnique: jest.fn<(args: unknown) => Promise<unknown>>(),
     },
     userPathwayStep: {
       findMany: jest.fn<(args: unknown) => Promise<unknown>>(),
+      updateMany: jest.fn<(args: unknown) => Promise<unknown>>(),
+      createMany: jest.fn<(args: unknown) => Promise<unknown>>(),
     },
     $transaction: jest.fn(async (callback: (tx: unknown) => unknown) => {
       const before = mockAnalyticsService.capture.mock.calls.length;
