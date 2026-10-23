@@ -12,14 +12,15 @@ import {
   CurrentUser,
   JwtAuthGuard,
 } from '../../common';
-import { PathwaysService, StepStatusResponseDto } from '../pathways';
+import { PathwayStepsService } from './pathway-steps.service';
 import { SetStepStatusDto } from './dto/set-step-status.dto';
+import { StepStatusResponseDto } from './dto/step-status-response.dto';
 
 @ApiTags('Me')
 @Controller('me/pathway-steps')
 @UseGuards(JwtAuthGuard)
 export class MePathwayStepsController {
-  constructor(private readonly pathwaysService: PathwaysService) {}
+  constructor(private readonly pathwayStepsService: PathwayStepsService) {}
 
   @Put(':stepId')
   @ApiOperation({
@@ -55,6 +56,6 @@ export class MePathwayStepsController {
     @Param('stepId', ParseUUIDPipe) stepId: string,
     @Body() dto: SetStepStatusDto,
   ): Promise<StepStatusResponseDto> {
-    return this.pathwaysService.setStepStatus(user.id, stepId, dto.status);
+    return this.pathwayStepsService.setStepStatus(user.id, stepId, dto.status);
   }
 }

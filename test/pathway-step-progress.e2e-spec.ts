@@ -9,7 +9,12 @@ import { EnvironmentVariables } from '../src/config';
 import { NotificationService } from '../src/notifications';
 import { PrismaService } from '../src/prisma';
 import { AnalyticsService } from '../src/analytics';
-import { CareerStatus } from '../src/generated/prisma/client';
+import {
+  cleanupCatalog,
+  seedCatalog,
+  stepsOf,
+  type CatalogFixture,
+} from './utils/catalog';
 import {
   notificationMock,
   registerAndVerify,
@@ -23,61 +28,22 @@ describe('Pathway step progress (e2e)', () => {
   let apiPrefix: string;
   let captureSpy: jest.SpyInstance;
 
-  let fieldId: string;
-  let publishedCareerId: string;
-  let secondPublishedCareerId: string;
-  let draftCareerId: string;
-  let retiredCareerId: string;
+  let catalog: CatalogFixture;
 
-  const timestamp = Date.now();
   const createdUserIds: string[] = [];
-  const createdCareerIds: string[] = [];
 
-  const registerUser = async (label: string) => {
+  // ──────────────────────────────────────────────────────────────
+  // Suite-local helpers (kept here on purpose — they exercise the
+  // endpoints under test, so wrapping them in a util would hide the
+  // contract this suite is supposed to be verifying).
+  // ──────────────────────────────────────────────────────────────
+  const registerUser = async (label: string): Promise<RegisteredUser> => {
     const registered = await registerAndVerify(app, apiPrefix, {
       email: `e2e-step-progress-${label}-${Date.now()}@test.com`,
     });
     createdUserIds.push(registered.id);
     return registered;
   };
-
-  const createCareer = async (status: CareerStatus, slugSuffix: string) => {
-    const career = await prisma.career.create({
-      data: {
-        slug: `e2e-step-progress-${slugSuffix}-${timestamp}`,
-        title: `Step Progress Career ${slugSuffix} ${timestamp}`,
-        description: 'd',
-        roleSummary: 'r',
-        exampleActivities: [],
-        fieldId,
-        status,
-        ...(status === CareerStatus.PUBLISHED
-          ? { publishedAt: new Date() }
-          : {}),
-        pathway: {
-          create: {
-            title: `Pathway ${slugSuffix}`,
-            steps: {
-              create: [1, 2, 3].map((order) => ({
-                title: `Step ${order}`,
-                learningObjective: 'lo',
-                expectedActivity: 'ea',
-                order,
-              })),
-            },
-          },
-        },
-      },
-    });
-    createdCareerIds.push(career.id);
-    return career.id;
-  };
-
-  const stepsOf = (careerId: string) =>
-    prisma.pathwayStep.findMany({
-      where: { pathway: { careerId } },
-      orderBy: { order: 'asc' },
-    });
 
   const putStatus = (user: RegisteredUser, stepId: string, body: object) =>
     request(app.getHttpServer())
@@ -97,6 +63,9 @@ describe('Pathway step progress (e2e)', () => {
       ([event]) => event === 'step_completion_changed',
     );
 
+  // ──────────────────────────────────────────────────────────────
+  // Lifecycle
+  // ──────────────────────────────────────────────────────────────
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -113,22 +82,12 @@ describe('Pathway step progress (e2e)', () => {
     )}`;
 
     await app.init();
+
     prisma = app.get(PrismaService);
     captureSpy = jest.spyOn(app.get(AnalyticsService), 'capture');
     wireNotificationMock();
 
-    const field = await prisma.field.create({
-      data: {
-        name: `E2E Step Progress ${timestamp}`,
-        slug: `e2e-sp-${timestamp}`,
-      },
-    });
-    fieldId = field.id;
-
-    publishedCareerId = await createCareer(CareerStatus.PUBLISHED, 'a');
-    secondPublishedCareerId = await createCareer(CareerStatus.PUBLISHED, 'b');
-    draftCareerId = await createCareer(CareerStatus.DRAFT, 'd');
-    retiredCareerId = await createCareer(CareerStatus.RETIRED, 'r');
+    catalog = await seedCatalog(prisma);
   });
 
   beforeEach(() => {
@@ -136,23 +95,25 @@ describe('Pathway step progress (e2e)', () => {
   });
 
   afterAll(async () => {
-    await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
-    await prisma.career.deleteMany({ where: { id: { in: createdCareerIds } } });
-
-    if (fieldId) {
-      await prisma.field.delete({ where: { id: fieldId } });
+    if (createdUserIds.length > 0) {
+      await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
     }
-
+    if (catalog) {
+      await cleanupCatalog(prisma, catalog);
+    }
     await app.close();
   });
 
+  // ──────────────────────────────────────────────────────────────
+  // Validation and access
+  // ──────────────────────────────────────────────────────────────
   describe('validation and access', () => {
     let user: RegisteredUser;
     let stepId: string;
 
     beforeAll(async () => {
       user = await registerUser('validation');
-      [{ id: stepId }] = await stepsOf(publishedCareerId);
+      [{ id: stepId }] = await stepsOf(prisma, catalog.publishedCareerId);
     });
 
     it('returns 401 without an access token', async () => {
@@ -188,15 +149,15 @@ describe('Pathway step progress (e2e)', () => {
 
     it("returns 404 for a step under a DRAFT career, even if it's saved", async () => {
       await prisma.userPathway.create({
-        data: { userId: user.id, careerId: draftCareerId },
+        data: { userId: user.id, careerId: catalog.draftCareerId },
       });
-      const [draftStep] = await stepsOf(draftCareerId);
+      const [draftStep] = await stepsOf(prisma, catalog.draftCareerId);
 
       await putStatus(user, draftStep.id, { status: 'COMPLETED' }).expect(404);
     });
 
     it("returns 404 for a step under a RETIRED career the user didn't save", async () => {
-      const [retiredStep] = await stepsOf(retiredCareerId);
+      const [retiredStep] = await stepsOf(prisma, catalog.retiredCareerId);
 
       await putStatus(user, retiredStep.id, { status: 'COMPLETED' }).expect(
         404,
@@ -216,11 +177,14 @@ describe('Pathway step progress (e2e)', () => {
     });
   });
 
+  // ──────────────────────────────────────────────────────────────
+  // Marking steps
+  // ──────────────────────────────────────────────────────────────
   describe('marking steps', () => {
     it('completes a step, returns updated progress and emits once', async () => {
       const user = await registerUser('complete');
-      const [first] = await stepsOf(publishedCareerId);
-      await save(user, publishedCareerId);
+      const [first] = await stepsOf(prisma, catalog.publishedCareerId);
+      await save(user, catalog.publishedCareerId);
 
       const response = await putStatus(user, first.id, {
         status: 'COMPLETED',
@@ -251,7 +215,7 @@ describe('Pathway step progress (e2e)', () => {
           'step_completion_changed',
           user.id,
           {
-            careerId: publishedCareerId,
+            careerId: catalog.publishedCareerId,
             stepId: first.id,
             status: 'COMPLETED',
           },
@@ -261,8 +225,8 @@ describe('Pathway step progress (e2e)', () => {
 
     it('is idempotent: a repeat changes nothing and emits nothing', async () => {
       const user = await registerUser('repeat');
-      const [first] = await stepsOf(publishedCareerId);
-      await save(user, publishedCareerId);
+      const [first] = await stepsOf(prisma, catalog.publishedCareerId);
+      await save(user, catalog.publishedCareerId);
 
       const firstResponse = await putStatus(user, first.id, {
         status: 'COMPLETED',
@@ -290,8 +254,8 @@ describe('Pathway step progress (e2e)', () => {
 
     it('emits exactly once for concurrent identical requests', async () => {
       const user = await registerUser('concurrent');
-      const [first] = await stepsOf(publishedCareerId);
-      await save(user, publishedCareerId);
+      const [first] = await stepsOf(prisma, catalog.publishedCareerId);
+      await save(user, catalog.publishedCareerId);
 
       const responses = await Promise.all(
         Array.from({ length: 10 }, () =>
@@ -310,8 +274,8 @@ describe('Pathway step progress (e2e)', () => {
 
     it('marking NOT_STARTED clears completedAt and emits', async () => {
       const user = await registerUser('undo');
-      const [first] = await stepsOf(publishedCareerId);
-      await save(user, publishedCareerId);
+      const [first] = await stepsOf(prisma, catalog.publishedCareerId);
+      await save(user, catalog.publishedCareerId);
       await putStatus(user, first.id, { status: 'COMPLETED' }).expect(200);
       captureSpy.mockClear();
 
@@ -332,11 +296,17 @@ describe('Pathway step progress (e2e)', () => {
 
     it('nextStepId follows the saved starting point', async () => {
       const user = await registerUser('start-point');
-      const [first, second, third] = await stepsOf(publishedCareerId);
-      await save(user, publishedCareerId);
+      const [first, second, third] = await stepsOf(
+        prisma,
+        catalog.publishedCareerId,
+      );
+      await save(user, catalog.publishedCareerId);
       await prisma.userPathway.update({
         where: {
-          userId_careerId: { userId: user.id, careerId: publishedCareerId },
+          userId_careerId: {
+            userId: user.id,
+            careerId: catalog.publishedCareerId,
+          },
         },
         data: { startStepId: second.id },
       });
@@ -354,15 +324,18 @@ describe('Pathway step progress (e2e)', () => {
     });
   });
 
+  // ──────────────────────────────────────────────────────────────
+  // Eligibility beyond the active pathway
+  // ──────────────────────────────────────────────────────────────
   describe('eligibility beyond the active pathway', () => {
     it('allows a saved pathway that is not active, and switching keeps the progress', async () => {
       const user = await registerUser('inactive');
-      const [first] = await stepsOf(publishedCareerId);
-      await save(user, publishedCareerId);
-      await save(user, secondPublishedCareerId);
+      const [first] = await stepsOf(prisma, catalog.publishedCareerId);
+      await save(user, catalog.publishedCareerId);
+      await save(user, catalog.secondPublishedCareerId);
 
       await putStatus(user, first.id, { status: 'COMPLETED' }).expect(200);
-      await save(user, publishedCareerId);
+      await save(user, catalog.publishedCareerId);
 
       const active = await request(app.getHttpServer())
         .get(`${apiPrefix}/me/active-pathway`)
@@ -377,9 +350,13 @@ describe('Pathway step progress (e2e)', () => {
 
     it('allows a RETIRED career the user saved', async () => {
       const user = await registerUser('retired');
-      const [retiredStep] = await stepsOf(retiredCareerId);
+      const [retiredStep] = await stepsOf(prisma, catalog.retiredCareerId);
       await prisma.userPathway.create({
-        data: { userId: user.id, careerId: retiredCareerId, isActive: true },
+        data: {
+          userId: user.id,
+          careerId: catalog.retiredCareerId,
+          isActive: true,
+        },
       });
 
       await putStatus(user, retiredStep.id, { status: 'COMPLETED' }).expect(
@@ -388,11 +365,14 @@ describe('Pathway step progress (e2e)', () => {
     });
   });
 
+  // ──────────────────────────────────────────────────────────────
+  // Reads and isolation
+  // ──────────────────────────────────────────────────────────────
   describe('reads and isolation', () => {
     it('both pathway reads reflect the new status and agree on totals', async () => {
       const user = await registerUser('reads');
-      const [first] = await stepsOf(publishedCareerId);
-      await save(user, publishedCareerId);
+      const [first] = await stepsOf(prisma, catalog.publishedCareerId);
+      await save(user, catalog.publishedCareerId);
 
       const put = await putStatus(user, first.id, {
         status: 'COMPLETED',
@@ -418,9 +398,9 @@ describe('Pathway step progress (e2e)', () => {
     it("never changes another user's progress", async () => {
       const userA = await registerUser('isolation-a');
       const userB = await registerUser('isolation-b');
-      const [first] = await stepsOf(publishedCareerId);
-      await save(userA, publishedCareerId);
-      await save(userB, publishedCareerId);
+      const [first] = await stepsOf(prisma, catalog.publishedCareerId);
+      await save(userA, catalog.publishedCareerId);
+      await save(userB, catalog.publishedCareerId);
 
       await putStatus(userB, first.id, { status: 'COMPLETED' }).expect(200);
 

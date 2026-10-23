@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { PathwayStepStatus } from '../../../generated/prisma/client';
-import { ActivePathwayProgressDto } from './active-pathway-response.dto';
+import { ActivePathwayProgressDto } from '../../pathways/dto/active-pathway-response.dto';
 
 export const STEP_COMPLETION_STATUSES = [
   PathwayStepStatus.COMPLETED,
