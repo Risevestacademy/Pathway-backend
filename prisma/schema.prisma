@@ -9,6 +9,9 @@ datasource db {
 
 enum Role {
   USER
+  EDITOR
+  REVIEWER
+  PUBLISHER
   ADMIN
 }
 
@@ -130,6 +133,19 @@ enum SkillImportance {
   NICE_TO_HAVE
 }
 
+enum RevisionStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+  REJECTED
+  PUBLISHED
+}
+
+enum ReviewDecision {
+  APPROVED
+  REJECTED
+}
+
 model User {
   id              String    @id @default(uuid())
   email           String    @unique
@@ -148,6 +164,10 @@ model User {
   userSkills            UserSkill[]
   pathways              UserPathway[]
   pathwayProgress       UserPathwayStep[]
+  verifiedSources       Source[]
+  contentRevisions      ContentRevision[]
+  reviews               Review[]
+  staffInvites          StaffInvite[]
 }
 
 model UserProfile {
@@ -263,6 +283,7 @@ model Career {
   pathway      Pathway?
   userPathways UserPathway[]
   feedback     ContentFeedback[]
+  revisions    ContentRevision[]
 
   @@index([fieldId])
 }
@@ -525,4 +546,65 @@ model ContentFeedback {
 
   @@index([careerId])
   @@index([status])
+}
+
+model Source {
+  id            String    @id @default(uuid())
+  name          String
+  url           String?
+  lastCheckedAt DateTime?
+  verifiedById  String?
+
+  verifiedBy User? @relation(fields: [verifiedById], references: [id], onDelete: SetNull)
+
+  @@index([verifiedById])
+}
+
+model ContentRevision {
+  id          String         @id @default(uuid())
+  careerId    String
+  version     Int
+  snapshot    Json
+  status      RevisionStatus @default(DRAFT)
+  createdById String
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  career    Career   @relation(fields: [careerId], references: [id], onDelete: Cascade)
+  createdBy User     @relation(fields: [createdById], references: [id])
+  reviews   Review[]
+
+  @@index([careerId])
+  @@index([createdById])
+}
+
+model Review {
+  id         String         @id @default(uuid())
+  revisionId String
+  reviewerId String
+  decision   ReviewDecision
+  note       String?
+  createdAt  DateTime       @default(now())
+
+  revision ContentRevision @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+  reviewer User            @relation(fields: [reviewerId], references: [id])
+
+  @@index([revisionId])
+  @@index([reviewerId])
+}
+
+model StaffInvite {
+  id          String    @id @default(uuid())
+  email       String
+  role        Role
+  tokenHash   String    @unique
+  invitedById String
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  invitedBy User @relation(fields: [invitedById], references: [id])
+
+  @@index([email])
+  @@index([invitedById])
 }
