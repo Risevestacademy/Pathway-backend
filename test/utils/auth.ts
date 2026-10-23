@@ -1,6 +1,7 @@
 // test/utils/auth.ts
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
+import { PrismaService } from '../../src/prisma';
 
 export const capturedOtps = new Map<string, string>();
 export const notificationMock = { send: jest.fn() };
@@ -35,6 +36,14 @@ export interface RegisteredUser {
   refreshToken?: string;
   cookies?: string[];
 }
+
+export const cleanupUsers = async (
+  prisma: PrismaService,
+  userIds: string[],
+) => {
+  if (userIds.length === 0) return;
+  await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+};
 
 export const registerAndVerify = async (
   app: INestApplication,

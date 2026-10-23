@@ -3,17 +3,17 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { JwtAuthGuard, type AuthenticatedUser } from '../../common';
 import { Role } from '../../generated/prisma/enums';
-import {
-  PathwaysService,
-  type StepCompletionStatus,
-  type StepStatusResponseDto,
-} from '../pathways';
+import { PathwayStepsService } from './pathway-steps.service';
+import type {
+  StepCompletionStatus,
+  StepStatusResponseDto,
+} from './dto/step-status-response.dto';
 import { MePathwayStepsController } from './me-pathway-steps.controller';
 
 describe('MePathwayStepsController', () => {
   let controller: MePathwayStepsController;
 
-  const mockPathwaysService = {
+  const mockPathwayStepsService = {
     setStepStatus:
       jest.fn<
         (
@@ -35,7 +35,9 @@ describe('MePathwayStepsController', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [MePathwayStepsController],
-      providers: [{ provide: PathwaysService, useValue: mockPathwaysService }],
+      providers: [
+        { provide: PathwayStepsService, useValue: mockPathwayStepsService },
+      ],
     }).compile();
 
     controller = module.get<MePathwayStepsController>(MePathwayStepsController);
@@ -46,7 +48,7 @@ describe('MePathwayStepsController', () => {
   });
 
   describe('setStepStatus', () => {
-    it("delegates the caller's id, the step id and the status to pathwaysService.setStepStatus", async () => {
+    it("delegates the caller's id, the step id and the status to pathwayStepsService.setStepStatus", async () => {
       const mockResult: StepStatusResponseDto = {
         stepId: 'step-1',
         status: 'COMPLETED',
@@ -60,13 +62,13 @@ describe('MePathwayStepsController', () => {
         },
       };
 
-      mockPathwaysService.setStepStatus.mockResolvedValue(mockResult);
+      mockPathwayStepsService.setStepStatus.mockResolvedValue(mockResult);
 
       const result = await controller.setStepStatus(user, 'step-1', {
         status: 'COMPLETED',
       });
 
-      expect(mockPathwaysService.setStepStatus).toHaveBeenCalledWith(
+      expect(mockPathwayStepsService.setStepStatus).toHaveBeenCalledWith(
         'user-1',
         'step-1',
         'COMPLETED',
