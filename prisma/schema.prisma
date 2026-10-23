@@ -98,6 +98,38 @@ enum AuthProvider {
   GOOGLE
 }
 
+enum FeedbackStatus {
+  NEW
+  UNDER_REVIEW
+  RESOLVED
+}
+
+enum FeedbackCategory {
+  INCORRECT_CONTENT
+  BROKEN_LINK
+  USABILITY
+  OTHER
+}
+
+enum FeedbackSection {
+  CAREER_DETAILS
+  OUTLOOK
+  PATHWAY
+  RESOURCES
+  GENERAL
+}
+
+enum FeedbackPlatform {
+  WEB
+  IOS
+  ANDROID
+}
+
+enum SkillImportance {
+  REQUIRED
+  NICE_TO_HAVE
+}
+
 model User {
   id              String    @id @default(uuid())
   email           String    @unique
@@ -206,7 +238,7 @@ model Field {
 model Career {
   id                   String   @id @default(uuid())
   slug                 String   @unique
-  title                String
+  title                String   @unique
   description          String // card summary
   roleSummary          String // "What the role involves"
   exampleActivities    String[] // "Example work activities"
@@ -230,13 +262,15 @@ model Career {
   outlook      OutlookData[]
   pathway      Pathway?
   userPathways UserPathway[]
+  feedback     ContentFeedback[]
 
   @@index([fieldId])
 }
 
 model CareerSkill {
-  careerId String
-  skillId  String
+  careerId   String
+  skillId    String
+  importance SkillImportance @default(REQUIRED)
 
   career Career @relation(fields: [careerId], references: [id], onDelete: Cascade)
   skill  Skill  @relation(fields: [skillId], references: [id], onDelete: Cascade)
@@ -473,4 +507,22 @@ model AssessmentResponse {
   question   AssessmentQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
   @@unique([assessmentId, questionId])
+}
+
+model ContentFeedback {
+  id          String            @id @default(uuid())
+  category    FeedbackCategory
+  section     FeedbackSection   @default(GENERAL)
+  careerId    String?
+  description String
+  userEmail   String?
+  platform    FeedbackPlatform?
+  status      FeedbackStatus    @default(NEW)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  career Career? @relation(fields: [careerId], references: [id], onDelete: SetNull)
+
+  @@index([careerId])
+  @@index([status])
 }
