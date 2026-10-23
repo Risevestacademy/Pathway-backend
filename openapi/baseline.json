@@ -715,28 +715,57 @@
         ]
       }
     },
-    "/skills": {
-      "get": {
-        "operationId": "SkillsController_getSkills",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "All skills sorted by name. Returns an empty array if there are none.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/SkillListItemDto"
-                  }
-                }
+    "/me/pathway-steps/{stepId}": {
+      "put": {
+        "operationId": "MePathwayStepsController_setStepStatus",
+        "parameters": [
+          {
+            "name": "stepId",
+            "required": true,
+            "in": "path",
+            "description": "Pathway step UUID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetStepStatusDto"
               }
             }
           }
         },
-        "summary": "Get all skills",
+        "responses": {
+          "200": {
+            "description": "The new status and the updated progress for the step's pathway.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StepStatusResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "stepId is not a valid UUID, or the status is invalid."
+          },
+          "401": {
+            "description": "Access token missing or invalid."
+          },
+          "404": {
+            "description": "Step does not exist, or its career is neither PUBLISHED nor a RETIRED career the user saved."
+          },
+          "409": {
+            "description": "The user hasn't saved the step's career."
+          }
+        },
+        "summary": "Mark a pathway step completed or not started for the signed-in user",
         "tags": [
-          "Skills"
+          "Me"
         ]
       }
     },
@@ -858,6 +887,82 @@
         "summary": "List the signed-in user's saved, visible pathways",
         "tags": [
           "Me"
+        ]
+      }
+    },
+    "/me/pathways/{careerId}/starting-point": {
+      "put": {
+        "operationId": "MeController_setStartingPoint",
+        "parameters": [
+          {
+            "name": "careerId",
+            "required": true,
+            "in": "path",
+            "description": "Career UUID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetStartingPointDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartingPointResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "careerId or stepId is not a valid UUID, or the step isn't in this career's pathway"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "404": {
+            "description": "The user hasn't saved this career, or it isn't visible"
+          }
+        },
+        "summary": "Set, change or clear the starting step of a saved pathway",
+        "tags": [
+          "Me"
+        ]
+      }
+    },
+    "/skills": {
+      "get": {
+        "operationId": "SkillsController_getSkills",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "All skills sorted by name. Returns an empty array if there are none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SkillListItemDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Get all skills",
+        "tags": [
+          "Skills"
         ]
       }
     },
@@ -1772,28 +1877,82 @@
           "resources"
         ]
       },
-      "SkillListItemDto": {
+      "SetStepStatusDto": {
         "type": "object",
         "properties": {
-          "id": {
+          "status": {
             "type": "string",
-            "description": "Unique identifier of the skill"
-          },
-          "name": {
-            "type": "string",
-            "description": "Name of the skill",
-            "example": "TypeScript"
-          },
-          "description": {
-            "type": "string",
-            "nullable": true,
-            "description": "Short description of the skill"
+            "enum": [
+              "COMPLETED",
+              "NOT_STARTED"
+            ],
+            "description": "COMPLETED marks the step done; NOT_STARTED clears it."
           }
         },
         "required": [
-          "id",
-          "name",
-          "description"
+          "status"
+        ]
+      },
+      "ActivePathwayProgressDto": {
+        "type": "object",
+        "properties": {
+          "completed": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number"
+          },
+          "percentage": {
+            "type": "number"
+          },
+          "nextStepId": {
+            "type": "string",
+            "nullable": true
+          },
+          "selfReported": {
+            "type": "boolean",
+            "description": "Always true: progress is self-reported, not verified."
+          },
+          "startStepId": {
+            "type": "string",
+            "nullable": true,
+            "description": "The user's saved starting step for this pathway."
+          }
+        },
+        "required": [
+          "completed",
+          "total",
+          "percentage",
+          "selfReported",
+          "startStepId"
+        ]
+      },
+      "StepStatusResponseDto": {
+        "type": "object",
+        "properties": {
+          "stepId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "COMPLETED",
+              "NOT_STARTED"
+            ]
+          },
+          "progress": {
+            "description": "Updated progress for the step's pathway.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ActivePathwayProgressDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "stepId",
+          "status",
+          "progress"
         ]
       },
       "PathwayStepSummaryDto": {
@@ -1911,40 +2070,6 @@
         "required": [
           "id",
           "title"
-        ]
-      },
-      "ActivePathwayProgressDto": {
-        "type": "object",
-        "properties": {
-          "completed": {
-            "type": "number"
-          },
-          "total": {
-            "type": "number"
-          },
-          "percentage": {
-            "type": "number"
-          },
-          "nextStepId": {
-            "type": "string",
-            "nullable": true
-          },
-          "selfReported": {
-            "type": "boolean",
-            "description": "Always true: progress is self-reported, not verified."
-          },
-          "startStepId": {
-            "type": "string",
-            "nullable": true,
-            "description": "The user's saved starting step for this pathway."
-          }
-        },
-        "required": [
-          "completed",
-          "total",
-          "percentage",
-          "selfReported",
-          "startStepId"
         ]
       },
       "ActivePathwayStepDto": {
@@ -2082,6 +2207,68 @@
           "career",
           "isActive",
           "progress"
+        ]
+      },
+      "SetStartingPointDto": {
+        "type": "object",
+        "properties": {
+          "stepId": {
+            "type": "string",
+            "nullable": true,
+            "description": "UUID of a step in this career's pathway, or null to clear the starting point"
+          }
+        },
+        "required": [
+          "stepId"
+        ]
+      },
+      "StartingPointResponseDto": {
+        "type": "object",
+        "properties": {
+          "careerId": {
+            "type": "string"
+          },
+          "startStepId": {
+            "type": "string",
+            "nullable": true
+          },
+          "progress": {
+            "description": "Updated progress for the saved pathway.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ActivePathwayProgressDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "careerId",
+          "startStepId",
+          "progress"
+        ]
+      },
+      "SkillListItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier of the skill"
+          },
+          "name": {
+            "type": "string",
+            "description": "Name of the skill",
+            "example": "TypeScript"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "description": "Short description of the skill"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description"
         ]
       },
       "OptionDto": {

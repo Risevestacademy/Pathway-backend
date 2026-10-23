@@ -17,10 +17,6 @@ import {
   computeStepStatuses,
   findStepOrder,
 } from './progress';
-import {
-  type StepCompletionStatus,
-  StepStatusResponseDto,
-} from './dto/step-status-response.dto';
 import { StartingPointResponseDto } from './dto/starting-point-response.dto';
 import { SavedPathwayDto } from './dto/saved-pathway.dto';
 import { AnalyticsService } from '../../analytics';
@@ -113,74 +109,6 @@ export class PathwaysService {
     return this.getActivePathway(userId);
   }
 
-  async setStepStatus(
-    userId: string,
-    stepId: string,
-    status: StepCompletionStatus,
-  ): Promise<StepStatusResponseDto> {
-    const step = await this.prisma.pathwayStep.findFirst({
-      where: {
-        id: stepId,
-        pathway: {
-          career: {
-            OR: [
-              { status: CareerStatus.PUBLISHED },
-              {
-                status: CareerStatus.RETIRED,
-                userPathways: { some: { userId } },
-              },
-            ],
-          },
-        },
-      },
-      select: { pathwayId: true, pathway: { select: { careerId: true } } },
-    });
-
-    if (!step) {
-      this.logger.warn(
-        { userId, stepId, reason: 'STEP_NOT_FOUND' },
-        'Step status update rejected',
-      );
-      throw new NotFoundException('Step not found');
-    }
-
-    const { careerId } = step.pathway;
-
-    const userPathway = await this.prisma.userPathway.findUnique({
-      where: { userId_careerId: { userId, careerId } },
-      select: { startStepId: true },
-    });
-
-    if (!userPathway) {
-      this.logger.warn(
-        { userId, stepId, reason: 'CAREER_NOT_SAVED' },
-        'Step status update rejected',
-      );
-      throw new ConflictException('Save this career before tracking its steps');
-    }
-
-    const changed = await this.writeStepStatus(userId, stepId, status);
-
-    if (changed) {
-      this.logger.log({ userId, stepId, status }, 'Step status changed');
-      this.analytics.capture('step_completion_changed', userId, {
-        careerId,
-        stepId,
-        status,
-      });
-    }
-
-    return {
-      stepId,
-      status,
-      progress: await this.getPathwayProgress(
-        userId,
-        step.pathwayId,
-        userPathway.startStepId,
-      ),
-    };
-  }
-
   async setStartingPoint(
     userId: string,
     careerId: string,
@@ -267,37 +195,6 @@ export class PathwaysService {
     );
 
     return { ...progress, startStepId };
-  }
-
-  // Conditional writes, so only a real change returns true
-  private async writeStepStatus(
-    userId: string,
-    pathwayStepId: string,
-    status: StepCompletionStatus,
-  ): Promise<boolean> {
-    const completedAt =
-      status === PathwayStepStatus.COMPLETED ? new Date() : null;
-
-    const updated = await this.prisma.userPathwayStep.updateMany({
-      where: { userId, pathwayStepId, status: { not: status } },
-      data: { status, completedAt },
-    });
-
-    if (updated.count > 0) {
-      return true;
-    }
-
-    // A missing row already reads as NOT_STARTED
-    if (status === PathwayStepStatus.NOT_STARTED) {
-      return false;
-    }
-
-    const created = await this.prisma.userPathwayStep.createMany({
-      data: [{ userId, pathwayStepId, status, completedAt }],
-      skipDuplicates: true,
-    });
-
-    return created.count > 0;
   }
 
   async getActivePathway(userId: string): Promise<ActivePathwayResponseDto> {

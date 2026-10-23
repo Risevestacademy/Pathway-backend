@@ -31,18 +31,21 @@ describe('PathwaysService', () => {
     career: {
       findFirst: jest.fn<(args: unknown) => Promise<unknown>>(),
     },
+    pathwayStep: {
+      // Only setStartingPoint / getPathwayProgress still use these.
+      findFirst: jest.fn<(args: unknown) => Promise<unknown>>(),
+      findMany: jest.fn<(args: unknown) => Promise<unknown>>(),
+    },
     userPathway: {
       updateMany: jest.fn<(args: unknown) => Promise<unknown>>(),
       upsert: jest.fn<(args: unknown) => Promise<unknown>>(),
       findFirst: jest.fn<(args: unknown) => Promise<unknown>>(),
       findMany: jest.fn<(args: unknown) => Promise<unknown>>(),
-      findUnique: jest.fn<(args: unknown) => Promise<unknown>>(),
       update: jest.fn<(args: unknown) => Promise<unknown>>(),
     },
     userPathwayStep: {
+      // Only getActivePathway / getSavedPathways / getPathwayProgress read.
       findMany: jest.fn<(args: unknown) => Promise<unknown>>(),
-      updateMany: jest.fn<(args: unknown) => Promise<unknown>>(),
-      createMany: jest.fn<(args: unknown) => Promise<unknown>>(),
     },
     $transaction: jest.fn(async (callback: (tx: unknown) => unknown) => {
       const before = mockAnalyticsService.capture.mock.calls.length;
@@ -285,211 +288,8 @@ describe('PathwaysService', () => {
     });
   });
 
-    describe('setStepStatus', () => {
-    const steps = [
-      { id: 'step-1', order: 1 },
-      { id: 'step-2', order: 2 },
-    ];
-
-    beforeEach(() => {
-      mockPrismaService.pathwayStep.findFirst.mockResolvedValue({
-        pathwayId: 'pathway-1',
-        pathway: { careerId: 'career-1' },
-      });
-      mockPrismaService.userPathway.findUnique.mockResolvedValue({
-        startStepId: null,
-      });
-      mockPrismaService.userPathwayStep.updateMany.mockResolvedValue({
-        count: 0,
-      });
-      mockPrismaService.userPathwayStep.createMany.mockResolvedValue({
-        count: 1,
-      });
-      mockPrismaService.pathwayStep.findMany.mockResolvedValue(steps);
-      mockPrismaService.userPathwayStep.findMany.mockResolvedValue([
-        { pathwayStepId: 'step-1', status: 'COMPLETED' },
-      ]);
-    });
-
-    it('looks up the step under a PUBLISHED career or a RETIRED career the user saved', async () => {
-      await service.setStepStatus('user-1', 'step-1', 'COMPLETED');
-
-      expect(mockPrismaService.pathwayStep.findFirst).toHaveBeenCalledWith({
-        where: {
-          id: 'step-1',
-          pathway: {
-            career: {
-              OR: [
-                { status: CareerStatus.PUBLISHED },
-                {
-                  status: CareerStatus.RETIRED,
-                  userPathways: { some: { userId: 'user-1' } },
-                },
-              ],
-            },
-          },
-        },
-        select: { pathwayId: true, pathway: { select: { careerId: true } } },
-      });
-    });
-
-    it('throws NotFoundException and writes nothing for an unknown or hidden step', async () => {
-      mockPrismaService.pathwayStep.findFirst.mockResolvedValue(null);
-
-      await expect(
-        service.setStepStatus('user-1', 'step-1', 'COMPLETED'),
-      ).rejects.toThrow(NotFoundException);
-
-      expect(
-        mockPrismaService.userPathwayStep.updateMany,
-      ).not.toHaveBeenCalled();
-      expect(mockAnalyticsService.capture).not.toHaveBeenCalled();
-    });
-
-    it('throws ConflictException and writes nothing when the career is not saved', async () => {
-      mockPrismaService.userPathway.findUnique.mockResolvedValue(null);
-
-      await expect(
-        service.setStepStatus('user-1', 'step-1', 'COMPLETED'),
-      ).rejects.toThrow(ConflictException);
-
-      expect(mockPrismaService.userPathway.findUnique).toHaveBeenCalledWith({
-        where: { userId_careerId: { userId: 'user-1', careerId: 'career-1' } },
-        select: { startStepId: true },
-      });
-      expect(
-        mockPrismaService.userPathwayStep.updateMany,
-      ).not.toHaveBeenCalled();
-      expect(mockAnalyticsService.capture).not.toHaveBeenCalled();
-    });
-
-    it('creates a COMPLETED row with completedAt when none exists, and emits once', async () => {
-      await service.setStepStatus('user-1', 'step-1', 'COMPLETED');
-
-      expect(mockPrismaService.userPathwayStep.updateMany).toHaveBeenCalledWith(
-        {
-          where: {
-            userId: 'user-1',
-            pathwayStepId: 'step-1',
-            status: { not: 'COMPLETED' },
-          },
-          data: { status: 'COMPLETED', completedAt: expect.any(Date) },
-        },
-      );
-      expect(mockPrismaService.userPathwayStep.createMany).toHaveBeenCalledWith(
-        {
-          data: [
-            {
-              userId: 'user-1',
-              pathwayStepId: 'step-1',
-              status: 'COMPLETED',
-              completedAt: expect.any(Date),
-            },
-          ],
-          skipDuplicates: true,
-        },
-      );
-      expect(mockAnalyticsService.capture.mock.calls).toEqual([
-        [
-          'step_completion_changed',
-          'user-1',
-          { careerId: 'career-1', stepId: 'step-1', status: 'COMPLETED' },
-        ],
-      ]);
-    });
-
-    it('emits nothing when the step is already COMPLETED', async () => {
-      mockPrismaService.userPathwayStep.createMany.mockResolvedValue({
-        count: 0,
-      });
-
-      const result = await service.setStepStatus(
-        'user-1',
-        'step-1',
-        'COMPLETED',
-      );
-
-      expect(result.status).toBe('COMPLETED');
-      expect(mockAnalyticsService.capture).not.toHaveBeenCalled();
-    });
-
-    it('clears completedAt when marking a step NOT_STARTED, and emits', async () => {
-      mockPrismaService.userPathwayStep.updateMany.mockResolvedValue({
-        count: 1,
-      });
-
-      await service.setStepStatus('user-1', 'step-1', 'NOT_STARTED');
-
-      expect(mockPrismaService.userPathwayStep.updateMany).toHaveBeenCalledWith(
-        {
-          where: {
-            userId: 'user-1',
-            pathwayStepId: 'step-1',
-            status: { not: 'NOT_STARTED' },
-          },
-          data: { status: 'NOT_STARTED', completedAt: null },
-        },
-      );
-      expect(
-        mockPrismaService.userPathwayStep.createMany,
-      ).not.toHaveBeenCalled();
-      expect(mockAnalyticsService.capture).toHaveBeenCalledWith(
-        'step_completion_changed',
-        'user-1',
-        { careerId: 'career-1', stepId: 'step-1', status: 'NOT_STARTED' },
-      );
-    });
-
-    it('creates no row and emits nothing for NOT_STARTED on an untouched step', async () => {
-      await service.setStepStatus('user-1', 'step-2', 'NOT_STARTED');
-
-      expect(
-        mockPrismaService.userPathwayStep.createMany,
-      ).not.toHaveBeenCalled();
-      expect(mockAnalyticsService.capture).not.toHaveBeenCalled();
-    });
-
-    it('emits only after the write', async () => {
-      await service.setStepStatus('user-1', 'step-1', 'COMPLETED');
-
-      expect(
-        mockPrismaService.userPathwayStep.createMany.mock
-          .invocationCallOrder[0],
-      ).toBeLessThan(mockAnalyticsService.capture.mock.invocationCallOrder[0]);
-    });
-
-    it('returns the updated progress, using the saved starting point', async () => {
-      mockPrismaService.userPathway.findUnique.mockResolvedValue({
-        startStepId: 'step-2',
-      });
-
-      const result = await service.setStepStatus(
-        'user-1',
-        'step-1',
-        'COMPLETED',
-      );
-
-      expect(mockPrismaService.userPathwayStep.findMany).toHaveBeenCalledWith({
-        where: {
-          userId: 'user-1',
-          pathwayStep: { pathwayId: 'pathway-1' },
-        },
-        select: { pathwayStepId: true, status: true },
-      });
-      expect(result).toEqual({
-        stepId: 'step-1',
-        status: 'COMPLETED',
-        progress: {
-          completed: 1,
-          total: 2,
-          percentage: 50,
-          nextStepId: 'step-2',
-          selfReported: true,
-          startStepId: 'step-2',
-        },
-      });
-    });
-  });
+  // NOTE: setStepStatus lives on PathwayStepsService now.
+  // Its tests were moved to pathway-steps.service.spec.ts.
 
   describe('setStartingPoint', () => {
     beforeEach(() => {
@@ -579,12 +379,6 @@ describe('PathwaysService', () => {
         where: { id: 'up-1' },
         data: { startStepId: 'step-2' },
       });
-      expect(
-        mockPrismaService.userPathwayStep.updateMany,
-      ).not.toHaveBeenCalled();
-      expect(
-        mockPrismaService.userPathwayStep.createMany,
-      ).not.toHaveBeenCalled();
       expect(result).toEqual({
         careerId: 'career-1',
         startStepId: 'step-2',
