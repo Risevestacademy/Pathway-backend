@@ -987,6 +987,177 @@
           "Onboarding"
         ]
       }
+    },
+    "/feedback": {
+      "post": {
+        "description": "Public and anonymous. The optional contact email is stored but never logged.",
+        "operationId": "FeedbackController_submitFeedback",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateFeedbackDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Feedback recorded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateFeedbackResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Body failed validation, careerId is missing for a section other than GENERAL, or careerId matches no career"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          }
+        },
+        "summary": "Submit feedback or report an issue",
+        "tags": [
+          "Feedback"
+        ]
+      }
+    },
+    "/admin/feedback": {
+      "get": {
+        "description": "Newest first. Filter by status or career, paginated with page and limit.",
+        "operationId": "AdminController_getFeedback",
+        "parameters": [
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": "NEW",
+              "type": "string",
+              "enum": [
+                "NEW",
+                "UNDER_REVIEW",
+                "RESOLVED"
+              ]
+            }
+          },
+          {
+            "name": "careerId",
+            "required": false,
+            "in": "query",
+            "description": "Only feedback about this career.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 10000,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackListResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A query parameter is invalid"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "403": {
+            "description": "The user is not an editor or admin"
+          }
+        },
+        "summary": "List submitted feedback",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/admin/feedback/{id}/status": {
+      "patch": {
+        "operationId": "AdminController_updateFeedbackStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateFeedbackStatusDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "id is not a UUID or status is not a FeedbackStatus"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "403": {
+            "description": "The user is not an editor or admin"
+          },
+          "404": {
+            "description": "Feedback not found"
+          }
+        },
+        "summary": "Update the review status of a feedback entry",
+        "tags": [
+          "Admin"
+        ]
+      }
     }
   },
   "info": {
@@ -2330,6 +2501,206 @@
           "experienceOptions",
           "skills",
           "fields"
+        ]
+      },
+      "CreateFeedbackDto": {
+        "type": "object",
+        "properties": {
+          "category": {
+            "type": "string",
+            "enum": [
+              "INCORRECT_CONTENT",
+              "BROKEN_LINK",
+              "USABILITY",
+              "OTHER"
+            ],
+            "example": "BROKEN_LINK"
+          },
+          "description": {
+            "type": "string",
+            "example": "The link on step 3 returns a 404.",
+            "description": "What the user wants to report. 1 to 2000 characters.",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "section": {
+            "type": "string",
+            "enum": [
+              "CAREER_DETAILS",
+              "OUTLOOK",
+              "PATHWAY",
+              "RESOURCES",
+              "GENERAL"
+            ],
+            "default": "GENERAL",
+            "example": "RESOURCES"
+          },
+          "careerId": {
+            "type": "string",
+            "description": "Career the feedback is about. Required unless section is GENERAL, and must match an existing career.",
+            "format": "uuid"
+          },
+          "userEmail": {
+            "type": "string",
+            "example": "user@example.com",
+            "description": "Contact email for follow-up. Stored, never logged.",
+            "maxLength": 254
+          },
+          "platform": {
+            "type": "string",
+            "enum": [
+              "WEB",
+              "IOS",
+              "ANDROID"
+            ],
+            "example": "WEB"
+          }
+        },
+        "required": [
+          "category",
+          "description"
+        ]
+      },
+      "CreateFeedbackResponseDto": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "example": "Feedback received"
+          }
+        },
+        "required": [
+          "message"
+        ]
+      },
+      "FeedbackResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "INCORRECT_CONTENT",
+              "BROKEN_LINK",
+              "USABILITY",
+              "OTHER"
+            ],
+            "example": "BROKEN_LINK"
+          },
+          "section": {
+            "type": "string",
+            "enum": [
+              "CAREER_DETAILS",
+              "OUTLOOK",
+              "PATHWAY",
+              "RESOURCES",
+              "GENERAL"
+            ],
+            "example": "RESOURCES"
+          },
+          "careerId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          },
+          "description": {
+            "type": "string",
+            "example": "The link on step 3 returns a 404."
+          },
+          "userEmail": {
+            "type": "string",
+            "nullable": true,
+            "example": "user@example.com"
+          },
+          "platform": {
+            "type": "string",
+            "enum": [
+              "WEB",
+              "IOS",
+              "ANDROID"
+            ],
+            "nullable": true,
+            "example": "WEB"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "NEW",
+              "UNDER_REVIEW",
+              "RESOLVED"
+            ],
+            "example": "NEW"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "category",
+          "section",
+          "careerId",
+          "description",
+          "userEmail",
+          "platform",
+          "status",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "FeedbackListResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FeedbackResponseDto"
+            }
+          },
+          "total": {
+            "type": "number",
+            "example": 42,
+            "description": "Total matching feedback entries"
+          },
+          "page": {
+            "type": "number",
+            "example": 1
+          },
+          "limit": {
+            "type": "number",
+            "example": 20
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "limit"
+        ]
+      },
+      "UpdateFeedbackStatusDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "NEW",
+              "UNDER_REVIEW",
+              "RESOLVED"
+            ],
+            "example": "UNDER_REVIEW"
+          }
+        },
+        "required": [
+          "status"
         ]
       }
     }

@@ -276,8 +276,12 @@ describe('CareersService', () => {
               id: true,
               type: true,
               geography: true,
-              source: true,
-              sourceUrl: true,
+              source: {
+                select: {
+                  name: true,
+                  url: true,
+                },
+              },
               period: true,
               median: true,
               percentile25: true,

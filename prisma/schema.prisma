@@ -307,8 +307,8 @@ model OutlookData {
 
   type      OutlookType
   geography String // "United States", "Lagos, Nigeria"
-  source    String
-  sourceUrl String?
+  sourceId  String?
+  source    Source?     @relation(fields: [sourceId], references: [id], onDelete: SetNull)
   period    String // "May 2024", "2023–2033", "Q2 2025"
 
   median          Decimal? @db.Decimal(15, 2)
@@ -556,6 +556,8 @@ model Source {
   verifiedById  String?
 
   verifiedBy User? @relation(fields: [verifiedById], references: [id], onDelete: SetNull)
+
+  outlookData OutlookData[]
 
   @@index([verifiedById])
 }
