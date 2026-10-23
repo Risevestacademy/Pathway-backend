@@ -23,7 +23,10 @@ import {
  */
 const REFRESH = process.env.SEED_REFRESH_CATALOG === 'true';
 
-type OutlookRow = Omit<Prisma.OutlookDataCreateManyInput, 'careerId'>;
+type OutlookRow = Omit<
+  Prisma.OutlookDataCreateManyInput,
+  'careerId' | 'sourceId'
+> & { sourceId: string };
 
 interface StepSeed {
   title: string;
@@ -164,6 +167,12 @@ const SKILLS = [
       'Core cloud concepts: compute, storage, networking and pricing',
   },
 ];
+
+const SOURCE = {
+  bls: '11111111-1111-1111-1111-111111111111',
+  localTechSalary: '22222222-2222-2222-2222-222222222222',
+  localTechEcosystem: '33333333-3333-3333-3333-333333333333',
+} as const;
 
 const RESOURCE = {
   // Existing
@@ -1192,8 +1201,7 @@ const usSalary = (
 ): OutlookRow => ({
   type: OutlookType.SALARY,
   geography: 'United States',
-  source: 'US Bureau of Labor Statistics',
-  sourceUrl: 'https://www.bls.gov/ooh/',
+  sourceId: SOURCE.bls,
   period: 'May 2024',
   median,
   percentile25,
@@ -1207,7 +1215,7 @@ const usSalary = (
 const lagosSalary = (median: string): OutlookRow => ({
   type: OutlookType.SALARY,
   geography: 'Lagos, Nigeria',
-  source: 'Local Tech Salary Survey',
+  sourceId: SOURCE.localTechSalary,
   period: 'Q2 2025',
   median,
   currency: 'NGN',
@@ -1219,7 +1227,7 @@ const lagosSalary = (median: string): OutlookRow => ({
 const usGrowth = (baseValue: number, projectedValue: number): OutlookRow => ({
   type: OutlookType.EMPLOYMENT_GROWTH,
   geography: 'United States',
-  source: 'US Bureau of Labor Statistics',
+  sourceId: SOURCE.bls,
   period: '2023–2033',
   baseYear: 2023,
   baseValue,
@@ -1231,7 +1239,7 @@ const usGrowth = (baseValue: number, projectedValue: number): OutlookRow => ({
 const lagosDemand = (demandLevel: Demand): OutlookRow => ({
   type: OutlookType.DEMAND,
   geography: 'Lagos, Nigeria',
-  source: 'Local Tech Ecosystem Report',
+  sourceId: SOURCE.localTechEcosystem,
   period: '2025',
   demandLevel,
 });
@@ -1891,6 +1899,34 @@ async function upsertPathway(
   });
 }
 
+async function upsertSources(prisma: PrismaClient): Promise<void> {
+  const sources = [
+    {
+      id: SOURCE.bls,
+      name: 'US Bureau of Labor Statistics',
+      url: 'https://www.bls.gov/ooh/',
+    },
+    {
+      id: SOURCE.localTechSalary,
+      name: 'Local Tech Salary Survey',
+      url: null,
+    },
+    {
+      id: SOURCE.localTechEcosystem,
+      name: 'Local Tech Ecosystem Report',
+      url: null,
+    },
+  ];
+
+  for (const source of sources) {
+    await prisma.source.upsert({
+      where: { id: source.id },
+      update: REFRESH ? { name: source.name, url: source.url } : {},
+      create: source,
+    });
+  }
+}
+
 async function upsertCareer(
   prisma: PrismaClient,
   { slug, field, skills, outlook, pathway, ...details }: CareerSeed,
@@ -1961,6 +1997,7 @@ export async function seedCatalog(prisma: PrismaClient): Promise<void> {
   const fieldIds = await upsertFields(prisma);
   const skillIds = await upsertSkills(prisma);
 
+  await upsertSources(prisma);
   await upsertResources(prisma, skillIds);
 
   for (const career of CAREERS) {
