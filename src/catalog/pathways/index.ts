@@ -4,4 +4,5 @@ export {
   STEP_COMPLETION_STATUSES,
   StepStatusResponseDto,
   type StepCompletionStatus,
-} from './dto/step-status-response.dto';
+} from '../pathway-steps/dto/step-status-response.dto';
+export * from './progress';
