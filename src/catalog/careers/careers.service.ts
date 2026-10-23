@@ -88,8 +88,12 @@ export class CareersService {
             id: true,
             type: true,
             geography: true,
-            source: true,
-            sourceUrl: true,
+            source: {
+              select: {
+                name: true,
+                url: true,
+              },
+            },
             period: true,
             median: true,
             percentile25: true,
@@ -145,6 +149,8 @@ export class CareersService {
 
       outlook: career.outlook.map((entry) => ({
         ...entry,
+        source: entry.source?.name ?? '',
+        sourceUrl: entry.source?.url ?? null,
         median: decimalToString(entry.median),
         percentile25: decimalToString(entry.percentile25),
         percentile75: decimalToString(entry.percentile75),
