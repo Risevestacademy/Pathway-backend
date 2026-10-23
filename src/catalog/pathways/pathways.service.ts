@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   Logger,
@@ -7,12 +8,16 @@ import {
 import { PrismaService } from '../../prisma';
 import { CareerStatus, PathwayStepStatus } from '../../generated/prisma/client';
 import { PathwayMetadataDto } from './dto/pathway-metadata.dto';
-import { ActivePathwayResponseDto } from './dto/active-pathway-response.dto';
+import {
+  ActivePathwayProgressDto,
+  ActivePathwayResponseDto,
+} from './dto/active-pathway-response.dto';
 import {
   computeProgress,
   computeStepStatuses,
   findStepOrder,
 } from './progress';
+import { StartingPointResponseDto } from './dto/starting-point-response.dto';
 import { SavedPathwayDto } from './dto/saved-pathway.dto';
 import { AnalyticsService } from '../../analytics';
 
@@ -102,6 +107,94 @@ export class PathwaysService {
     this.analytics.capture('pathway_saved', userId, { careerId });
 
     return this.getActivePathway(userId);
+  }
+
+  async setStartingPoint(
+    userId: string,
+    careerId: string,
+    stepId: string | null,
+  ): Promise<StartingPointResponseDto> {
+    const userPathway = await this.prisma.userPathway.findFirst({
+      where: {
+        userId,
+        careerId,
+        career: {
+          status: { in: [CareerStatus.PUBLISHED, CareerStatus.RETIRED] },
+        },
+      },
+      select: {
+        id: true,
+        career: { select: { pathway: { select: { id: true } } } },
+      },
+    });
+
+    const pathwayId = userPathway?.career.pathway?.id;
+
+    if (!userPathway || !pathwayId) {
+      this.logger.warn(
+        { userId, careerId, reason: 'PATHWAY_NOT_SAVED' },
+        'Starting point update rejected',
+      );
+      throw new NotFoundException('Saved pathway not found');
+    }
+
+    if (stepId !== null) {
+      const step = await this.prisma.pathwayStep.findFirst({
+        where: { id: stepId, pathwayId },
+        select: { id: true },
+      });
+
+      if (!step) {
+        this.logger.warn(
+          { userId, careerId, stepId, reason: 'STEP_NOT_IN_PATHWAY' },
+          'Starting point update rejected',
+        );
+        throw new BadRequestException(
+          "Step does not belong to this career's pathway",
+        );
+      }
+    }
+
+    await this.prisma.userPathway.update({
+      where: { id: userPathway.id },
+      data: { startStepId: stepId },
+    });
+
+    this.logger.log(
+      { userId, careerId, startStepId: stepId },
+      'Starting point set',
+    );
+
+    return {
+      careerId,
+      startStepId: stepId,
+      progress: await this.getPathwayProgress(userId, pathwayId, stepId),
+    };
+  }
+
+  private async getPathwayProgress(
+    userId: string,
+    pathwayId: string,
+    startStepId: string | null,
+  ): Promise<ActivePathwayProgressDto> {
+    const [steps, userSteps] = await Promise.all([
+      this.prisma.pathwayStep.findMany({
+        where: { pathwayId },
+        select: { id: true, order: true },
+      }),
+      this.prisma.userPathwayStep.findMany({
+        where: { userId, pathwayStep: { pathwayId } },
+        select: { pathwayStepId: true, status: true },
+      }),
+    ]);
+
+    const progress = computeProgress(
+      steps,
+      userSteps,
+      findStepOrder(steps, startStepId),
+    );
+
+    return { ...progress, startStepId };
   }
 
   async getActivePathway(userId: string): Promise<ActivePathwayResponseDto> {

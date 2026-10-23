@@ -1,6 +1,10 @@
 import { jest } from '@jest/globals';
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { PathwaysService } from './pathways.service';
 import { PrismaService } from '../../prisma';
 import { CareerStatus } from '../../generated/prisma/client';
@@ -27,17 +31,21 @@ describe('PathwaysService', () => {
     career: {
       findFirst: jest.fn<(args: unknown) => Promise<unknown>>(),
     },
+    pathwayStep: {
+      // Only setStartingPoint / getPathwayProgress still use these.
+      findFirst: jest.fn<(args: unknown) => Promise<unknown>>(),
+      findMany: jest.fn<(args: unknown) => Promise<unknown>>(),
+    },
     userPathway: {
       updateMany: jest.fn<(args: unknown) => Promise<unknown>>(),
       upsert: jest.fn<(args: unknown) => Promise<unknown>>(),
       findFirst: jest.fn<(args: unknown) => Promise<unknown>>(),
       findMany: jest.fn<(args: unknown) => Promise<unknown>>(),
-      findUnique: jest.fn<(args: unknown) => Promise<unknown>>(),
+      update: jest.fn<(args: unknown) => Promise<unknown>>(),
     },
     userPathwayStep: {
+      // Only getActivePathway / getSavedPathways / getPathwayProgress read.
       findMany: jest.fn<(args: unknown) => Promise<unknown>>(),
-      updateMany: jest.fn<(args: unknown) => Promise<unknown>>(),
-      createMany: jest.fn<(args: unknown) => Promise<unknown>>(),
     },
     $transaction: jest.fn(async (callback: (tx: unknown) => unknown) => {
       const before = mockAnalyticsService.capture.mock.calls.length;
@@ -276,6 +284,126 @@ describe('PathwaysService', () => {
         ).rejects.toThrow(ConflictException);
 
         expect(mockAnalyticsService.capture).not.toHaveBeenCalled();
+      });
+    });
+  });
+
+  // NOTE: setStepStatus lives on PathwayStepsService now.
+  // Its tests were moved to pathway-steps.service.spec.ts.
+
+  describe('setStartingPoint', () => {
+    beforeEach(() => {
+      mockPrismaService.userPathway.findFirst.mockResolvedValue({
+        id: 'up-1',
+        career: { pathway: { id: 'pathway-1' } },
+      });
+      mockPrismaService.pathwayStep.findFirst.mockResolvedValue({
+        id: 'step-2',
+      });
+      mockPrismaService.userPathway.update.mockResolvedValue({});
+      mockPrismaService.pathwayStep.findMany.mockResolvedValue([
+        { id: 'step-1', order: 1 },
+        { id: 'step-2', order: 2 },
+      ]);
+      mockPrismaService.userPathwayStep.findMany.mockResolvedValue([]);
+    });
+
+    it("looks up the user's saved pathway for a PUBLISHED or RETIRED career", async () => {
+      await service.setStartingPoint('user-1', 'career-1', 'step-2');
+
+      expect(mockPrismaService.userPathway.findFirst).toHaveBeenCalledWith({
+        where: {
+          userId: 'user-1',
+          careerId: 'career-1',
+          career: {
+            status: { in: [CareerStatus.PUBLISHED, CareerStatus.RETIRED] },
+          },
+        },
+        select: {
+          id: true,
+          career: { select: { pathway: { select: { id: true } } } },
+        },
+      });
+    });
+
+    it('throws NotFoundException and writes nothing when the career is not saved', async () => {
+      mockPrismaService.userPathway.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.setStartingPoint('user-1', 'career-1', 'step-2'),
+      ).rejects.toThrow(NotFoundException);
+
+      expect(mockPrismaService.userPathway.update).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException when the saved career has no pathway', async () => {
+      mockPrismaService.userPathway.findFirst.mockResolvedValue({
+        id: 'up-1',
+        career: { pathway: null },
+      });
+
+      await expect(
+        service.setStartingPoint('user-1', 'career-1', 'step-2'),
+      ).rejects.toThrow(NotFoundException);
+
+      expect(mockPrismaService.userPathway.update).not.toHaveBeenCalled();
+    });
+
+    it("only accepts a step from the career's own pathway", async () => {
+      await service.setStartingPoint('user-1', 'career-1', 'step-2');
+
+      expect(mockPrismaService.pathwayStep.findFirst).toHaveBeenCalledWith({
+        where: { id: 'step-2', pathwayId: 'pathway-1' },
+        select: { id: true },
+      });
+    });
+
+    it('throws BadRequestException and writes nothing for a step outside the pathway', async () => {
+      mockPrismaService.pathwayStep.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.setStartingPoint('user-1', 'career-1', 'other-step'),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(mockPrismaService.userPathway.update).not.toHaveBeenCalled();
+    });
+
+    it('stores only startStepId and returns progress that starts from it', async () => {
+      const result = await service.setStartingPoint(
+        'user-1',
+        'career-1',
+        'step-2',
+      );
+
+      expect(mockPrismaService.userPathway.update).toHaveBeenCalledWith({
+        where: { id: 'up-1' },
+        data: { startStepId: 'step-2' },
+      });
+      expect(result).toEqual({
+        careerId: 'career-1',
+        startStepId: 'step-2',
+        progress: {
+          completed: 0,
+          total: 2,
+          percentage: 0,
+          nextStepId: 'step-2',
+          selfReported: true,
+          startStepId: 'step-2',
+        },
+      });
+    });
+
+    it('clears the starting point with null, without a step lookup', async () => {
+      const result = await service.setStartingPoint('user-1', 'career-1', null);
+
+      expect(mockPrismaService.pathwayStep.findFirst).not.toHaveBeenCalled();
+      expect(mockPrismaService.userPathway.update).toHaveBeenCalledWith({
+        where: { id: 'up-1' },
+        data: { startStepId: null },
+      });
+      expect(result.progress).toMatchObject({
+        nextStepId: 'step-1',
+        startStepId: null,
       });
     });
   });
