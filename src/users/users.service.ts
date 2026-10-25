@@ -60,7 +60,7 @@ export class UsersService {
 
   async findByEmail(email: string): Promise<UserWithCredentials | null> {
     return this.prisma.user.findUnique({
-      where: { email },
+      where: { email: email.toLocaleLowerCase() },
       include: profileSelect,
     });
   }

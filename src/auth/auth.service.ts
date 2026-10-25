@@ -37,6 +37,9 @@ const PASSWORD_RESET_TOKEN_TTL_MINUTES = 60;
 const OTP_TTL_MINUTES = 15;
 const OTP_MAX_ATTEMPTS = 5;
 
+type PasswordResetFailure =
+  'UNKNOWN_EMAIL' | 'OTP_EXPIRED_OR_LOCKED' | 'INVALID_OTP';
+
 const hashToken = (token: string) =>
   createHash('sha256').update(token).digest('hex');
 
@@ -532,51 +535,71 @@ export class AuthService {
   ): Promise<void> {
     const user = await this.usersService.findByEmail(dto.email);
 
-    if (!user) throw this.passwordResetFailed();
+    if (!user) {
+      throw this.passwordResetFailed();
+    }
 
     const now = new Date();
     const codeHash = this.hashOtp(dto.otp);
 
-    const userId = await this.prisma.$transaction(async (tx) => {
-      const row = await tx.passwordResetOtp.findFirst({
-        where: { userId: user.id, consumedAt: null, expiresAt: { gt: now } },
-        orderBy: { createdAt: 'desc' },
-      });
+    const outcome = await this.prisma.$transaction(
+      async (
+        tx,
+      ): Promise<
+        | { reset: true; userId: string }
+        | { reset: false; reason: PasswordResetFailure }
+      > => {
+        const row = await tx.passwordResetOtp.findFirst({
+          where: { userId: user.id, consumedAt: null, expiresAt: { gt: now } },
+          orderBy: { createdAt: 'desc' },
+        });
 
-      if (!row) throw this.passwordResetFailed();
+        if (!row) {
+          return { reset: false, reason: 'OTP_EXPIRED_OR_LOCKED' };
+        }
 
-      const counted = await tx.passwordResetOtp.updateMany({
-        where: { id: row.id, attempts: { lt: OTP_MAX_ATTEMPTS } },
-        data: { attempts: { increment: 1 } },
-      });
+        const counted = await tx.passwordResetOtp.updateMany({
+          where: { id: row.id, attempts: { lt: OTP_MAX_ATTEMPTS } },
+          data: { attempts: { increment: 1 } },
+        });
 
-      if (counted.count === 0) throw this.passwordResetFailed();
-      if (row.codeHash !== codeHash) throw this.passwordResetFailed();
+        if (counted.count === 0) {
+          return { reset: false, reason: 'OTP_EXPIRED_OR_LOCKED' };
+        }
 
-      const passwordHash = await bcrypt.hash(dto.newPassword, 12);
+        if (row.codeHash !== codeHash) {
+          return { reset: false, reason: 'INVALID_OTP' };
+        }
 
-      await tx.passwordResetOtp.updateMany({
-        where: { userId: user.id, consumedAt: null },
-        data: { consumedAt: now },
-      });
+        const passwordHash = await bcrypt.hash(dto.newPassword, 12);
 
-      await this.usersService.updatePasswordHash(user.id, passwordHash, tx);
+        await tx.passwordResetOtp.updateMany({
+          where: { userId: user.id, consumedAt: null },
+          data: { consumedAt: now },
+        });
 
-      await tx.refreshToken.updateMany({
-        where: { userId: user.id, revokedAt: null },
-        data: { revokedAt: now },
-      });
+        await this.usersService.updatePasswordHash(user.id, passwordHash, tx);
 
-      await tx.user.updateMany({
-        where: { id: user.id, emailVerifiedAt: null },
-        data: { emailVerifiedAt: now },
-      });
+        await tx.refreshToken.updateMany({
+          where: { userId: user.id, revokedAt: null },
+          data: { revokedAt: now },
+        });
 
-      return user.id;
-    });
+        await tx.user.updateMany({
+          where: { id: user.id, emailVerifiedAt: null },
+          data: { emailVerifiedAt: now },
+        });
 
-    this.logger.log({ userId }, 'Password reset (OTP)');
-    this.analytics.capture('password_reset_completed', userId, {
+        return { reset: true, userId: user.id };
+      },
+    );
+
+    if (!outcome.reset) {
+      throw this.passwordResetFailed(outcome.reason, user.id);
+    }
+
+    this.logger.log({ userId: outcome.userId }, 'Password reset (OTP)');
+    this.analytics.capture('password_reset_completed', outcome.userId, {
       channel: 'otp',
     });
   }
@@ -635,12 +658,11 @@ export class AuthService {
     });
   }
 
-  private passwordResetFailed(): BadRequestException {
-    this.logger.warn(
-      { reason: 'INVALID_OR_EXPIRED_TOKEN' },
-      'Password reset failed',
-    );
-
+  private passwordResetFailed(
+    reason?: PasswordResetFailure,
+    userId?: string,
+  ): BadRequestException {
+    this.logger.warn({ userId, reason }, 'Password reset failed');
     return new BadRequestException('Invalid or expired reset token');
   }
 

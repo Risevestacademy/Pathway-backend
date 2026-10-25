@@ -84,6 +84,11 @@ describe('AuthService', () => {
       deleteMany: jest.fn<(args: unknown) => Promise<unknown>>(),
       create: jest.fn<(args: unknown) => Promise<unknown>>(),
     },
+    passwordResetOtp: {
+      findFirst: jest.fn<(args: unknown) => Promise<unknown>>(),
+      updateMany: jest.fn<(args: unknown) => Promise<unknown>>(),
+      create: jest.fn<(args: unknown) => Promise<unknown>>(),
+    },
     emailVerificationOtp: {
       findFirst: jest.fn<(args: unknown) => Promise<unknown>>(),
       update: jest.fn<(args: unknown) => Promise<unknown>>(),
@@ -881,6 +886,106 @@ describe('AuthService', () => {
     });
   });
 
+  describe('requestPasswordResetOtp', () => {
+    const user = {
+      id: 'user-1',
+      email: 'dev@example.com',
+      passwordHash: 'hash',
+      role: Role.USER,
+    };
+
+    const sentData = () =>
+      mockNotificationService.send.mock.calls[0][2] as {
+        otp: string;
+        expiresInMinutes: number;
+      };
+
+    beforeEach(() => {
+      mockUsersService.findByEmail.mockResolvedValue(user);
+      mockPrismaService.passwordResetOtp.updateMany.mockResolvedValue({
+        count: 0,
+      });
+      mockPrismaService.passwordResetOtp.create.mockResolvedValue({
+        id: 'reset-otp-1',
+      });
+      mockNotificationService.send.mockResolvedValue(undefined);
+    });
+
+    it('does nothing for an unknown email and still resolves', async () => {
+      mockUsersService.findByEmail.mockResolvedValue(null);
+
+      await expect(
+        service.requestPasswordResetOtp({ email: 'nobody@example.com' }),
+      ).resolves.toBeUndefined();
+
+      expect(mockPrismaService.$transaction).not.toHaveBeenCalled();
+      expect(mockNotificationService.send).not.toHaveBeenCalled();
+    });
+
+    it("consumes the user's live reset OTPs and stores a new one in one transaction", async () => {
+      await service.requestPasswordResetOtp({ email: user.email });
+
+      expect(mockPrismaService.$transaction).toHaveBeenCalledTimes(1);
+      expect(
+        mockPrismaService.passwordResetOtp.updateMany,
+      ).toHaveBeenCalledWith({
+        where: { userId: 'user-1', consumedAt: null },
+        data: { consumedAt: expect.any(Date) },
+      });
+      expect(mockPrismaService.passwordResetOtp.create).toHaveBeenCalledWith({
+        data: {
+          userId: 'user-1',
+          codeHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+          expiresAt: expect.any(Date),
+        },
+      });
+    });
+
+    it('sets the OTP to expire in 15 minutes', async () => {
+      const before = Date.now();
+
+      await service.requestPasswordResetOtp({ email: user.email });
+
+      const { data } = mockPrismaService.passwordResetOtp.create.mock
+        .calls[0][0] as { data: { expiresAt: Date } };
+      const ttl = data.expiresAt.getTime() - before;
+
+      expect(ttl).toBeGreaterThanOrEqual(15 * 60 * 1000);
+      expect(ttl).toBeLessThan(15 * 60 * 1000 + 5000);
+    });
+
+    it('emails a six-digit OTP that hashes to the stored codeHash', async () => {
+      await service.requestPasswordResetOtp({ email: user.email });
+
+      await new Promise(process.nextTick);
+
+      expect(mockNotificationService.send).toHaveBeenCalledWith(
+        'dev@example.com',
+        'password-reset-otp',
+        expect.objectContaining({ expiresInMinutes: 15 }),
+      );
+
+      const { otp } = sentData();
+      const { data } = mockPrismaService.passwordResetOtp.create.mock
+        .calls[0][0] as { data: { codeHash: string } };
+
+      expect(otp).toMatch(/^\d{6}$/);
+      expect(data.codeHash).toBe(sha256(otp));
+    });
+
+    it('still resolves when the email fails to send', async () => {
+      mockNotificationService.send.mockRejectedValue(new Error('smtp down'));
+
+      await expect(
+        service.requestPasswordResetOtp({ email: user.email }),
+      ).resolves.toBeUndefined();
+
+      await new Promise(process.nextTick);
+
+      expect(mockNotificationService.send).toHaveBeenCalled();
+    });
+  });
+
   describe('confirmPasswordReset', () => {
     const dto = { token: 'raw-reset-token', newPassword: 'NewPassword123!' };
     const expectedHash = sha256('raw-reset-token');
@@ -998,6 +1103,183 @@ describe('AuthService', () => {
       );
 
       expect(mockPrismaService.user.updateMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('confirmPasswordResetOtp', () => {
+    const dto = {
+      email: 'dev@example.com',
+      otp: '123456',
+      newPassword: 'NewPassword123!',
+    };
+    const expectedHash = sha256(dto.otp);
+
+    const user = {
+      id: 'user-1',
+      email: 'dev@example.com',
+      passwordHash: 'old-hash',
+      role: Role.USER,
+      emailVerifiedAt: null,
+    };
+
+    const otpRow = {
+      id: 'reset-otp-1',
+      userId: 'user-1',
+      codeHash: expectedHash,
+      attempts: 0,
+      consumedAt: null,
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+    };
+
+    beforeEach(() => {
+      mockUsersService.findByEmail.mockResolvedValue(user);
+      mockPrismaService.passwordResetOtp.findFirst.mockResolvedValue(otpRow);
+      mockPrismaService.passwordResetOtp.updateMany.mockResolvedValue({
+        count: 1,
+      });
+      mockPrismaService.refreshToken.updateMany.mockResolvedValue({
+        count: 2,
+      });
+      mockPrismaService.user.updateMany.mockResolvedValue({ count: 1 });
+      mockUsersService.updatePasswordHash.mockResolvedValue(undefined);
+    });
+
+    it('looks up the newest live OTP for the user', async () => {
+      await service.confirmPasswordResetOtp(dto);
+
+      expect(mockPrismaService.passwordResetOtp.findFirst).toHaveBeenCalledWith(
+        {
+          where: {
+            userId: 'user-1',
+            consumedAt: null,
+            expiresAt: { gt: expect.any(Date) },
+          },
+          orderBy: { createdAt: 'desc' },
+        },
+      );
+    });
+
+    it('counts the attempt with a conditional increment below the cap', async () => {
+      await service.confirmPasswordResetOtp(dto);
+
+      expect(
+        mockPrismaService.passwordResetOtp.updateMany,
+      ).toHaveBeenCalledWith({
+        where: { id: 'reset-otp-1', attempts: { lt: 5 } },
+        data: { attempts: { increment: 1 } },
+      });
+    });
+
+    it('consumes every live OTP, stores a bcrypt hash of the new password, revokes sessions, and verifies the email', async () => {
+      await service.confirmPasswordResetOtp(dto);
+
+      expect(
+        mockPrismaService.passwordResetOtp.updateMany,
+      ).toHaveBeenCalledWith({
+        where: { userId: 'user-1', consumedAt: null },
+        data: { consumedAt: expect.any(Date) },
+      });
+
+      const [userId, passwordHash, client] = mockUsersService.updatePasswordHash
+        .mock.calls[0] as [string, string, unknown];
+      expect(userId).toBe('user-1');
+      expect(passwordHash).not.toBe(dto.newPassword);
+      await expect(bcrypt.compare(dto.newPassword, passwordHash)).resolves.toBe(
+        true,
+      );
+      expect(client).toBe(mockPrismaService);
+
+      expect(mockPrismaService.refreshToken.updateMany).toHaveBeenCalledWith({
+        where: { userId: 'user-1', revokedAt: null },
+        data: { revokedAt: expect.any(Date) },
+      });
+
+      expect(mockPrismaService.user.updateMany).toHaveBeenCalledWith({
+        where: { id: 'user-1', emailVerifiedAt: null },
+        data: { emailVerifiedAt: expect.any(Date) },
+      });
+    });
+
+    it('runs the whole reset in one transaction', async () => {
+      await service.confirmPasswordResetOtp(dto);
+
+      expect(mockPrismaService.$transaction).toHaveBeenCalledTimes(1);
+    });
+
+    it('throws BadRequestException and changes nothing when no user matches', async () => {
+      mockUsersService.findByEmail.mockResolvedValue(null);
+
+      await expect(service.confirmPasswordResetOtp(dto)).rejects.toThrow(
+        BadRequestException,
+      );
+
+      expect(mockUsersService.updatePasswordHash).not.toHaveBeenCalled();
+      expect(mockPrismaService.refreshToken.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when there is no live OTP', async () => {
+      mockPrismaService.passwordResetOtp.findFirst.mockResolvedValue(null);
+
+      await expect(service.confirmPasswordResetOtp(dto)).rejects.toThrow(
+        BadRequestException,
+      );
+
+      expect(mockUsersService.updatePasswordHash).not.toHaveBeenCalled();
+    });
+
+    it('rejects a wrong code without updating the password, after counting the attempt', async () => {
+      mockPrismaService.passwordResetOtp.findFirst.mockResolvedValue({
+        ...otpRow,
+        codeHash: sha256('999999'),
+      });
+
+      await expect(service.confirmPasswordResetOtp(dto)).rejects.toThrow(
+        BadRequestException,
+      );
+
+      expect(
+        mockPrismaService.passwordResetOtp.updateMany,
+      ).toHaveBeenCalledTimes(1);
+      expect(mockUsersService.updatePasswordHash).not.toHaveBeenCalled();
+      expect(mockPrismaService.refreshToken.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('rejects even the correct code once the attempt cap is reached', async () => {
+      mockPrismaService.passwordResetOtp.updateMany.mockResolvedValue({
+        count: 0,
+      });
+
+      await expect(service.confirmPasswordResetOtp(dto)).rejects.toThrow(
+        BadRequestException,
+      );
+
+      expect(mockUsersService.updatePasswordHash).not.toHaveBeenCalled();
+    });
+
+    it('returns the failure from the transaction instead of throwing inside it', async () => {
+      mockPrismaService.passwordResetOtp.findFirst.mockResolvedValue({
+        ...otpRow,
+        codeHash: sha256('999999'),
+      });
+
+      await expect(service.confirmPasswordResetOtp(dto)).rejects.toThrow(
+        BadRequestException,
+      );
+
+      const transaction = mockPrismaService.$transaction.mock.results[0]
+        .value as Promise<unknown>;
+      await expect(transaction).resolves.toEqual({
+        reset: false,
+        reason: 'INVALID_OTP',
+      });
+
+      expect(
+        mockPrismaService.passwordResetOtp.updateMany,
+      ).toHaveBeenCalledWith({
+        where: { id: 'reset-otp-1', attempts: { lt: 5 } },
+        data: { attempts: { increment: 1 } },
+      });
+      expect(mockUsersService.updatePasswordHash).not.toHaveBeenCalled();
     });
   });
 
@@ -1415,6 +1697,51 @@ describe('AuthService', () => {
       );
       expect(loggedText()).not.toContain(email);
     });
+
+    it('logs a password reset OTP for an unknown email at warn, without the email', async () => {
+      mockUsersService.findByEmail.mockResolvedValue(null);
+
+      await service.requestPasswordResetOtp({ email });
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        { reason: 'UNKNOWN_EMAIL' },
+        'Password reset OTP requested for an unknown email',
+      );
+      expect(loggedText()).not.toContain(email);
+    });
+
+    it('logs a failed password reset OTP email without the email address or the raw code', async () => {
+      mockUsersService.findByEmail.mockResolvedValue({
+        id: 'user-1',
+        email,
+        passwordHash: 'hash',
+        role: Role.USER,
+      });
+      mockPrismaService.passwordResetOtp.updateMany.mockResolvedValue({
+        count: 0,
+      });
+      mockPrismaService.passwordResetOtp.create.mockResolvedValue({
+        id: 'reset-otp-1',
+      });
+      failSendWithRequestBody();
+
+      await service.requestPasswordResetOtp({ email });
+      await new Promise(process.nextTick);
+
+      const { otp } = mockNotificationService.send.mock.calls[0][2] as {
+        otp: string;
+      };
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        {
+          userId: 'user-1',
+          error: { message: 'request failed', statusCode: undefined },
+        },
+        'Password reset OTP send failed',
+      );
+      expect(loggedText()).not.toContain(email);
+      expect(loggedText()).not.toContain(otp);
+    });
   });
 
   describe('analytics events', () => {
@@ -1585,6 +1912,79 @@ describe('AuthService', () => {
       expect(mockAnalyticsService.capture).not.toHaveBeenCalled();
     });
 
+    describe('password reset confirmation (OTP)', () => {
+      const dto = {
+        email: 'test@test.com',
+        otp: '123456',
+        newPassword: 'NewPassword123!',
+      };
+
+      beforeEach(() => {
+        mockUsersService.findByEmail.mockResolvedValue({
+          id: 'user-1',
+          email: 'test@test.com',
+          passwordHash: 'hash',
+          role: Role.USER,
+          emailVerifiedAt: null,
+        });
+        mockPrismaService.passwordResetOtp.findFirst.mockResolvedValue({
+          id: 'reset-otp-1',
+          codeHash: sha256(dto.otp),
+          attempts: 0,
+        });
+        mockPrismaService.passwordResetOtp.updateMany.mockResolvedValue({
+          count: 1,
+        });
+        mockUsersService.updatePasswordHash.mockResolvedValue(undefined);
+      });
+
+      it('emits password_reset_completed with channel otp after the transaction succeeds', async () => {
+        await service.confirmPasswordResetOtp(dto);
+
+        expect(mockAnalyticsService.capture.mock.calls).toEqual([
+          ['password_reset_completed', 'user-1', { channel: 'otp' }],
+        ]);
+      });
+
+      it.each([
+        [
+          'an invalid code',
+          () =>
+            mockPrismaService.passwordResetOtp.findFirst.mockResolvedValue({
+              id: 'reset-otp-1',
+              codeHash: sha256('999999'),
+              attempts: 0,
+            }),
+        ],
+        [
+          'an expired code',
+          () =>
+            mockPrismaService.passwordResetOtp.findFirst.mockResolvedValue(
+              null,
+            ),
+        ],
+        [
+          'a locked code',
+          () =>
+            mockPrismaService.passwordResetOtp.updateMany.mockResolvedValue({
+              count: 0,
+            }),
+        ],
+        [
+          'an unknown email',
+          () => mockUsersService.findByEmail.mockResolvedValue(null),
+        ],
+      ])('emits nothing for %s', async (_label, arrange) => {
+        arrange();
+
+        await expect(service.confirmPasswordResetOtp(dto)).rejects.toThrow(
+          BadRequestException,
+        );
+
+        expect(mockAnalyticsService.capture).not.toHaveBeenCalled();
+      });
+    });
+
     describe('email verification', () => {
       const dto = { email: 'test@test.com', otp: '123456' };
 
@@ -1665,11 +2065,11 @@ describe('AuthService', () => {
         mockUsersService.updatePasswordHash.mockResolvedValue(undefined);
       });
 
-      it('emits password_reset_completed after the transaction succeeds', async () => {
+      it('emits password_reset_completed with channel link after the transaction succeeds', async () => {
         await service.confirmPasswordReset(dto);
 
         expect(mockAnalyticsService.capture.mock.calls).toEqual([
-          ['password_reset_completed', 'user-1'],
+          ['password_reset_completed', 'user-1', { channel: 'link' }],
         ]);
       });
 
