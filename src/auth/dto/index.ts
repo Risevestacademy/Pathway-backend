@@ -9,3 +9,5 @@ export { RequestPasswordResetDto } from './request-password-reset.dto';
 export { VerifyEmailDto } from './verify-email.dto';
 export { ResendVerificationDto } from './resend-verification.dto';
 export { GoogleAuthDto } from './google-auth.dto';
+export { RequestPasswordResetOtpDto } from './request-password-reset-otp.dto';
+export { ConfirmPasswordResetOtpDto } from './confirm-password-reset-otp.dto';

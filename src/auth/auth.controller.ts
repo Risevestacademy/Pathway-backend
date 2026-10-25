@@ -27,6 +27,8 @@ import {
   ResendVerificationDto,
   GoogleAuthDto,
   RegisterResponseDto,
+  RequestPasswordResetOtpDto,
+  ConfirmPasswordResetOtpDto,
 } from './dto';
 import { UserResponseDto } from '../users';
 import {
@@ -335,6 +337,39 @@ export class AuthController {
   @HttpCode(204)
   async resendVerification(@Body() dto: ResendVerificationDto): Promise<void> {
     await this.authService.resendVerificationEmail(dto);
+  }
+
+  @ApiOperation({ summary: 'Request a password-reset code for mobile clients' })
+  @ApiResponse({
+    status: 204,
+    description: 'Always returned, whether or not an account exists.',
+  })
+  @AuthThrottle()
+  @Post('password-reset/mobile/request')
+  @HttpCode(204)
+  async requestPasswordResetOtp(
+    @Body() dto: RequestPasswordResetOtpDto,
+  ): Promise<void> {
+    await this.authService.requestPasswordResetOtp(dto);
+  }
+
+  @ApiOperation({ summary: 'Set a new password using a code (mobile clients)' })
+  @ApiResponse({
+    status: 204,
+    description: 'Password updated, code consumed, all sessions revoked.',
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Code invalid, expired, already used, or body failed validation.',
+  })
+  @AuthThrottle()
+  @Post('password-reset/mobile/confirm')
+  @HttpCode(204)
+  async confirmPasswordResetOtp(
+    @Body() dto: ConfirmPasswordResetOtpDto,
+  ): Promise<void> {
+    await this.authService.confirmPasswordResetOtp(dto);
   }
 
   @ApiOperation({ summary: 'Get the signed-in user' })

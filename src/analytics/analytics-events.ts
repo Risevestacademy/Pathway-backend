@@ -1,6 +1,7 @@
 export type SignUpMethod = 'email' | 'google';
 export type LoginMethod = 'password' | 'google';
 export type StepCompletionStatus = 'COMPLETED' | 'NOT_STARTED';
+export type PasswordResetChannel = 'link' | 'otp';
 
 /**
  * Event name -> property shape.
@@ -10,7 +11,7 @@ export interface AnalyticsEventMap {
   user_signed_up: { method: SignUpMethod };
   user_logged_in: { method: LoginMethod };
   email_verified: undefined;
-  password_reset_completed: undefined;
+  password_reset_completed: { channel: PasswordResetChannel };
   pathway_saved: { careerId: string };
   step_completion_changed: {
     careerId: string;

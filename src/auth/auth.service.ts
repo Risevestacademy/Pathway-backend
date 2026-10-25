@@ -25,6 +25,8 @@ import { VerifyEmailDto } from './dto/verify-email.dto';
 import { ResendVerificationDto } from './dto/resend-verification.dto';
 import { GoogleOAuthService } from './oauth/google-oauth.service';
 import { AnalyticsService } from '../analytics';
+import { RequestPasswordResetOtpDto } from './dto/request-password-reset-otp.dto';
+import { ConfirmPasswordResetOtpDto } from './dto/confirm-password-reset-otp.dto';
 
 type PrismaTransactionClient = Pick<PrismaService, 'refreshToken'>;
 
@@ -34,6 +36,9 @@ type EmailVerificationFailure =
 const PASSWORD_RESET_TOKEN_TTL_MINUTES = 60;
 const OTP_TTL_MINUTES = 15;
 const OTP_MAX_ATTEMPTS = 5;
+
+type PasswordResetFailure =
+  'UNKNOWN_EMAIL' | 'OTP_EXPIRED_OR_LOCKED' | 'INVALID_OTP';
 
 const hashToken = (token: string) =>
   createHash('sha256').update(token).digest('hex');
@@ -491,6 +496,114 @@ export class AuthService {
     }
   }
 
+  // Request paassword reset otp
+  async requestPasswordResetOtp(
+    dto: RequestPasswordResetOtpDto,
+  ): Promise<void> {
+    const user = await this.usersService.findByEmail(dto.email);
+
+    if (!user) {
+      this.logger.warn(
+        { reason: 'UNKNOWN_EMAIL' },
+        'Password reset OTP requested for an unknown email',
+      );
+      return; // same 204 response, no enumeration
+    }
+
+    const otp = this.generateOtp();
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.passwordResetOtp.updateMany({
+        where: { userId: user.id, consumedAt: null },
+        data: { consumedAt: new Date() },
+      });
+      await tx.passwordResetOtp.create({
+        data: {
+          userId: user.id,
+          codeHash: this.hashOtp(otp),
+          expiresAt: new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000),
+        },
+      });
+    });
+
+    void this.sendPasswordResetOtp(user.id, user.email, otp);
+  }
+
+  // Set new password using reset otp
+  async confirmPasswordResetOtp(
+    dto: ConfirmPasswordResetOtpDto,
+  ): Promise<void> {
+    const user = await this.usersService.findByEmail(dto.email);
+
+    if (!user) {
+      throw this.passwordResetFailed();
+    }
+
+    const now = new Date();
+    const codeHash = this.hashOtp(dto.otp);
+
+    const outcome = await this.prisma.$transaction(
+      async (
+        tx,
+      ): Promise<
+        | { reset: true; userId: string }
+        | { reset: false; reason: PasswordResetFailure }
+      > => {
+        const row = await tx.passwordResetOtp.findFirst({
+          where: { userId: user.id, consumedAt: null, expiresAt: { gt: now } },
+          orderBy: { createdAt: 'desc' },
+        });
+
+        if (!row) {
+          return { reset: false, reason: 'OTP_EXPIRED_OR_LOCKED' };
+        }
+
+        const counted = await tx.passwordResetOtp.updateMany({
+          where: { id: row.id, attempts: { lt: OTP_MAX_ATTEMPTS } },
+          data: { attempts: { increment: 1 } },
+        });
+
+        if (counted.count === 0) {
+          return { reset: false, reason: 'OTP_EXPIRED_OR_LOCKED' };
+        }
+
+        if (row.codeHash !== codeHash) {
+          return { reset: false, reason: 'INVALID_OTP' };
+        }
+
+        const passwordHash = await bcrypt.hash(dto.newPassword, 12);
+
+        await tx.passwordResetOtp.updateMany({
+          where: { userId: user.id, consumedAt: null },
+          data: { consumedAt: now },
+        });
+
+        await this.usersService.updatePasswordHash(user.id, passwordHash, tx);
+
+        await tx.refreshToken.updateMany({
+          where: { userId: user.id, revokedAt: null },
+          data: { revokedAt: now },
+        });
+
+        await tx.user.updateMany({
+          where: { id: user.id, emailVerifiedAt: null },
+          data: { emailVerifiedAt: now },
+        });
+
+        return { reset: true, userId: user.id };
+      },
+    );
+
+    if (!outcome.reset) {
+      throw this.passwordResetFailed(outcome.reason, user.id);
+    }
+
+    this.logger.log({ userId: outcome.userId }, 'Password reset (OTP)');
+    this.analytics.capture('password_reset_completed', outcome.userId, {
+      channel: 'otp',
+    });
+  }
+
   // Set a new password using a reset token
   async confirmPasswordReset(dto: ConfirmPasswordResetDto): Promise<void> {
     const tokenHash = hashToken(dto.token);
@@ -540,15 +653,16 @@ export class AuthService {
     });
 
     this.logger.log({ userId }, 'Password reset');
-    this.analytics.capture('password_reset_completed', userId);
+    this.analytics.capture('password_reset_completed', userId, {
+      channel: 'link',
+    });
   }
 
-  private passwordResetFailed(): BadRequestException {
-    this.logger.warn(
-      { reason: 'INVALID_OR_EXPIRED_TOKEN' },
-      'Password reset failed',
-    );
-
+  private passwordResetFailed(
+    reason?: PasswordResetFailure,
+    userId?: string,
+  ): BadRequestException {
+    this.logger.warn({ userId, reason }, 'Password reset failed');
     return new BadRequestException('Invalid or expired reset token');
   }
 
@@ -634,6 +748,26 @@ export class AuthService {
       this.logger.error(
         { userId, error: describeSendError(error) },
         'Email verification OTP send failed',
+      );
+    }
+  }
+
+  private async sendPasswordResetOtp(
+    userId: string,
+    email: string,
+    otp: string,
+  ): Promise<void> {
+    try {
+      await this.notificationService.send(email, 'password-reset-otp', {
+        otp,
+        expiresInMinutes: OTP_TTL_MINUTES,
+      });
+
+      this.logger.log({ userId }, 'Password reset OTP sent');
+    } catch (error) {
+      this.logger.error(
+        { userId, error: describeSendError(error) },
+        'Password reset OTP send failed',
       );
     }
   }

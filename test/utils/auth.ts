@@ -15,8 +15,22 @@ export const wireNotificationMock = () => {
       ) {
         capturedOtps.set(email, data.otp);
       }
+      if (template === 'password-reset-otp' && typeof data.otp === 'string') {
+        capturedOtps.set(`reset:${email}`, data.otp);
+      }
     },
   );
+};
+
+export const waitForResetOtp = async (email: string, timeoutMs = 2000) => {
+  const key = `reset:${email}`;
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const otp = capturedOtps.get(key);
+    if (otp) return otp;
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  throw new Error(`No reset OTP captured for ${email}`);
 };
 
 export const waitForOtp = async (email: string, timeoutMs = 2000) => {
