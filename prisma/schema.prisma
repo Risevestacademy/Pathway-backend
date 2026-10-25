@@ -159,6 +159,7 @@ model User {
   identities            AuthIdentity[]
   refreshTokens         RefreshToken[]
   passwordResetTokens   PasswordResetToken[]
+  passwordResetOtp      PasswordResetOtp[]
   emailVerificationOtps EmailVerificationOtp[]
   assessments           Assessment[]
   userSkills            UserSkill[]
@@ -217,6 +218,19 @@ model PasswordResetToken {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+model PasswordResetOtp {
+  id         String    @id @default(uuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash   String
+  expiresAt  DateTime
+  attempts   Int       @default(0)
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId, consumedAt])
 }
 
 model EmailVerificationOtp {
