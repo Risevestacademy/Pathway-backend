@@ -19,6 +19,7 @@ import { PathwaysModule } from './catalog/pathways/pathways.module';
 import { ReferenceModule } from './reference/reference.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { FeedbackModule } from './feedback';
+import { TeamsModule } from './teams';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { FeedbackModule } from './feedback';
     ReferenceModule,
     AnalyticsModule,
     FeedbackModule,
+    TeamsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

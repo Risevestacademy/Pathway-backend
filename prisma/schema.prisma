@@ -617,6 +617,7 @@ model StaffInvite {
   invitedById String
   expiresAt   DateTime
   acceptedAt  DateTime?
+  revokedAt   DateTime?
   createdAt   DateTime  @default(now())
 
   invitedBy User @relation(fields: [invitedById], references: [id])
