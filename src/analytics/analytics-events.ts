@@ -1,3 +1,5 @@
+import type { Role } from '../generated/prisma/enums';
+
 export type SignUpMethod = 'email' | 'google';
 export type LoginMethod = 'password' | 'google';
 export type StepCompletionStatus = 'COMPLETED' | 'NOT_STARTED';
@@ -18,6 +20,7 @@ export interface AnalyticsEventMap {
     stepId: string;
     status: StepCompletionStatus;
   };
+  staff_invite_revoked: { role: Role };
 }
 
 export type AnalyticsEventName = keyof AnalyticsEventMap;
