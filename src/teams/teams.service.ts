@@ -4,13 +4,52 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { createHash, randomBytes } from 'crypto';
 import { Prisma, Role } from '../generated/prisma/client';
 import { PrismaService } from '../prisma';
 import { AnalyticsService } from '../analytics';
+import { NotificationService } from '../notifications';
+import { EnvironmentVariables } from '../config';
 import { InviteStatus } from './teams.constants';
 import { GetInvitesQueryDto } from './dto/get-invites-query.dto';
 import { InviteListResponseDto } from './dto/invite-list-response.dto';
 import { RevokeInviteResponseDto } from './dto/revoke-invite-response.dto';
+import { CreateStaffInviteDto } from './dto/create-staff-invite.dto';
+import { CreateStaffInviteResponseDto } from './dto/create-staff-invite-response.dto';
+
+const INVITE_TTL_MS = 24 * 60 * 60 * 1000;
+
+const hashToken = (token: string) =>
+  createHash('sha256').update(token).digest('hex');
+
+// Provider errors can carry the recipient and the rendered email
+const describeSendError = (error: unknown) => {
+  if (error instanceof Error) {
+    return {
+      message: error.message,
+      statusCode:
+        'statusCode' in error
+          ? (error as { statusCode?: number }).statusCode
+          : undefined,
+    };
+  }
+
+  if (typeof error === 'object' && error !== null) {
+    const obj = error as Record<string, unknown>;
+    return {
+      message:
+        typeof obj.message === 'string' ? obj.message : JSON.stringify(obj),
+      statusCode:
+        typeof obj.statusCode === 'number' ? obj.statusCode : undefined,
+    };
+  }
+
+  return {
+    message: typeof error === 'string' ? error : String(error),
+    statusCode: undefined,
+  };
+};
 
 type InviteState = {
   expiresAt: Date;
@@ -25,7 +64,107 @@ export class TeamsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly analytics: AnalyticsService,
+    private readonly notificationService: NotificationService,
+    private readonly configService: ConfigService<EnvironmentVariables, true>,
   ) {}
+
+  async createInvite(
+    dto: CreateStaffInviteDto,
+    invitedById: string,
+  ): Promise<CreateStaffInviteResponseDto> {
+    const email = dto.email.toLowerCase();
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + INVITE_TTL_MS);
+    const rawToken = randomBytes(32).toString('hex');
+    const tokenHash = hashToken(rawToken);
+
+    const invite = await this.prisma.$transaction(async (tx) => {
+      // Replace any pending invite for this email. Accepted / revoked /
+      // expired rows are untouched — history is preserved.
+      await tx.staffInvite.deleteMany({
+        where: {
+          email,
+          acceptedAt: null,
+          revokedAt: null,
+          expiresAt: { gte: now },
+        },
+      });
+
+      return tx.staffInvite.create({
+        data: {
+          email,
+          role: dto.role,
+          tokenHash,
+          invitedById,
+          expiresAt,
+        },
+        select: {
+          id: true,
+          email: true,
+          role: true,
+          expiresAt: true,
+        },
+      });
+    });
+
+    this.logger.log(
+      { inviteId: invite.id, invitedById, role: invite.role },
+      'Staff invite created',
+    );
+
+    const emailSent = await this.sendInviteEmail(invite, rawToken, invitedById);
+
+    if (emailSent) {
+      this.analytics.capture('staff_invite_sent', invitedById, {
+        role: invite.role,
+      });
+    }
+
+    return {
+      id: invite.id,
+      email: invite.email,
+      role: invite.role,
+      expiresAt: invite.expiresAt,
+      emailSent,
+      ...(emailSent
+        ? {}
+        : {
+            message:
+              'Invite created, but the email could not be sent. Re-invite to retry.',
+          }),
+    };
+  }
+
+  private async sendInviteEmail(
+    invite: { id: string; email: string; role: Role },
+    rawToken: string,
+    invitedById: string,
+  ): Promise<boolean> {
+    try {
+      const inviteUrl = new URL(
+        this.configService.get<string>('STAFF_INVITE_URL', { infer: true }),
+      );
+      inviteUrl.searchParams.set('token', rawToken);
+
+      await this.notificationService.send(invite.email, 'staff-invite', {
+        role: invite.role,
+        inviteUrl: inviteUrl.toString(),
+        expiresInHours: 24,
+      });
+
+      return true;
+    } catch (error) {
+      this.logger.warn(
+        {
+          inviteId: invite.id,
+          invitedById,
+          error: describeSendError(error),
+        },
+        'Staff invite email dispatch failed',
+      );
+      return false;
+    }
+  }
 
   async getInvites({
     status,
