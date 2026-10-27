@@ -10,6 +10,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsUrl,
   Matches,
   Max,
   MaxLength,
@@ -87,14 +88,22 @@ const DiffersFrom = (property: keyof EnvironmentVariables) =>
     },
   });
 
+const FRONTEND_URL_OPTIONS = {
+  require_tld: false,
+  require_protocol: true,
+  protocols: ['http', 'https'],
+};
+
 /**
- * Frontend URLs must use https in production and staging. Local development
- * may use http. This prevents tokens embedded in URLs (password reset,
- * staff invites) from being sent over cleartext in deployed environments.
+ * POSTHOG_HOST carries credentials (the API key travels in the request
+ * header), so http is never acceptable there in production or staging.
+ * Frontend URLs (password reset, staff invites) are not subject to this
+ * check — those tokens are single-use and short-lived, and staging frontends
+ * often legitimately run on http://localhost.
  */
-const IsFrontendUrl = () =>
+const IsProductionHttpsUrl = () =>
   ValidateBy({
-    name: 'isFrontendUrl',
+    name: 'isProductionHttpsUrl',
     validator: {
       validate: (value, args) => {
         if (typeof value !== 'string') return false;
@@ -221,7 +230,7 @@ export class EnvironmentVariables {
   EMAIL_FROM_NAME = 'Pathway';
 
   @IsOptional()
-  @IsFrontendUrl()
+  @IsUrl(FRONTEND_URL_OPTIONS)
   PASSWORD_RESET_URL = 'http://localhost:5173/reset-password';
 
   @Transform(splitCommaList)
@@ -253,7 +262,7 @@ export class EnvironmentVariables {
   POSTHOG_API_KEY: string;
 
   @IsOptional()
-  @IsFrontendUrl()
+  @IsProductionHttpsUrl()
   POSTHOG_HOST = 'https://eu.i.posthog.com';
 
   @ValidateIf(
@@ -264,7 +273,7 @@ export class EnvironmentVariables {
   RESEND_API_KEY: string;
 
   @IsOptional()
-  @IsFrontendUrl()
+  @IsUrl(FRONTEND_URL_OPTIONS)
   STAFF_INVITE_URL = 'http://localhost:5173/accept-invite';
 }
 

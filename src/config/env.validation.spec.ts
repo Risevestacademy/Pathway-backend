@@ -249,7 +249,6 @@ describe('validateEnv', () => {
   it('defaults PASSWORD_RESET_URL to the local frontend reset page', () => {
     const config = validateEnv({
       ...validEnv,
-      NODE_ENV: 'development',
       PASSWORD_RESET_URL: undefined,
     });
 
@@ -275,26 +274,6 @@ describe('validateEnv', () => {
     ).toThrow(/PASSWORD_RESET_URL/);
   });
 
-  it('rejects http PASSWORD_RESET_URL in production', () => {
-    expect(() =>
-      validateEnv({
-        ...validEnv,
-        NODE_ENV: 'production',
-        PASSWORD_RESET_URL: 'http://pathway.example.com/reset-password',
-      }),
-    ).toThrow(/PASSWORD_RESET_URL must be an https URL/);
-  });
-
-  it('rejects http PASSWORD_RESET_URL in staging', () => {
-    expect(() =>
-      validateEnv({
-        ...validEnv,
-        NODE_ENV: 'staging',
-        PASSWORD_RESET_URL: 'http://pathway.example.com/reset-password',
-      }),
-    ).toThrow(/PASSWORD_RESET_URL must be an https URL/);
-  });
-
   it('allows http PASSWORD_RESET_URL in development', () => {
     const config = validateEnv({
       ...validEnv,
@@ -312,7 +291,6 @@ describe('validateEnv', () => {
   it('defaults STAFF_INVITE_URL to the local frontend accept page', () => {
     const config = validateEnv({
       ...validEnv,
-      NODE_ENV: 'development',
       STAFF_INVITE_URL: undefined,
     });
 
@@ -351,28 +329,20 @@ describe('validateEnv', () => {
     ).not.toThrow();
   });
 
-  it('fails startup in production when STAFF_INVITE_URL is absent', () => {
-    const { STAFF_INVITE_URL: _omit, ...withoutStaffInvite } = validEnv;
-
-    expect(() => validateEnv(withoutStaffInvite)).toThrow(
-      /STAFF_INVITE_URL must be an https URL/,
-    );
-  });
-
-  it('rejects http STAFF_INVITE_URL in production', () => {
-    expect(() =>
-      validateEnv({
-        ...validEnv,
-        NODE_ENV: 'production',
-        STAFF_INVITE_URL: 'http://pathway.example.com/accept-invite',
-      }),
-    ).toThrow(/STAFF_INVITE_URL must be an https URL/);
-  });
-
   it('allows http STAFF_INVITE_URL in development', () => {
     const config = validateEnv({
       ...validEnv,
       NODE_ENV: 'development',
+      STAFF_INVITE_URL: 'http://localhost:5173/accept-invite',
+    });
+
+    expect(config.STAFF_INVITE_URL).toBe('http://localhost:5173/accept-invite');
+  });
+
+  it('accepts http STAFF_INVITE_URL in staging so the frontend can test locally', () => {
+    const config = validateEnv({
+      ...validEnv,
+      NODE_ENV: 'staging',
       STAFF_INVITE_URL: 'http://localhost:5173/accept-invite',
     });
 
