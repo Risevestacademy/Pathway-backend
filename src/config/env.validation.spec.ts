@@ -14,6 +14,8 @@ describe('validateEnv', () => {
     RESEND_API_KEY: 'test-resend-key',
     EMAIL_FROM_ADDRESS: 'noreply@pathway.dev',
     GOOGLE_CLIENT_IDS: 'web-client.apps.googleusercontent.com',
+    PASSWORD_RESET_URL: 'https://pathway.example.com/reset-password',
+    STAFF_INVITE_URL: 'https://pathway.example.com/accept-invite',
   };
 
   it('returns the validated configuration', () => {
@@ -50,21 +52,15 @@ describe('validateEnv', () => {
   });
 
   it('accepts a custom API version', () => {
-    const config = validateEnv({
-      ...validEnv,
-      API_VERSION: 'v2',
-    });
+    const config = validateEnv({ ...validEnv, API_VERSION: 'v2' });
 
     expect(config.API_VERSION).toBe('v2');
   });
 
   it('throws when API_VERSION is empty', () => {
-    expect(() =>
-      validateEnv({
-        ...validEnv,
-        API_VERSION: '',
-      }),
-    ).toThrow(/API_VERSION/);
+    expect(() => validateEnv({ ...validEnv, API_VERSION: '' })).toThrow(
+      /API_VERSION/,
+    );
   });
 
   it('allows Sentry variables to be absent', () => {
@@ -89,10 +85,7 @@ describe('validateEnv', () => {
 
   it('ignores variables outside the schema', () => {
     expect(() =>
-      validateEnv({
-        ...validEnv,
-        UNRELATED_VARIABLE: 'anything',
-      }),
+      validateEnv({ ...validEnv, UNRELATED_VARIABLE: 'anything' }),
     ).not.toThrow();
   });
 
@@ -107,39 +100,25 @@ describe('validateEnv', () => {
   });
 
   it('throws when DATABASE_URL is empty', () => {
-    expect(() =>
-      validateEnv({
-        ...validEnv,
-        DATABASE_URL: '',
-      }),
-    ).toThrow(/DATABASE_URL/);
+    expect(() => validateEnv({ ...validEnv, DATABASE_URL: '' })).toThrow(
+      /DATABASE_URL/,
+    );
   });
 
   it('throws when NODE_ENV is not a known environment', () => {
-    expect(() =>
-      validateEnv({
-        ...validEnv,
-        NODE_ENV: 'invalid',
-      }),
-    ).toThrow(/NODE_ENV/);
+    expect(() => validateEnv({ ...validEnv, NODE_ENV: 'invalid' })).toThrow(
+      /NODE_ENV/,
+    );
   });
 
   it('throws when PORT is not an integer', () => {
-    expect(() =>
-      validateEnv({
-        ...validEnv,
-        PORT: 'not-a-port',
-      }),
-    ).toThrow(/PORT/);
+    expect(() => validateEnv({ ...validEnv, PORT: 'not-a-port' })).toThrow(
+      /PORT/,
+    );
   });
 
   it('throws when PORT falls outside the valid range', () => {
-    expect(() =>
-      validateEnv({
-        ...validEnv,
-        PORT: '70000',
-      }),
-    ).toThrow(/PORT/);
+    expect(() => validateEnv({ ...validEnv, PORT: '70000' })).toThrow(/PORT/);
   });
 
   it('reports every invalid variable in one error', () => {
@@ -157,6 +136,31 @@ describe('validateEnv', () => {
     ).toThrow(/NODE_ENV[\s\S]*PORT[\s\S]*DATABASE_URL[\s\S]*API_VERSION/);
   });
 
+  // ─── LOG_LEVEL ──────────────────────────────────────────────────────
+
+  it('defaults LOG_LEVEL to info', () => {
+    const config = validateEnv(validEnv);
+
+    expect(config.LOG_LEVEL).toBe('info');
+  });
+
+  it.each(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])(
+    'accepts LOG_LEVEL=%s',
+    (level) => {
+      const config = validateEnv({ ...validEnv, LOG_LEVEL: level });
+
+      expect(config.LOG_LEVEL).toBe(level);
+    },
+  );
+
+  it('throws when LOG_LEVEL is not a pino level', () => {
+    expect(() => validateEnv({ ...validEnv, LOG_LEVEL: 'verbose' })).toThrow(
+      /LOG_LEVEL/,
+    );
+  });
+
+  // ─── THROTTLE ───────────────────────────────────────────────────────
+
   it('applies default rate limits when absent', () => {
     const config = validateEnv(validEnv);
 
@@ -171,6 +175,8 @@ describe('validateEnv', () => {
       /THROTTLE_LIMIT/,
     );
   });
+
+  // ─── JWT ────────────────────────────────────────────────────────────
 
   it.each(['JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET'])(
     'throws when %s is empty',
@@ -190,6 +196,38 @@ describe('validateEnv', () => {
     ).toThrow(/JWT_REFRESH_SECRET must differ from JWT_ACCESS_SECRET/);
   });
 
+  it('reports both secrets as empty, but not as differing', () => {
+    try {
+      validateEnv({
+        ...validEnv,
+        JWT_ACCESS_SECRET: '',
+        JWT_REFRESH_SECRET: '',
+      });
+      fail('expected validation to throw');
+    } catch (error) {
+      const message = (error as Error).message;
+      expect(message).toMatch(/JWT_ACCESS_SECRET should not be empty/);
+      expect(message).toMatch(/JWT_REFRESH_SECRET should not be empty/);
+      expect(message).not.toMatch(/must differ from/);
+    }
+  });
+
+  it('reports only the empty refresh secret when the access secret is set', () => {
+    try {
+      validateEnv({
+        ...validEnv,
+        JWT_ACCESS_SECRET: 'access-secret',
+        JWT_REFRESH_SECRET: '',
+      });
+      fail('expected validation to throw');
+    } catch (error) {
+      const message = (error as Error).message;
+      expect(message).toMatch(/JWT_REFRESH_SECRET should not be empty/);
+      expect(message).not.toMatch(/JWT_ACCESS_SECRET/);
+      expect(message).not.toMatch(/must differ from/);
+    }
+  });
+
   it.each([
     ['JWT_ACCESS_EXPIRY', 'soon'],
     ['JWT_REFRESH_EXPIRY', ''],
@@ -206,14 +244,14 @@ describe('validateEnv', () => {
     expect(config.JWT_REFRESH_EXPIRY).toBe('30 days');
   });
 
-  it('throws when LOG_LEVEL is not a pino level', () => {
-    expect(() => validateEnv({ ...validEnv, LOG_LEVEL: 'verbose' })).toThrow(
-      /LOG_LEVEL/,
-    );
-  });
+  // ─── PASSWORD_RESET_URL ─────────────────────────────────────────────
 
   it('defaults PASSWORD_RESET_URL to the local frontend reset page', () => {
-    const config = validateEnv(validEnv);
+    const config = validateEnv({
+      ...validEnv,
+      NODE_ENV: 'development',
+      PASSWORD_RESET_URL: undefined,
+    });
 
     expect(config.PASSWORD_RESET_URL).toBe(
       'http://localhost:5173/reset-password',
@@ -236,6 +274,112 @@ describe('validateEnv', () => {
       validateEnv({ ...validEnv, PASSWORD_RESET_URL: 'reset-password' }),
     ).toThrow(/PASSWORD_RESET_URL/);
   });
+
+  it('rejects http PASSWORD_RESET_URL in production', () => {
+    expect(() =>
+      validateEnv({
+        ...validEnv,
+        NODE_ENV: 'production',
+        PASSWORD_RESET_URL: 'http://pathway.example.com/reset-password',
+      }),
+    ).toThrow(/PASSWORD_RESET_URL must be an https URL/);
+  });
+
+  it('rejects http PASSWORD_RESET_URL in staging', () => {
+    expect(() =>
+      validateEnv({
+        ...validEnv,
+        NODE_ENV: 'staging',
+        PASSWORD_RESET_URL: 'http://pathway.example.com/reset-password',
+      }),
+    ).toThrow(/PASSWORD_RESET_URL must be an https URL/);
+  });
+
+  it('allows http PASSWORD_RESET_URL in development', () => {
+    const config = validateEnv({
+      ...validEnv,
+      NODE_ENV: 'development',
+      PASSWORD_RESET_URL: 'http://localhost:5173/reset-password',
+    });
+
+    expect(config.PASSWORD_RESET_URL).toBe(
+      'http://localhost:5173/reset-password',
+    );
+  });
+
+  // ─── STAFF_INVITE_URL ───────────────────────────────────────────────
+
+  it('defaults STAFF_INVITE_URL to the local frontend accept page', () => {
+    const config = validateEnv({
+      ...validEnv,
+      NODE_ENV: 'development',
+      STAFF_INVITE_URL: undefined,
+    });
+
+    expect(config.STAFF_INVITE_URL).toBe('http://localhost:5173/accept-invite');
+  });
+
+  it('accepts a deployed STAFF_INVITE_URL', () => {
+    const config = validateEnv({
+      ...validEnv,
+      STAFF_INVITE_URL: 'https://pathway.example.com/accept-invite',
+    });
+
+    expect(config.STAFF_INVITE_URL).toBe(
+      'https://pathway.example.com/accept-invite',
+    );
+  });
+
+  it('throws when STAFF_INVITE_URL is not a URL', () => {
+    expect(() =>
+      validateEnv({ ...validEnv, STAFF_INVITE_URL: 'accept-invite' }),
+    ).toThrow(/STAFF_INVITE_URL/);
+  });
+
+  it('allows STAFF_INVITE_URL and PASSWORD_RESET_URL to be absent in development', () => {
+    const {
+      STAFF_INVITE_URL: _omitStaff,
+      PASSWORD_RESET_URL: _omitReset,
+      ...withoutUrls
+    } = validEnv;
+
+    expect(() =>
+      validateEnv({
+        ...withoutUrls,
+        NODE_ENV: 'development',
+      }),
+    ).not.toThrow();
+  });
+
+  it('fails startup in production when STAFF_INVITE_URL is absent', () => {
+    const { STAFF_INVITE_URL: _omit, ...withoutStaffInvite } = validEnv;
+
+    expect(() => validateEnv(withoutStaffInvite)).toThrow(
+      /STAFF_INVITE_URL must be an https URL/,
+    );
+  });
+
+  it('rejects http STAFF_INVITE_URL in production', () => {
+    expect(() =>
+      validateEnv({
+        ...validEnv,
+        NODE_ENV: 'production',
+        STAFF_INVITE_URL: 'http://pathway.example.com/accept-invite',
+      }),
+    ).toThrow(/STAFF_INVITE_URL must be an https URL/);
+  });
+
+  it('allows http STAFF_INVITE_URL in development', () => {
+    const config = validateEnv({
+      ...validEnv,
+      NODE_ENV: 'development',
+      STAFF_INVITE_URL: 'http://localhost:5173/accept-invite',
+    });
+
+    expect(config.STAFF_INVITE_URL).toBe('http://localhost:5173/accept-invite');
+  });
+
+  // ─── GOOGLE_CLIENT_IDS ──────────────────────────────────────────────
 
   it('exposes GOOGLE_CLIENT_IDS as a trimmed array', () => {
     const config = validateEnv({
@@ -268,6 +412,8 @@ describe('validateEnv', () => {
       }),
     ).toThrow(/GOOGLE_CLIENT_IDS/);
   });
+
+  // ─── MAIL_DRIVER ────────────────────────────────────────────────────
 
   it('defaults MAIL_DRIVER to resend', () => {
     const config = validateEnv(validEnv);
@@ -318,6 +464,8 @@ describe('validateEnv', () => {
     ).toThrow('MAIL_DRIVER=log is only allowed');
   });
 
+  // ─── EMAIL_FROM_ADDRESS / EMAIL_FROM_NAME ───────────────────────────
+
   it('defaults EMAIL_FROM_NAME to "Pathway"', () => {
     const config = validateEnv(validEnv);
 
@@ -333,7 +481,14 @@ describe('validateEnv', () => {
     expect(config.EMAIL_FROM_NAME).toBe('Pathway Careers');
   });
 
-  // ─── EMAIL_FROM_ADDRESS ─────────────────────────────────────────────
+  it('throws when EMAIL_FROM_NAME exceeds 100 characters', () => {
+    expect(() =>
+      validateEnv({
+        ...validEnv,
+        EMAIL_FROM_NAME: 'a'.repeat(101),
+      }),
+    ).toThrow(/EMAIL_FROM_NAME/);
+  });
 
   it('throws when EMAIL_FROM_ADDRESS is missing', () => {
     const { EMAIL_FROM_ADDRESS: _omit, ...withoutFrom } = validEnv;
@@ -347,6 +502,21 @@ describe('validateEnv', () => {
     );
   });
 
+  it('throws when EMAIL_FROM_ADDRESS is not an email', () => {
+    expect(() =>
+      validateEnv({ ...validEnv, EMAIL_FROM_ADDRESS: 'not-an-email' }),
+    ).toThrow(/EMAIL_FROM_ADDRESS/);
+  });
+
+  it('throws when EMAIL_FROM_ADDRESS exceeds 254 characters', () => {
+    expect(() =>
+      validateEnv({
+        ...validEnv,
+        EMAIL_FROM_ADDRESS: `${'a'.repeat(250)}@example.com`,
+      }),
+    ).toThrow(/EMAIL_FROM_ADDRESS/);
+  });
+
   // ─── ANALYTICS_ENABLED ──────────────────────────────────────────────
 
   it('defaults ANALYTICS_ENABLED to false', () => {
@@ -355,27 +525,39 @@ describe('validateEnv', () => {
     expect(config.ANALYTICS_ENABLED).toBe(false);
   });
 
-  it('coerces ANALYTICS_ENABLED from the string "true" to true', () => {
-    const config = validateEnv({
-      ...validEnv,
-      ANALYTICS_ENABLED: 'true',
-      POSTHOG_API_KEY: 'phc_test_key',
-    });
+  it.each([true, 'true', 'TRUE', '1', 'yes', ' Yes '])(
+    'coerces %j to true',
+    (value) => {
+      const config = validateEnv({
+        ...validEnv,
+        ANALYTICS_ENABLED: value,
+        POSTHOG_API_KEY: 'phc_test_key',
+      });
 
-    expect(config.ANALYTICS_ENABLED).toBe(true);
+      expect(config.ANALYTICS_ENABLED).toBe(true);
+    },
+  );
+
+  it.each([false, 'false', 'FALSE', '0', 'no', ''])(
+    'coerces %j to false',
+    (value) => {
+      const config = validateEnv({
+        ...validEnv,
+        ANALYTICS_ENABLED: value,
+        POSTHOG_API_KEY: undefined,
+      });
+
+      expect(config.ANALYTICS_ENABLED).toBe(false);
+    },
+  );
+
+  it('rejects an unrecognized ANALYTICS_ENABLED value', () => {
+    expect(() =>
+      validateEnv({ ...validEnv, ANALYTICS_ENABLED: 'sometimes' }),
+    ).toThrow(/ANALYTICS_ENABLED/);
   });
 
-  it('accepts a boolean ANALYTICS_ENABLED', () => {
-    const config = validateEnv({
-      ...validEnv,
-      ANALYTICS_ENABLED: true,
-      POSTHOG_API_KEY: 'phc_test_key',
-    });
-
-    expect(config.ANALYTICS_ENABLED).toBe(true);
-  });
-
-  // ─── POSTHOG_API_KEY ────────────────────────────────────────────────
+  // ─── POSTHOG_API_KEY / POSTHOG_HOST ─────────────────────────────────
 
   it('does not require POSTHOG_API_KEY when analytics is disabled', () => {
     const config = validateEnv({
@@ -411,8 +593,6 @@ describe('validateEnv', () => {
     expect(config.POSTHOG_API_KEY).toBe('phc_test_key');
   });
 
-  // ─── POSTHOG_HOST ───────────────────────────────────────────────────
-
   it('defaults POSTHOG_HOST to the EU host', () => {
     const config = validateEnv(validEnv);
 
@@ -428,9 +608,10 @@ describe('validateEnv', () => {
     expect(config.POSTHOG_HOST).toBe('https://us.i.posthog.com');
   });
 
-  it('accepts a localhost POSTHOG_HOST for local development', () => {
+  it('accepts a localhost POSTHOG_HOST in development', () => {
     const config = validateEnv({
       ...validEnv,
+      NODE_ENV: 'development',
       POSTHOG_HOST: 'http://localhost:8000',
     });
 
@@ -442,6 +623,18 @@ describe('validateEnv', () => {
       validateEnv({ ...validEnv, POSTHOG_HOST: 'not-a-url' }),
     ).toThrow(/POSTHOG_HOST/);
   });
+
+  it('rejects http POSTHOG_HOST in production', () => {
+    expect(() =>
+      validateEnv({
+        ...validEnv,
+        NODE_ENV: 'production',
+        POSTHOG_HOST: 'http://us.i.posthog.com',
+      }),
+    ).toThrow(/POSTHOG_HOST must be an https URL/);
+  });
+
+  // ─── MAIL_DRIVER=resend ─────────────────────────────────────────────
 
   describe('MAIL_DRIVER=resend', () => {
     it('requires RESEND_API_KEY', () => {
@@ -489,9 +682,7 @@ describe('validateEnv', () => {
       expect(config.MAILERSEND_API_KEY).toBeUndefined();
     });
 
-    it('is still restricted by LogDriverOnlyInLocalEnvs when NODE_ENV is production', () => {
-      // log is the only restricted driver — resend is not restricted.
-      // This test proves the restriction was not accidentally extended.
+    it('is not restricted by LogDriverOnlyInLocalEnvs in production', () => {
       expect(() =>
         validateEnv({
           ...validEnv,
@@ -500,6 +691,33 @@ describe('validateEnv', () => {
           RESEND_API_KEY: 're_test_key',
         }),
       ).not.toThrow();
+    });
+  });
+
+  // ─── MAIL_DRIVER=mailersend ─────────────────────────────────────────
+
+  describe('MAIL_DRIVER=mailersend', () => {
+    it('requires MAILERSEND_API_KEY', () => {
+      expect(() =>
+        validateEnv({
+          ...validEnv,
+          MAIL_DRIVER: 'mailersend',
+          MAILERSEND_API_KEY: undefined,
+          RESEND_API_KEY: undefined,
+        }),
+      ).toThrow(/MAILERSEND_API_KEY/);
+    });
+
+    it('does not require RESEND_API_KEY when the mailersend driver is selected', () => {
+      const config = validateEnv({
+        ...validEnv,
+        MAIL_DRIVER: 'mailersend',
+        MAILERSEND_API_KEY: 'test-key',
+        RESEND_API_KEY: undefined,
+      });
+
+      expect(config.MAIL_DRIVER).toBe(MailDriver.MailerSend);
+      expect(config.RESEND_API_KEY).toBeUndefined();
     });
   });
 });

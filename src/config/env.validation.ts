@@ -3,15 +3,16 @@ import {
   ArrayNotEmpty,
   IsArray,
   IsBoolean,
+  IsEmail,
   IsEnum,
   IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
-  IsUrl,
   Matches,
   Max,
+  MaxLength,
   Min,
   ValidateBy,
   ValidateIf,
@@ -40,7 +41,9 @@ const LOG_LEVELS = [
   'debug',
   'trace',
   'silent',
-];
+] as const;
+
+export type LogLevel = (typeof LOG_LEVELS)[number];
 
 const splitCommaList = ({ value }: { value: unknown }): unknown =>
   typeof value === 'string'
@@ -49,12 +52,6 @@ const splitCommaList = ({ value }: { value: unknown }): unknown =>
         .map((item) => item.trim())
         .filter((item) => item.length > 0)
     : value;
-
-const FRONTEND_URL_OPTIONS = {
-  require_tld: false,
-  require_protocol: true,
-  protocols: ['http', 'https'],
-};
 
 const isPositiveDuration = (value: unknown): boolean => {
   try {
@@ -79,10 +76,46 @@ const DiffersFrom = (property: keyof EnvironmentVariables) =>
     name: 'differsFrom',
     constraints: [property],
     validator: {
-      validate: (value, args) =>
-        value !== (args?.object as EnvironmentVariables)[property],
+      validate: (value, args) => {
+        const other = (args?.object as EnvironmentVariables)[property];
+        if (value === '' || value === undefined) return true;
+        if (other === '' || other === undefined) return true;
+        return value !== other;
+      },
       defaultMessage: (args) =>
         `${args?.property} must differ from ${property}`,
+    },
+  });
+
+/**
+ * Frontend URLs must use https in production and staging. Local development
+ * may use http. This prevents tokens embedded in URLs (password reset,
+ * staff invites) from being sent over cleartext in deployed environments.
+ */
+const IsFrontendUrl = () =>
+  ValidateBy({
+    name: 'isFrontendUrl',
+    validator: {
+      validate: (value, args) => {
+        if (typeof value !== 'string') return false;
+
+        let url: URL;
+        try {
+          url = new URL(value);
+        } catch {
+          return false;
+        }
+
+        if (url.protocol === 'https:') return true;
+        if (url.protocol === 'http:') {
+          const env = (args?.object as EnvironmentVariables).NODE_ENV;
+          return env === NodeEnv.Development || env === NodeEnv.Test;
+        }
+
+        return false;
+      },
+      defaultMessage: (args) =>
+        `${args?.property} must be an https URL in production and staging`,
     },
   });
 
@@ -118,7 +151,7 @@ export class EnvironmentVariables {
 
   @IsOptional()
   @IsIn(LOG_LEVELS)
-  LOG_LEVEL = 'info';
+  LOG_LEVEL: LogLevel = 'info';
 
   @IsString()
   @IsNotEmpty()
@@ -178,16 +211,17 @@ export class EnvironmentVariables {
   @IsNotEmpty()
   MAILERSEND_API_KEY: string;
 
-  @IsString()
-  @IsNotEmpty()
+  @IsEmail()
+  @MaxLength(254)
   EMAIL_FROM_ADDRESS: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(100)
   EMAIL_FROM_NAME = 'Pathway';
 
   @IsOptional()
-  @IsUrl(FRONTEND_URL_OPTIONS)
+  @IsFrontendUrl()
   PASSWORD_RESET_URL = 'http://localhost:5173/reset-password';
 
   @Transform(splitCommaList)
@@ -200,7 +234,16 @@ export class EnvironmentVariables {
   })
   GOOGLE_CLIENT_IDS: string[];
 
-  @Transform(({ value }) => value === true || value === 'true')
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') {
+      const lower = value.toLowerCase().trim();
+      if (['true', '1', 'yes'].includes(lower)) return true;
+      if (['false', '0', 'no', ''].includes(lower)) return false;
+    }
+    return value;
+  })
   @IsBoolean()
   ANALYTICS_ENABLED: boolean = false;
 
@@ -210,11 +253,7 @@ export class EnvironmentVariables {
   POSTHOG_API_KEY: string;
 
   @IsOptional()
-  @IsUrl({
-    require_tld: false,
-    require_protocol: true,
-    protocols: ['http', 'https'],
-  })
+  @IsFrontendUrl()
   POSTHOG_HOST = 'https://eu.i.posthog.com';
 
   @ValidateIf(
@@ -223,6 +262,10 @@ export class EnvironmentVariables {
   @IsString()
   @IsNotEmpty()
   RESEND_API_KEY: string;
+
+  @IsOptional()
+  @IsFrontendUrl()
+  STAFF_INVITE_URL = 'http://localhost:5173/accept-invite';
 }
 
 export function validateEnv(
