@@ -1,0 +1,9 @@
+You've been invited to join Pathway with the role of {{role}}.
+
+Click the link below to accept the invitation:
+
+{{inviteUrl}}
+
+This link expires in {{expiresInHours}} hours.
+
+If you weren't expecting this, you can safely ignore this email.

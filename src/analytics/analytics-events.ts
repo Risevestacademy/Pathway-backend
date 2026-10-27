@@ -20,6 +20,7 @@ export interface AnalyticsEventMap {
     stepId: string;
     status: StepCompletionStatus;
   };
+  staff_invite_sent: { role: Role };
   staff_invite_revoked: { role: Role };
 }
 
