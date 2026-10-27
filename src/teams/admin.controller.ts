@@ -12,7 +12,7 @@ import {
   type AuthenticatedUser,
   CurrentUser,
   JwtAuthGuard,
-  Roles,
+  MinRole,
   RolesGuard,
 } from '../common';
 import { Role } from '../generated/prisma/client';
@@ -24,7 +24,7 @@ import { RevokeInviteResponseDto } from './dto/revoke-invite-response.dto';
 @ApiTags('Admin')
 @Controller('admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.ADMIN)
+@MinRole(Role.ADMIN)
 export class AdminTeamsController {
   constructor(private readonly teamsService: TeamsService) {}
 

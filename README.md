@@ -59,16 +59,18 @@ Module structure, the testing bar, and the git workflow are defined in the proje
 
 ## Admin routes
 
-Restrict a controller to admins by attaching both guards to the whole class, in this order:
+Restrict a controller to staff by attaching both guards to the whole class, in this order, plus a minimum role:
 
 ```ts
 @Controller('admin/careers')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.ADMIN)
+@MinRole(Role.EDITOR)
 export class AdminCareersController {}
 ```
 
-`JwtAuthGuard` must come first, because it sets `req.user`, which `RolesGuard` reads. A missing or invalid token gets 401 and a non-admin token gets 403.
+`@MinRole()` admits that role and every higher one: ADMIN > PUBLISHER > REVIEWER > EDITOR > USER. `@Roles()` still allows an exact list of roles. If a route has both, both must pass. A handler's decorator overrides the class's.
+
+`JwtAuthGuard` must come first, because it sets `req.user`, which `RolesGuard` reads. A missing or invalid token gets 401, and an insufficient or unknown role gets 403. State each guarded route's minimum role in its `@ApiOperation` description.
 
 The role is read from the access token, so a role change takes effect only when the user's next access token is issued: at their next token refresh (at most 15 minutes) or login.
 
