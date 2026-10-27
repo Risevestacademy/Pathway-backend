@@ -9,7 +9,9 @@ import {
   TargetLevel,
 } from '../../generated/prisma/client';
 import { GetCareersQueryDto } from './dto/get-careers-query.dto';
-import { NotFoundException } from '@nestjs/common';
+import { ConflictException, Logger, NotFoundException } from '@nestjs/common';
+import { Prisma } from '../../generated/prisma/client';
+import { AnalyticsService } from '../../analytics';
 
 describe('CareersService', () => {
   let service: CareersService;
@@ -27,7 +29,19 @@ describe('CareersService', () => {
         >
       >(),
       findFirst: jest.fn<(args: unknown) => Promise<unknown>>(),
+      findUnique: jest.fn<
+        (args: unknown) => Promise<{
+          status: CareerStatus;
+          publishedAt: Date | null;
+          _count: { userPathways: number };
+        } | null>
+      >(),
+      delete: jest.fn<(args: unknown) => Promise<{ id: string }>>(),
     },
+  };
+
+  const mockAnalyticsService = {
+    capture: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -40,6 +54,7 @@ describe('CareersService', () => {
           provide: PrismaService,
           useValue: mockPrismaService,
         },
+        { provide: AnalyticsService, useValue: mockAnalyticsService },
       ],
     }).compile();
 
@@ -376,6 +391,123 @@ describe('CareersService', () => {
 
       expect(mockPrismaService.career.findMany).not.toHaveBeenCalled();
       expect(mockPrismaService.career.findFirst).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('deleteCareer', () => {
+    let logSpy: jest.SpiedFunction<Logger['log']>;
+    let warnSpy: jest.SpiedFunction<Logger['warn']>;
+
+    const notFound = () =>
+      new Prisma.PrismaClientKnownRequestError('No record was found', {
+        code: 'P2025',
+        clientVersion: 'test',
+      });
+
+    beforeEach(() => {
+      mockPrismaService.career.delete.mockResolvedValue({ id: 'career-1' });
+      logSpy = jest
+        .spyOn(Logger.prototype, 'log')
+        .mockImplementation(() => undefined);
+      warnSpy = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      logSpy.mockRestore();
+      warnSpy.mockRestore();
+    });
+
+    it('deletes only a never-published draft that no user has saved', async () => {
+      const result = await service.deleteCareer('career-1', 'admin-1');
+
+      expect(mockPrismaService.career.delete).toHaveBeenCalledWith({
+        where: {
+          id: 'career-1',
+          status: CareerStatus.DRAFT,
+          publishedAt: null,
+          userPathways: { none: {} },
+        },
+        select: { id: true },
+      });
+      expect(mockPrismaService.career.findUnique).not.toHaveBeenCalled();
+      expect(result).toEqual({ message: 'Career deleted' });
+    });
+
+    it('logs the career and actor ids and emits career_deleted', async () => {
+      await service.deleteCareer('career-1', 'admin-1');
+
+      expect(logSpy).toHaveBeenCalledWith(
+        { careerId: 'career-1', actorUserId: 'admin-1' },
+        'Career deleted',
+      );
+      expect(mockAnalyticsService.capture).toHaveBeenCalledWith(
+        'career_deleted',
+        'admin-1',
+        { careerId: 'career-1' },
+      );
+    });
+
+    it('throws NotFoundException when no career has the id', async () => {
+      mockPrismaService.career.delete.mockRejectedValue(notFound());
+      mockPrismaService.career.findUnique.mockResolvedValue(null);
+
+      await expect(service.deleteCareer('missing', 'admin-1')).rejects.toThrow(
+        new NotFoundException('Career not found'),
+      );
+      expect(warnSpy).not.toHaveBeenCalled();
+      expect(mockAnalyticsService.capture).not.toHaveBeenCalled();
+    });
+
+    const publishedAt = new Date('2026-10-01T00:00:00.000Z');
+
+    it.each([
+      ['a published career', CareerStatus.PUBLISHED, publishedAt, 0],
+      ['a retired career', CareerStatus.RETIRED, publishedAt, 3],
+      ['a draft that was published before', CareerStatus.DRAFT, publishedAt, 0],
+      ['a draft a user has saved', CareerStatus.DRAFT, null, 1],
+    ] as const)(
+      'throws ConflictException and warns with what blocked it for %s',
+      async (_label, status, everPublishedAt, userPathways) => {
+        mockPrismaService.career.delete.mockRejectedValue(notFound());
+        mockPrismaService.career.findUnique.mockResolvedValue({
+          status,
+          publishedAt: everPublishedAt,
+          _count: { userPathways },
+        });
+
+        await expect(
+          service.deleteCareer('career-1', 'admin-1'),
+        ).rejects.toThrow(
+          new ConflictException(
+            'Only a draft career that was never published or saved can be deleted',
+          ),
+        );
+        expect(warnSpy).toHaveBeenCalledWith(
+          {
+            careerId: 'career-1',
+            actorUserId: 'admin-1',
+            status,
+            everPublished: everPublishedAt !== null,
+            savedPathways: userPathways,
+            reason: 'CAREER_HAS_HISTORY',
+          },
+          'Career delete rejected',
+        );
+        expect(logSpy).not.toHaveBeenCalled();
+        expect(mockAnalyticsService.capture).not.toHaveBeenCalled();
+      },
+    );
+
+    it('rethrows unexpected database errors', async () => {
+      const failure = new Error('connection lost');
+      mockPrismaService.career.delete.mockRejectedValue(failure);
+
+      await expect(service.deleteCareer('career-1', 'admin-1')).rejects.toBe(
+        failure,
+      );
+      expect(mockPrismaService.career.findUnique).not.toHaveBeenCalled();
     });
   });
 });

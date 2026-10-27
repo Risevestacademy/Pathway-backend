@@ -1,9 +1,20 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma';
+import { AnalyticsService } from '../../analytics';
 import { GetCareersQueryDto } from './dto/get-careers-query.dto';
 import { CareerListItemDto } from './dto/list-careers.dto';
-import { CareerStatus, TargetLevel } from '../../generated/prisma/client';
+import {
+  CareerStatus,
+  Prisma,
+  TargetLevel,
+} from '../../generated/prisma/client';
 import { CareerDetailDto } from './dto/career-detail.dto';
+import { DeleteCareerResponseDto } from './dto/delete-career-response.dto';
 
 const decimalToString = (
   value: { toString(): string } | null,
@@ -11,7 +22,12 @@ const decimalToString = (
 
 @Injectable()
 export class CareersService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(CareersService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly analytics: AnalyticsService,
+  ) {}
 
   async getPublicCareers(
     query: GetCareersQueryDto,
@@ -169,5 +185,64 @@ export class CareersService {
 
   getTargetLevels(): TargetLevel[] {
     return Object.values(TargetLevel);
+  }
+
+  async deleteCareer(
+    id: string,
+    actorUserId: string,
+  ): Promise<DeleteCareerResponseDto> {
+    try {
+      await this.prisma.career.delete({
+        where: {
+          id,
+          status: CareerStatus.DRAFT,
+          publishedAt: null,
+          userPathways: { none: {} },
+        },
+        select: { id: true },
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2025'
+      ) {
+        return this.rejectDelete(id, actorUserId);
+      }
+      throw error;
+    }
+
+    this.logger.log({ careerId: id, actorUserId }, 'Career deleted');
+    this.analytics.capture('career_deleted', actorUserId, { careerId: id });
+
+    return { message: 'Career deleted' };
+  }
+
+  private async rejectDelete(id: string, actorUserId: string): Promise<never> {
+    const career = await this.prisma.career.findUnique({
+      where: { id },
+      select: {
+        status: true,
+        publishedAt: true,
+        _count: { select: { userPathways: true } },
+      },
+    });
+    if (!career) {
+      throw new NotFoundException('Career not found');
+    }
+
+    this.logger.warn(
+      {
+        careerId: id,
+        actorUserId,
+        status: career.status,
+        everPublished: career.publishedAt !== null,
+        savedPathways: career._count.userPathways,
+        reason: 'CAREER_HAS_HISTORY',
+      },
+      'Career delete rejected',
+    );
+    throw new ConflictException(
+      'Only a draft career that was never published or saved can be deleted',
+    );
   }
 }
