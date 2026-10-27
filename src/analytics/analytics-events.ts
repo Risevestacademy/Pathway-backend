@@ -21,6 +21,7 @@ export interface AnalyticsEventMap {
     status: StepCompletionStatus;
   };
   staff_invite_revoked: { role: Role };
+  career_deleted: { careerId: string };
 }
 
 export type AnalyticsEventName = keyof AnalyticsEventMap;
