@@ -3,7 +3,9 @@ import { DocumentBuilder, SwaggerModule, OpenAPIObject } from '@nestjs/swagger';
 
 const swaggerConfig = new DocumentBuilder()
   .setTitle('Pathways API')
-  .setDescription('API documentation for the Pathways backend')
+  .setDescription(
+    'API documentation for the Pathways backend.\n\nStaff routes state their minimum role in the operation description. A minimum role also admits every higher role (ADMIN > PUBLISHER > REVIEWER > EDITOR > USER). A route that also lists exact roles requires both checks to pass. A missing token returns 401; an insufficient or unknown role returns 403.',
+  )
   .setVersion('1.0')
   .build();
 
