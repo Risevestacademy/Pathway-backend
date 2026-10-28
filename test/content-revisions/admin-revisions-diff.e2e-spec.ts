@@ -9,7 +9,6 @@ import { EnvironmentVariables } from '../../src/config';
 import { NotificationService } from '../../src/notifications';
 import { PrismaService } from '../../src/prisma';
 import { Role } from '../../src/generated/prisma/client';
-import { buildPlan } from '../../src/catalog/content-revisions/career-snapshot.plan';
 import type { CareerSnapshot } from '../../src/catalog/content-revisions/career-snapshot.types';
 import {
   notificationMock,
@@ -71,6 +70,10 @@ describe('Admin revisions — diff (e2e)', () => {
     });
     fieldId = field.id;
 
+    const skill = await prisma.skill.create({
+      data: { name: `Skill ${marker}` },
+    });
+
     const career = await prisma.career.create({
       data: {
         title: `Career ${marker}`,
@@ -81,6 +84,7 @@ describe('Admin revisions — diff (e2e)', () => {
         fieldId,
         status: 'PUBLISHED',
         version: 3,
+        skills: { create: [{ skillId: skill.id, importance: 'REQUIRED' }] },
         pathway: {
           create: {
             title: 'Pathway',
@@ -128,7 +132,7 @@ describe('Admin revisions — diff (e2e)', () => {
           resourceIds: [],
         },
       ],
-      skills: [{ skillId: 'placeholder', importance: 'REQUIRED' }],
+      skills: [{ skillId: skill.id, importance: 'REQUIRED' }],
       outlook: [],
       resources: [],
     };
@@ -145,79 +149,65 @@ describe('Admin revisions — diff (e2e)', () => {
   });
 
   afterAll(async () => {
-    await prisma.contentRevision.deleteMany({
-      where: { careerId },
-    });
+    await prisma.contentRevision.deleteMany({ where: { careerId } });
     await prisma.career.deleteMany({ where: { id: careerId } });
     await prisma.field.deleteMany({ where: { id: fieldId } });
+    await prisma.skill.deleteMany({ where: { name: `Skill ${marker}` } });
     await prisma.user.deleteMany({ where: { id: { in: userIds } } });
     await app.close();
   });
-
   const getDiff = (token = tokens[Role.REVIEWER]) =>
     request(app.getHttpServer())
       .get(`${apiPrefix}/admin/revisions/${revisionId}/diff`)
       .set('Authorization', `Bearer ${token}`);
 
-  it('returns a plan identical to calling buildPlan directly', async () => {
+  it('returns a reviewer-shaped diff grouped by section', async () => {
     const response = await getDiff().expect(200);
 
-    // Feed the same live career into buildPlan to compare
-    const live = await prisma.career.findUniqueOrThrow({
-      where: { id: careerId },
-      include: {
-        skills: true,
-        outlook: true,
-        pathway: {
-          include: { steps: { include: { skills: true, resources: true } } },
-        },
-      },
+    // ── Revision metadata ─────────────────────────────────────────────
+    expect(response.body.revisionId).toBe(revisionId);
+    expect(response.body.title).toContain('Career');
+    expect(typeof response.body.submittedBy).toBe('string');
+    expect(response.body.submittedAt).toMatch(/ago|Just now/);
+
+    // ── Plan metadata (still at the top level) ────────────────────────
+    expect(response.body.baseVersion).toBe(3);
+    expect(response.body.liveVersion).toBe(3);
+    expect(response.body.stale).toBe(false);
+    expect(response.body.blockers).toEqual([]);
+    expect(response.body.advisories).toEqual([]);
+
+    // ── Sections (grouped, not flat operations) ───────────────────────
+    expect(response.body.sections).toBeDefined();
+    expect(response.body.sections).not.toHaveProperty('operations');
+
+    // The title was changed in the fixture → one entry in career.changed
+    expect(response.body.sections.career).toBeDefined();
+    const titleChange = (
+      response.body.sections.career.changed as Array<{
+        field: string;
+        label: string;
+        before: string;
+        after: string;
+      }>
+    ).find((c) => c.field === 'title');
+
+    expect(titleChange).toEqual({
+      field: 'title',
+      label: 'Title',
+      before: `Career ${marker}`,
+      after: `Career ${marker} (revised)`,
     });
 
-    const direct = buildPlan({
-      liveCareer: {
-        id: live.id,
-        version: live.version,
-        title: live.title,
-        slug: live.slug,
-        description: live.description,
-        roleSummary: live.roleSummary,
-        fieldId: live.fieldId,
-        targetLevels: live.targetLevels,
-        exampleActivities: live.exampleActivities,
-        typicalEducationNote: live.typicalEducationNote,
-        certificationsNote: live.certificationsNote,
-        skills: live.skills.map((s) => ({
-          skillId: s.skillId,
-          importance: s.importance,
-        })),
-        outlook: live.outlook,
-        pathway: live.pathway
-          ? {
-              id: live.pathway.id,
-              title: live.pathway.title,
-              description: live.pathway.description,
-            }
-          : null,
-        steps: (live.pathway?.steps ?? []).map((s) => ({
-          id: s.id,
-          order: s.order,
-          title: s.title,
-          description: s.description,
-          learningObjective: s.learningObjective,
-          prerequisites: s.prerequisites,
-          expectedActivity: s.expectedActivity,
-          skills: s.skills.map((sk) => ({ skillId: sk.skillId })),
-          resources: s.resources.map((r) => ({ resourceId: r.resourceId })),
-        })),
-        resources: [],
-      },
-      snapshot,
-      baseVersion: 3,
-      stepLearnerCounts: {},
-    });
+    // Empty sections are stripped, so unchanged areas don't appear
+    expect(response.body.sections).not.toHaveProperty('outlook');
+    expect(response.body.sections).not.toHaveProperty('resources');
+    expect(response.body.sections).not.toHaveProperty('skills');
 
-    expect(response.body).toEqual(direct);
+    // No secrets or internal identifiers leaked in the payload
+    const body = JSON.stringify(response.body);
+    expect(body).not.toMatch(/[0-9a-f]{64}/);
+    expect(body).not.toContain('tokenHash');
   });
 
   it('returns 401 without a token', async () => {

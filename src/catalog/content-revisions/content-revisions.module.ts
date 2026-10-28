@@ -1,11 +1,13 @@
 import { Module } from '@nestjs/common';
-import { PrismaModule } from '../../prisma'; // adjust path
-import { RevisionsService } from './content-revisons.service';
+import { PrismaModule } from '../../prisma';
+import { RevisionsService } from './content-revisions.service';
 import { AdminRevisionsController } from './admin-revisions.controller';
+import { ReviewerDiffFormatter } from './reviewer-diff.formatter';
 
 @Module({
   imports: [PrismaModule],
   controllers: [AdminRevisionsController],
-  providers: [RevisionsService],
+  providers: [RevisionsService, ReviewerDiffFormatter],
+  exports: [RevisionsService],
 })
 export class RevisionsModule {}

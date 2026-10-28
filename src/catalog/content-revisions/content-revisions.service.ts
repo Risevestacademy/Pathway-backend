@@ -1,23 +1,32 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma';
-import {
-  buildPlan,
-  type CareerPlan,
-  type LiveCareerForPlan,
-} from './career-snapshot.plan';
-import { Prisma } from '../../generated/prisma/client';
+import { buildPlan, type LiveCareerForPlan } from './career-snapshot.plan';
 import type { CareerSnapshot } from './career-snapshot.types';
+import { ReviewerDiffFormatter } from './reviewer-diff.formatter';
+import type { ReviewerDiffResponseDto } from './dto/reviewer-diff-response.dto';
 
 @Injectable()
 export class RevisionsService {
   private readonly logger = new Logger(RevisionsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly formatter: ReviewerDiffFormatter,
+  ) {}
 
-  async buildDiff(revisionId: string, reviewerId: string): Promise<CareerPlan> {
+  async buildDiff(
+    revisionId: string,
+    reviewerId: string,
+  ): Promise<ReviewerDiffResponseDto> {
     const revision = await this.prisma.contentRevision.findUniqueOrThrow({
       where: { id: revisionId },
-      select: { careerId: true, baseVersion: true, snapshot: true },
+      select: {
+        careerId: true,
+        baseVersion: true,
+        snapshot: true,
+        createdAt: true,
+        createdBy: { select: { profile: { select: { fullName: true } } } },
+      },
     });
 
     const liveCareer = await this.prisma.career.findUniqueOrThrow({
@@ -38,7 +47,6 @@ export class RevisionsService {
       },
     });
 
-    // Career-level "resources": distinct resources referenced by any step
     const resourceIds = new Set<string>();
     for (const step of liveCareer.pathway?.steps ?? []) {
       for (const r of step.resources) resourceIds.add(r.resourceId);
@@ -94,9 +102,11 @@ export class RevisionsService {
 
     const stepLearnerCounts = await this.loadStepLearnerCounts(live.steps);
 
+    const snapshot = revision.snapshot as unknown as CareerSnapshot;
+
     const plan = buildPlan({
       liveCareer: live,
-      snapshot: revision.snapshot as unknown as CareerSnapshot,
+      snapshot,
       baseVersion: revision.baseVersion,
       stepLearnerCounts,
     });
@@ -106,7 +116,11 @@ export class RevisionsService {
       'Revision diff generated',
     );
 
-    return plan;
+    return this.formatter.format(revisionId, plan, snapshot, {
+      title: `${liveCareer.title} (Revision)`,
+      authorName: revision.createdBy.profile?.fullName ?? 'Unknown',
+      createdAt: revision.createdAt,
+    });
   }
 
   private async loadStepLearnerCounts(
