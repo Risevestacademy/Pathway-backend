@@ -93,3 +93,5 @@ Errors go through the global filter:
   "timestamp": "2026-09-18T10:00:00.000Z"
 }
 ```
+
+`error` always comes from the status code. For a rule-specific failure, throw `DomainException(status, code, message, details?)` from `src/common`; the body then also carries `code` (such as `CAREER_TITLE_TAKEN`) and, when given, `details`.
