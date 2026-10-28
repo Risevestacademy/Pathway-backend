@@ -19,8 +19,8 @@ import {
   RolesGuard,
 } from '../../common';
 import { Role } from '../../generated/prisma/client';
-import { RevisionsService } from './content-revisons.service';
-import { CareerPlanResponseDto } from './dto/career-plan-response.dto';
+import { RevisionsService } from './content-revisions.service';
+import { ReviewerDiffResponseDto } from './dto/reviewer-diff-response.dto';
 
 @ApiTags('Admin')
 @ApiBearerAuth()
@@ -34,48 +34,73 @@ export class AdminRevisionsController {
     description: [
       'Minimum role: REVIEWER.',
       '',
-      'Computes the plan that publishing this revision would apply to the live career:',
-      'every operation, every blocker, and whether the revision is stale.',
+      'Returns a reviewer-shaped diff grouped by section: career fields, ' +
+        'outlook, steps, resources. Each section has `changed`, `added`, ' +
+        '`removed` and `moved` buckets. Sections with no changes are omitted.',
       '',
-      'Read-only. The same plan is used by submit (readiness check), review ' +
-        '(stale check), and publish (apply). The reviewer UI uses this endpoint to ' +
-        'render the diff screen.',
+      'Read-only. The plan that backs this response is the same plan that ' +
+        'submit, review, and publish use. Any divergence would let a reviewer ' +
+        "approve something publish can't safely apply.",
       '',
-      '**Stale** — if `true`, the live career changed since this revision was ' +
-        'created. Publishing it would silently overwrite those changes. Ask ' +
-        'the editor to rebase.',
+      '**stale** — `true` means the live career changed since this revision ' +
+        'was created. The reviewer should request a rebase before approving.',
       '',
-      '**Blockers** — if non-empty, publishing will fail. Common cases: a ' +
-        'removed step that learners have completed, missing required career ' +
-        'fields, or an empty skills/steps list.',
+      '**blockers** — hard stops. Non-empty means publish would fail. E.g. ' +
+        'removing a step that learners have completed, missing required ' +
+        'career fields, or an empty skills/steps list.',
+      '',
+      '**advisories** — soft warnings shown as info banners. Do not block ' +
+        'approval.',
+      '',
+      'Field values are sent raw: decimals as strings (`"230000.00"`), ' +
+        'arrays as arrays, foreign keys as both the raw UUID (`before` / ' +
+        '`after`) and a human label (`beforeLabel` / `afterLabel`). The ' +
+        'frontend formats currency and joins arrays.',
     ].join('\n'),
   })
   @ApiResponse({
     status: 200,
-    type: CareerPlanResponseDto,
+    type: ReviewerDiffResponseDto,
     example: {
+      revisionId: 'a3f2c1d4-0000-0000-0000-000000000000',
+      title: 'UX Designer: salary range',
+      submittedBy: 'Chidi E.',
+      submittedAt: '5 hours ago',
       baseVersion: 3,
       liveVersion: 3,
       stale: false,
-      operations: [
-        {
-          kind: 'update',
-          section: 'career',
-          entityId: 'a3f2c1d4-0000-0000-0000-000000000000',
-          field: 'title',
-          before: 'Frontend Engineer',
-          after: 'Senior Frontend Engineer',
-        },
-        {
-          kind: 'move',
-          section: 'steps',
-          entityId: 'b4e3d2c1-0000-0000-0000-000000000000',
-          before: 2,
-          after: 1,
-        },
-      ],
       blockers: [],
-      counts: { added: 0, changed: 1, moved: 1, removed: 0, blockers: 0 },
+      advisories: [],
+      sections: {
+        career: {
+          changed: [
+            {
+              field: 'title',
+              label: 'Title',
+              before: 'Frontend Engineer',
+              after: 'Senior Frontend Engineer',
+            },
+          ],
+          added: [],
+          removed: [],
+          moved: [],
+        },
+        outlook: {
+          changed: [
+            {
+              field: 'sourceId',
+              label: 'Source',
+              before: 'a3f2c1d4-0000-0000-0000-000000000000',
+              after: 'b7e2d1a9-0000-0000-0000-000000000000',
+              beforeLabel: 'Jobberman salary guide 2025',
+              afterLabel: 'Jobberman salary guide 2026',
+            },
+          ],
+          added: [],
+          removed: [],
+          moved: [],
+        },
+      },
     },
   })
   @ApiResponse({ status: 401, description: 'Access token missing or invalid' })
@@ -86,7 +111,7 @@ export class AdminRevisionsController {
   async getDiff(
     @Param('revisionId', ParseUUIDPipe) revisionId: string,
     @CurrentUser() user: AuthenticatedUser,
-  ): Promise<CareerPlanResponseDto> {
+  ): Promise<ReviewerDiffResponseDto> {
     return this.revisionsService.buildDiff(revisionId, user.id);
   }
 }
