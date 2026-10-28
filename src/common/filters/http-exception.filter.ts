@@ -12,7 +12,6 @@ import type {
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import * as Sentry from '@sentry/node';
-import { Prisma } from '../../generated/prisma/client';
 import {
   DomainErrorDetails,
   DomainException,
@@ -62,28 +61,6 @@ export class HttpExceptionFilter implements ExceptionFilter {
       message = 'Validation failed';
       errorCode = 'VALIDATION_ERROR';
       fields = exception.fields;
-    } else if (exception instanceof Prisma.PrismaClientKnownRequestError) {
-      if (exception.code === 'P2025') {
-        statusCode = HttpStatus.NOT_FOUND;
-        message = 'Record not found';
-        errorCode = 'NOT_FOUND';
-      } else {
-        statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
-        message = 'Internal server error';
-        errorCode = 'INTERNAL_SERVER_ERROR';
-
-        this.logger.error(
-          {
-            err: exception,
-            prismaCode: exception.code,
-            requestId: request.id,
-            method: request.method,
-            route: request.originalUrl,
-            statusCode,
-          },
-          'Unhandled Prisma error',
-        );
-      }
     } else if (exception instanceof HttpException) {
       statusCode = exception.getStatus();
       const exceptionResponse = exception.getResponse();

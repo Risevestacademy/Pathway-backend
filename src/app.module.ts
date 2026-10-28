@@ -20,7 +20,6 @@ import { ReferenceModule } from './reference/reference.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { FeedbackModule } from './feedback';
 import { TeamsModule } from './teams';
-import { RevisionsModule } from './catalog/content-revisions/content-revisions.module';
 
 @Module({
   imports: [
@@ -46,7 +45,6 @@ import { RevisionsModule } from './catalog/content-revisions/content-revisions.m
     AnalyticsModule,
     FeedbackModule,
     TeamsModule,
-    RevisionsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
