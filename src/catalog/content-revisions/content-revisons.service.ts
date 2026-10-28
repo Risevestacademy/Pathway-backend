@@ -15,48 +15,28 @@ export class RevisionsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async buildDiff(revisionId: string, reviewerId: string): Promise<CareerPlan> {
-    const revision = await this.prisma.contentRevision
-      .findUniqueOrThrow({
-        where: { id: revisionId },
-        select: { careerId: true, baseVersion: true, snapshot: true },
-      })
-      .catch((error) => {
-        if (
-          error instanceof Prisma.PrismaClientKnownRequestError &&
-          error.code === 'P2025'
-        ) {
-          throw new NotFoundException('Revision not found');
-        }
-        throw error;
-      });
+    const revision = await this.prisma.contentRevision.findUniqueOrThrow({
+      where: { id: revisionId },
+      select: { careerId: true, baseVersion: true, snapshot: true },
+    });
 
-    const liveCareer = await this.prisma.career
-      .findUniqueOrThrow({
-        where: { id: revision.careerId },
-        include: {
-          skills: true,
-          outlook: true,
-          pathway: {
-            include: {
-              steps: {
-                include: {
-                  skills: { select: { skillId: true } },
-                  resources: { select: { resourceId: true } },
-                },
+    const liveCareer = await this.prisma.career.findUniqueOrThrow({
+      where: { id: revision.careerId },
+      include: {
+        skills: true,
+        outlook: true,
+        pathway: {
+          include: {
+            steps: {
+              include: {
+                skills: { select: { skillId: true } },
+                resources: { select: { resourceId: true } },
               },
             },
           },
         },
-      })
-      .catch((error) => {
-        if (
-          error instanceof Prisma.PrismaClientKnownRequestError &&
-          error.code === 'P2025'
-        ) {
-          throw new NotFoundException('Career not found');
-        }
-        throw error;
-      });
+      },
+    });
 
     // Career-level "resources": distinct resources referenced by any step
     const resourceIds = new Set<string>();
