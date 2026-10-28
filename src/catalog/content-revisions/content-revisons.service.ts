@@ -1,10 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma';
 import {
   buildPlan,
   type CareerPlan,
   type LiveCareerForPlan,
 } from './career-snapshot.plan';
+import { Prisma } from '../../generated/prisma/client';
 import type { CareerSnapshot } from './career-snapshot.types';
 
 @Injectable()
@@ -14,21 +15,48 @@ export class RevisionsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async buildDiff(revisionId: string, reviewerId: string): Promise<CareerPlan> {
-    const revision = await this.prisma.contentRevision.findUniqueOrThrow({
-      where: { id: revisionId },
-      select: { careerId: true, baseVersion: true, snapshot: true },
-    });
+    const revision = await this.prisma.contentRevision
+      .findUniqueOrThrow({
+        where: { id: revisionId },
+        select: { careerId: true, baseVersion: true, snapshot: true },
+      })
+      .catch((error) => {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2025'
+        ) {
+          throw new NotFoundException('Revision not found');
+        }
+        throw error;
+      });
 
-    const liveCareer = await this.prisma.career.findUniqueOrThrow({
-      where: { id: revision.careerId },
-      include: {
-        skills: true,
-        outlook: true,
-        pathway: {
-          include: { steps: { include: { skills: true, resources: true } } },
+    const liveCareer = await this.prisma.career
+      .findUniqueOrThrow({
+        where: { id: revision.careerId },
+        include: {
+          skills: true,
+          outlook: true,
+          pathway: {
+            include: {
+              steps: {
+                include: {
+                  skills: { select: { skillId: true } },
+                  resources: { select: { resourceId: true } },
+                },
+              },
+            },
+          },
         },
-      },
-    });
+      })
+      .catch((error) => {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2025'
+        ) {
+          throw new NotFoundException('Career not found');
+        }
+        throw error;
+      });
 
     // Career-level "resources": distinct resources referenced by any step
     const resourceIds = new Set<string>();
@@ -110,7 +138,7 @@ export class RevisionsService {
       by: ['pathwayStepId'],
       where: {
         pathwayStepId: { in: steps.map((s) => s.id) },
-        status: 'COMPLETED', // "active" = learners who completed
+        status: 'COMPLETED',
       },
       _count: { pathwayStepId: true },
     });
