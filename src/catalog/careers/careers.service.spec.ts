@@ -10,8 +10,10 @@ import {
 } from '../../generated/prisma/client';
 import { GetCareersQueryDto } from './dto/get-careers-query.dto';
 import { ConflictException, Logger, NotFoundException } from '@nestjs/common';
-import { Prisma } from '../../generated/prisma/client';
+import { Prisma, RevisionStatus } from '../../generated/prisma/client';
 import { AnalyticsService } from '../../analytics';
+import { DomainException } from '../../common';
+import type { CreateCareerDto } from './dto/create-career.dto';
 
 describe('CareersService', () => {
   let service: CareersService;
@@ -37,6 +39,10 @@ describe('CareersService', () => {
         } | null>
       >(),
       delete: jest.fn<(args: unknown) => Promise<{ id: string }>>(),
+      create: jest.fn<(args: unknown) => Promise<unknown>>(),
+    },
+    field: {
+      findUnique: jest.fn<(args: unknown) => Promise<{ id: string } | null>>(),
     },
   };
 
@@ -345,6 +351,17 @@ describe('CareersService', () => {
       expect(result.pathway).not.toHaveProperty('resources');
     });
 
+    it('should return an empty role summary when none is stored', async () => {
+      mockPrismaService.career.findFirst.mockResolvedValue({
+        ...mockDbCareer,
+        roleSummary: null,
+      });
+
+      const result = await service.getPublishedCareerById('career-1');
+
+      expect(result.roleSummary).toBe('');
+    });
+
     it('should return null pathway when the career has no pathway', async () => {
       mockPrismaService.career.findFirst.mockResolvedValue({
         ...mockDbCareer,
@@ -391,6 +408,299 @@ describe('CareersService', () => {
 
       expect(mockPrismaService.career.findMany).not.toHaveBeenCalled();
       expect(mockPrismaService.career.findFirst).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('createCareer', () => {
+    let logSpy: jest.SpiedFunction<Logger['log']>;
+    let warnSpy: jest.SpiedFunction<Logger['warn']>;
+
+    const dto: CreateCareerDto = {
+      title: 'DevOps Engineer',
+      slug: 'devops-engineer',
+      fieldId: 'field-1',
+      description: 'Automates how software is built, tested and deployed.',
+    };
+
+    const createdAt = new Date('2026-10-28T10:30:00.000Z');
+    const created = {
+      id: 'career-1',
+      slug: 'devops-engineer',
+      title: 'DevOps Engineer',
+      description: 'Automates how software is built, tested and deployed.',
+      roleSummary: null,
+      fieldId: 'field-1',
+      targetLevels: [],
+      status: CareerStatus.DRAFT,
+      version: 1,
+      createdAt,
+      revisions: [
+        { id: 'revision-1', status: RevisionStatus.DRAFT, baseVersion: 1 },
+      ],
+    };
+
+    const prismaError = (code: string) =>
+      new Prisma.PrismaClientKnownRequestError('failed', {
+        code,
+        clientVersion: 'test',
+      });
+
+    beforeEach(() => {
+      mockPrismaService.field.findUnique.mockResolvedValue({ id: 'field-1' });
+      mockPrismaService.career.findFirst.mockResolvedValue(null);
+      mockPrismaService.career.create.mockResolvedValue(created);
+      logSpy = jest
+        .spyOn(Logger.prototype, 'log')
+        .mockImplementation(() => undefined);
+      warnSpy = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      logSpy.mockRestore();
+      warnSpy.mockRestore();
+    });
+
+    it('creates a DRAFT career at version 1 with its first DRAFT revision', async () => {
+      await service.createCareer(dto, 'editor-1');
+
+      expect(mockPrismaService.career.create).toHaveBeenCalledWith({
+        data: {
+          title: 'DevOps Engineer',
+          slug: 'devops-engineer',
+          description: 'Automates how software is built, tested and deployed.',
+          roleSummary: null,
+          fieldId: 'field-1',
+          targetLevels: [],
+          status: CareerStatus.DRAFT,
+          version: 1,
+          revisions: {
+            create: {
+              baseVersion: 1,
+              createdById: 'editor-1',
+              snapshot: {
+                schemaVersion: 1,
+                career: {
+                  title: 'DevOps Engineer',
+                  slug: 'devops-engineer',
+                  description:
+                    'Automates how software is built, tested and deployed.',
+                  roleSummary: null,
+                  fieldId: 'field-1',
+                  targetLevels: [],
+                  exampleActivities: [],
+                  typicalEducationNote: null,
+                  certificationsNote: null,
+                },
+                pathway: null,
+                steps: [],
+                skills: [],
+                outlook: [],
+                resources: [],
+              },
+            },
+          },
+        },
+        select: {
+          id: true,
+          slug: true,
+          title: true,
+          description: true,
+          roleSummary: true,
+          fieldId: true,
+          targetLevels: true,
+          status: true,
+          version: true,
+          createdAt: true,
+          revisions: { select: { id: true, status: true, baseVersion: true } },
+        },
+      });
+    });
+
+    it('passes the optional role summary and target levels through', async () => {
+      await service.createCareer(
+        {
+          ...dto,
+          roleSummary: 'Runs the delivery pipelines.',
+          targetLevels: [TargetLevel.RECENT_GRAD],
+        },
+        'editor-1',
+      );
+
+      const [[args]] = mockPrismaService.career.create.mock.calls as [
+        [
+          {
+            data: {
+              roleSummary: string | null;
+              targetLevels: TargetLevel[];
+              revisions: {
+                create: {
+                  snapshot: {
+                    career: {
+                      roleSummary: string | null;
+                      targetLevels: TargetLevel[];
+                    };
+                  };
+                };
+              };
+            };
+          },
+        ],
+      ];
+      expect(args.data.roleSummary).toBe('Runs the delivery pipelines.');
+      expect(args.data.targetLevels).toEqual([TargetLevel.RECENT_GRAD]);
+      expect(args.data.revisions.create.snapshot.career).toEqual(
+        expect.objectContaining({
+          roleSummary: 'Runs the delivery pipelines.',
+          targetLevels: [TargetLevel.RECENT_GRAD],
+        }),
+      );
+    });
+
+    it('returns the career with its revision and logs ids only', async () => {
+      const result = await service.createCareer(dto, 'editor-1');
+
+      expect(result).toEqual({
+        id: 'career-1',
+        slug: 'devops-engineer',
+        title: 'DevOps Engineer',
+        description: 'Automates how software is built, tested and deployed.',
+        roleSummary: null,
+        fieldId: 'field-1',
+        targetLevels: [],
+        status: CareerStatus.DRAFT,
+        version: 1,
+        createdAt,
+        revision: {
+          id: 'revision-1',
+          status: RevisionStatus.DRAFT,
+          baseVersion: 1,
+        },
+      });
+      expect(logSpy).toHaveBeenCalledWith(
+        {
+          careerId: 'career-1',
+          revisionId: 'revision-1',
+          actorUserId: 'editor-1',
+        },
+        'Career draft created',
+      );
+      expect(mockAnalyticsService.capture).not.toHaveBeenCalled();
+    });
+
+    it('checks title and slug ignoring case', async () => {
+      await service.createCareer(dto, 'editor-1');
+
+      expect(mockPrismaService.career.findFirst).toHaveBeenCalledWith({
+        where: { title: { equals: 'DevOps Engineer', mode: 'insensitive' } },
+        select: { id: true },
+      });
+      expect(mockPrismaService.career.findFirst).toHaveBeenCalledWith({
+        where: { slug: { equals: 'devops-engineer', mode: 'insensitive' } },
+        select: { id: true },
+      });
+    });
+
+    it('rejects an unknown field with FIELD_NOT_FOUND before checking names', async () => {
+      mockPrismaService.field.findUnique.mockResolvedValue(null);
+
+      await expect(service.createCareer(dto, 'editor-1')).rejects.toMatchObject(
+        {
+          code: 'FIELD_NOT_FOUND',
+          message: 'Field not found',
+        },
+      );
+      expect(mockPrismaService.career.findFirst).not.toHaveBeenCalled();
+      expect(mockPrismaService.career.create).not.toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledWith(
+        {
+          fieldId: 'field-1',
+          actorUserId: 'editor-1',
+          reason: 'FIELD_NOT_FOUND',
+        },
+        'Career draft rejected',
+      );
+    });
+
+    it.each([
+      [
+        'title',
+        { id: 'other' },
+        null,
+        'CAREER_TITLE_TAKEN',
+        'A career with this title already exists',
+      ],
+      [
+        'slug',
+        null,
+        { id: 'other' },
+        'CAREER_SLUG_TAKEN',
+        'A career with this slug already exists',
+      ],
+      [
+        'title before slug',
+        { id: 'other' },
+        { id: 'another' },
+        'CAREER_TITLE_TAKEN',
+        'A career with this title already exists',
+      ],
+    ])(
+      'rejects a taken %s with a 409 and creates nothing',
+      async (_label, titleTaken, slugTaken, code, message) => {
+        mockPrismaService.career.findFirst
+          .mockResolvedValueOnce(titleTaken)
+          .mockResolvedValueOnce(slugTaken);
+
+        const error = await service
+          .createCareer(dto, 'editor-1')
+          .catch((e: unknown) => e);
+
+        expect(error).toBeInstanceOf(DomainException);
+        expect(error).toMatchObject({ code, message });
+        expect((error as DomainException).getStatus()).toBe(409);
+        expect(mockPrismaService.career.create).not.toHaveBeenCalled();
+        expect(warnSpy).toHaveBeenCalledWith(
+          { actorUserId: 'editor-1', reason: code },
+          'Career draft rejected',
+        );
+      },
+    );
+
+    it('maps a unique violation from a concurrent create to the taken code', async () => {
+      mockPrismaService.career.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 'raced' });
+      mockPrismaService.career.create.mockRejectedValue(prismaError('P2002'));
+
+      await expect(service.createCareer(dto, 'editor-1')).rejects.toMatchObject(
+        { code: 'CAREER_SLUG_TAKEN' },
+      );
+    });
+
+    it('rethrows a unique violation it cannot attribute', async () => {
+      const failure = prismaError('P2002');
+      mockPrismaService.career.create.mockRejectedValue(failure);
+
+      await expect(service.createCareer(dto, 'editor-1')).rejects.toBe(failure);
+    });
+
+    it('maps a foreign key violation to FIELD_NOT_FOUND', async () => {
+      mockPrismaService.career.create.mockRejectedValue(prismaError('P2003'));
+
+      await expect(service.createCareer(dto, 'editor-1')).rejects.toMatchObject(
+        { code: 'FIELD_NOT_FOUND' },
+      );
+    });
+
+    it('rethrows unexpected database errors', async () => {
+      const failure = new Error('connection lost');
+      mockPrismaService.career.create.mockRejectedValue(failure);
+
+      await expect(service.createCareer(dto, 'editor-1')).rejects.toBe(failure);
+      expect(logSpy).not.toHaveBeenCalled();
     });
   });
 

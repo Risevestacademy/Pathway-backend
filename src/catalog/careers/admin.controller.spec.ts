@@ -4,6 +4,8 @@ import type { AuthenticatedUser } from '../../common';
 import { AdminCareersController } from './admin.controller';
 import { CareersService } from './careers.service';
 import type { DeleteCareerResponseDto } from './dto/delete-career-response.dto';
+import type { CreateCareerDto } from './dto/create-career.dto';
+import type { CreateCareerResponseDto } from './dto/create-career-response.dto';
 
 describe('AdminCareersController', () => {
   let controller: AdminCareersController;
@@ -12,6 +14,13 @@ describe('AdminCareersController', () => {
     deleteCareer:
       jest.fn<
         (id: string, actorUserId: string) => Promise<DeleteCareerResponseDto>
+      >(),
+    createCareer:
+      jest.fn<
+        (
+          dto: CreateCareerDto,
+          actorUserId: string,
+        ) => Promise<CreateCareerResponseDto>
       >(),
   };
 
@@ -34,6 +43,30 @@ describe('AdminCareersController', () => {
 
   it('should be defined', () => {
     expect(controller).toBeDefined();
+  });
+
+  describe('createCareer', () => {
+    it("should pass the body and the actor's id to careersService.createCareer and return its result", async () => {
+      const dto: CreateCareerDto = {
+        title: 'DevOps Engineer',
+        slug: 'devops-engineer',
+        fieldId: 'field-1',
+        description: 'Automates delivery.',
+      };
+      const created = {
+        id: 'career-1',
+        revision: { id: 'revision-1' },
+      } as CreateCareerResponseDto;
+      mockCareersService.createCareer.mockResolvedValue(created);
+
+      const result = await controller.createCareer(dto, admin);
+
+      expect(mockCareersService.createCareer).toHaveBeenCalledWith(
+        dto,
+        'admin-1',
+      );
+      expect(result).toBe(created);
+    });
   });
 
   describe('deleteCareer', () => {
