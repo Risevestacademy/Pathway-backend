@@ -143,7 +143,7 @@ describe('Admin career delete (e2e)', () => {
     const revision = await prisma.contentRevision.create({
       data: {
         careerId: draftId,
-        version: 1,
+        baseVersion: 1,
         snapshot: {},
         createdById: editorId,
       },
