@@ -1,9 +1,28 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  HttpStatus,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma';
+import { DomainException } from '../../common';
+import { CareerStatus, RevisionStatus } from '../../generated/prisma/client';
 import { buildPlan, type LiveCareerForPlan } from './career-snapshot.plan';
+import { findSnapshotProblems } from './career-snapshot.consistency';
 import type { CareerSnapshot } from './career-snapshot.types';
 import { ReviewerDiffFormatter } from './reviewer-diff.formatter';
 import type { ReviewerDiffResponseDto } from './dto/reviewer-diff-response.dto';
+import type { SaveDraftRevisionResponseDto } from './dto/save-draft-revision-response.dto';
+
+const OPEN_STATUSES = [RevisionStatus.DRAFT, RevisionStatus.IN_REVIEW];
+
+const REVISION_SELECT = {
+  id: true,
+  careerId: true,
+  status: true,
+  baseVersion: true,
+  updatedAt: true,
+} as const;
 
 @Injectable()
 export class RevisionsService {
@@ -121,6 +140,97 @@ export class RevisionsService {
       authorName: revision.createdBy.profile?.fullName ?? 'Unknown',
       createdAt: revision.createdAt,
     });
+  }
+
+  async saveDraftRevision(
+    careerId: string,
+    snapshot: CareerSnapshot,
+    actorUserId: string,
+  ): Promise<SaveDraftRevisionResponseDto> {
+    const problems = findSnapshotProblems(snapshot);
+    if (problems.length > 0) {
+      this.logger.warn(
+        { careerId, actorUserId, reason: 'INVALID_SNAPSHOT' },
+        'Draft revision rejected',
+      );
+      throw new DomainException(
+        HttpStatus.BAD_REQUEST,
+        'INVALID_SNAPSHOT',
+        'The snapshot is inconsistent',
+        { problems },
+      );
+    }
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const [career] = await tx.$queryRaw<
+        { version: number; status: CareerStatus }[]
+      >`SELECT "version", "status"::text AS "status" FROM "Career" WHERE "id" = ${careerId} FOR UPDATE`;
+      if (!career) return { failure: 'CAREER_NOT_FOUND' as const };
+
+      if (career.status === CareerStatus.RETIRED)
+        return { failure: 'CAREER_RETIRED' as const };
+
+      const open = await tx.contentRevision.findFirst({
+        where: { careerId, status: { in: OPEN_STATUSES } },
+        select: { id: true, status: true },
+      });
+
+      if (open?.status === RevisionStatus.IN_REVIEW)
+        return { failure: 'REVISION_IN_REVIEW' as const, revisionId: open.id };
+
+      const data = structuredClone(snapshot);
+      if (open) {
+        const revision = await tx.contentRevision.update({
+          where: { id: open.id },
+          data: { snapshot: data },
+          select: REVISION_SELECT,
+        });
+        return { revision, created: false };
+      }
+
+      const revision = await tx.contentRevision.create({
+        data: {
+          careerId,
+          baseVersion: career.version,
+          snapshot: data,
+          createdById: actorUserId,
+        },
+        select: REVISION_SELECT,
+      });
+      return { revision, created: true };
+    });
+
+    if ('failure' in result) {
+      this.logger.warn(
+        { careerId, actorUserId, reason: result.failure },
+        'Draft revision rejected',
+      );
+
+      if (result.failure === 'CAREER_NOT_FOUND')
+        throw new NotFoundException('Career not found');
+
+      if (result.failure === 'CAREER_RETIRED')
+        throw new DomainException(
+          HttpStatus.CONFLICT,
+          'CAREER_RETIRED',
+          'A retired career cannot take a new revision',
+        );
+
+      throw new DomainException(
+        HttpStatus.CONFLICT,
+        'REVISION_IN_REVIEW',
+        'The open revision is in review; recall it before saving',
+        { revisionId: result.revisionId },
+      );
+    }
+
+    const { revision, created } = result;
+    this.logger.log(
+      { revisionId: revision.id, careerId, actorUserId, created },
+      created ? 'Draft revision created' : 'Draft revision updated',
+    );
+
+    return { ...revision, created };
   }
 
   private async loadStepLearnerCounts(
