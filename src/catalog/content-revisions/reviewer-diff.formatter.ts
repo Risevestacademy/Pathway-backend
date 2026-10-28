@@ -118,14 +118,18 @@ export class ReviewerDiffFormatter {
     };
   }
 
-  private groupOperations(
-    operations: PlanOperation[],
-  ): Record<string, SectionChangesDto> {
+  private groupOperations(operations: PlanOperation[]): SectionChangesDto[] {
     const sections: Record<string, SectionChangesDto> = {};
 
     const ensure = (section: PlanSection): SectionChangesDto => {
       if (!sections[section]) {
-        sections[section] = { changed: [], added: [], removed: [], moved: [] };
+        sections[section] = {
+          section,
+          changed: [],
+          added: [],
+          removed: [],
+          moved: [],
+        };
       }
       return sections[section];
     };
@@ -144,51 +148,42 @@ export class ReviewerDiffFormatter {
           bucket.changed.push(change);
           break;
         }
-
         case 'create':
         case 'link': {
-          const item: StepChangeDto = {
+          bucket.added.push({
             id: op.entityId!,
             title: titleFor(op, 'after'),
-          };
-          bucket.added.push(item);
+          });
           break;
         }
-
         case 'delete':
         case 'unlink': {
-          const item: StepChangeDto = {
+          bucket.removed.push({
             id: op.entityId!,
             title: titleFor(op, 'before'),
-          };
-          bucket.removed.push(item);
+          });
           break;
         }
-
         case 'move': {
-          const item: MovedStepDto = {
+          bucket.moved.push({
             id: op.entityId!,
             title: titleFor(op, 'after'),
             fromOrder: op.before as number,
             toOrder: op.after as number,
-          };
-          bucket.moved.push(item);
+          });
           break;
         }
       }
     }
 
-    // Strip empty sections so the frontend doesn't render empty cards
-    for (const [key, section] of Object.entries(sections)) {
-      const isEmpty =
-        section.changed.length === 0 &&
-        section.added.length === 0 &&
-        section.removed.length === 0 &&
-        section.moved.length === 0;
-      if (isEmpty) delete sections[key];
-    }
-
-    return sections;
+    // Strip empty sections and return as an array
+    return Object.values(sections).filter(
+      (s) =>
+        s.changed.length > 0 ||
+        s.added.length > 0 ||
+        s.removed.length > 0 ||
+        s.moved.length > 0,
+    );
   }
 
   /**
@@ -197,11 +192,15 @@ export class ReviewerDiffFormatter {
    * UUID stays in `before`/`after` so logging and debugging still work.
    */
   private async resolveSourceLabels(
-    sections: Record<string, SectionChangesDto>,
+    sections: SectionChangesDto[],
   ): Promise<void> {
-    const sourceIds = new Set<string>();
+    // 1. Find the outlook section in the array
+    const outlookSection = sections.find((s) => s.section === 'outlook');
+    if (!outlookSection) return;
 
-    for (const change of sections['outlook']?.changed ?? []) {
+    // 2. Collect the IDs
+    const sourceIds = new Set<string>();
+    for (const change of outlookSection.changed) {
       if (change.field !== 'sourceId') continue;
       if (typeof change.before === 'string') sourceIds.add(change.before);
       if (typeof change.after === 'string') sourceIds.add(change.after);
@@ -209,13 +208,15 @@ export class ReviewerDiffFormatter {
 
     if (sourceIds.size === 0) return;
 
+    // 3. Fetch the names
     const sources = await this.prisma.source.findMany({
       where: { id: { in: [...sourceIds] } },
       select: { id: true, name: true },
     });
     const map = new Map(sources.map((s) => [s.id, s.name]));
 
-    for (const change of sections['outlook']?.changed ?? []) {
+    // 4. Attach the labels
+    for (const change of outlookSection.changed) {
       if (change.field !== 'sourceId') continue;
       if (typeof change.before === 'string') {
         change.beforeLabel = map.get(change.before) ?? 'Unknown source';

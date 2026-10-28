@@ -8,19 +8,32 @@ export class FieldChangeDto {
   label!: string;
 
   @ApiProperty({
-    description: 'Raw value. UUID for foreign keys, raw decimal for currency.',
+    description: 'Raw value.',
+    oneOf: [
+      { type: 'string' },
+      { type: 'number' },
+      { type: 'boolean' },
+      { type: 'array', items: { type: 'string' } },
+      { type: 'object', additionalProperties: true },
+    ],
     example: 'a3f2c1d4-…',
   })
   before!: unknown;
 
-  @ApiProperty({ example: 'b7e2d1a9-…' })
+  @ApiProperty({
+    description: 'Raw value.',
+    oneOf: [
+      { type: 'string' },
+      { type: 'number' },
+      { type: 'boolean' },
+      { type: 'array', items: { type: 'string' } },
+      { type: 'object', additionalProperties: true },
+    ],
+    example: 'b7e2d1a9-…',
+  })
   after!: unknown;
 
-  @ApiPropertyOptional({
-    description:
-      'Human-readable label for the `before` value (e.g. a Source name).',
-    example: 'Jobberman salary guide 2025',
-  })
+  @ApiPropertyOptional({ example: 'Jobberman salary guide 2025' })
   beforeLabel?: string;
 
   @ApiPropertyOptional({ example: 'Jobberman salary guide 2026' })
@@ -44,6 +57,9 @@ export class MovedStepDto extends StepChangeDto {
 }
 
 export class SectionChangesDto {
+  @ApiProperty({ example: 'career' })
+  section!: string; // 👈 Added this
+
   @ApiProperty({ type: [FieldChangeDto] })
   changed!: FieldChangeDto[];
 
@@ -68,15 +84,7 @@ export class AdvisoryDto {
 }
 
 export class BlockerDto {
-  @ApiProperty({
-    enum: [
-      'MISSING_CAREER_FIELD',
-      'NO_SKILLS',
-      'NO_PATHWAY_STEPS',
-      'STEP_HAS_PROGRESS',
-    ],
-    example: 'STEP_HAS_PROGRESS',
-  })
+  @ApiProperty({ example: 'STEP_HAS_PROGRESS' })
   code!: string;
 
   @ApiProperty({ example: 'Cannot remove step "HTML" — 7 learners affected' })
@@ -114,59 +122,18 @@ export class ReviewerDiffResponseDto {
   @ApiProperty({ example: 4 })
   liveVersion!: number;
 
-  @ApiProperty({
-    example: false,
-    description:
-      'True if baseVersion !== liveVersion. Reviewer should request a rebase before approving.',
-  })
+  @ApiProperty({ example: false })
   stale!: boolean;
 
-  @ApiProperty({
-    type: [BlockerDto],
-    description: 'Hard stops. Non-empty means publish would fail.',
-  })
+  @ApiProperty({ type: [BlockerDto] })
   blockers!: BlockerDto[];
 
-  @ApiProperty({
-    type: [AdvisoryDto],
-    description: 'Soft warnings. Show as info banners; do not block approval.',
-  })
+  @ApiProperty({ type: [AdvisoryDto] })
   advisories!: AdvisoryDto[];
 
   @ApiProperty({
-    description:
-      'Changes grouped by section. Each section has changed/added/removed/moved ' +
-      'buckets. Sections with no changes are omitted.',
-    example: {
-      career: {
-        changed: [
-          {
-            field: 'title',
-            label: 'Title',
-            before: 'Frontend Engineer',
-            after: 'Senior Frontend Engineer',
-          },
-        ],
-        added: [],
-        removed: [],
-        moved: [],
-      },
-      outlook: {
-        changed: [
-          {
-            field: 'sourceId',
-            label: 'Source',
-            before: 'a3f2…',
-            after: 'b7e2…',
-            beforeLabel: 'Jobberman 2025',
-            afterLabel: 'Jobberman 2026',
-          },
-        ],
-        added: [],
-        removed: [],
-        moved: [],
-      },
-    },
+    type: [SectionChangesDto],
+    description: 'Changes grouped by section. Empty sections are omitted.',
   })
-  sections!: Record<string, SectionChangesDto>;
+  sections!: SectionChangesDto[];
 }

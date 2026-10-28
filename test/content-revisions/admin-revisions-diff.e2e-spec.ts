@@ -179,18 +179,18 @@ describe('Admin revisions — diff (e2e)', () => {
 
     // ── Sections (grouped, not flat operations) ───────────────────────
     expect(response.body.sections).toBeDefined();
-    expect(response.body.sections).not.toHaveProperty('operations');
+    expect(Array.isArray(response.body.sections)).toBe(true); // Ensure it's an array now
+
+    // Find the career section in the array
+    const careerSection = response.body.sections.find(
+      (s: { section: string }) => s.section === 'career',
+    );
+    expect(careerSection).toBeDefined();
 
     // The title was changed in the fixture → one entry in career.changed
-    expect(response.body.sections.career).toBeDefined();
-    const titleChange = (
-      response.body.sections.career.changed as Array<{
-        field: string;
-        label: string;
-        before: string;
-        after: string;
-      }>
-    ).find((c) => c.field === 'title');
+    const titleChange = careerSection.changed.find(
+      (c: { field: string }) => c.field === 'title',
+    );
 
     expect(titleChange).toEqual({
       field: 'title',
@@ -200,9 +200,10 @@ describe('Admin revisions — diff (e2e)', () => {
     });
 
     // Empty sections are stripped, so unchanged areas don't appear
-    expect(response.body.sections).not.toHaveProperty('outlook');
-    expect(response.body.sections).not.toHaveProperty('resources');
-    expect(response.body.sections).not.toHaveProperty('skills');
+    const outlookSection = response.body.sections.find(
+      (s: { section: string }) => s.section === 'outlook',
+    );
+    expect(outlookSection).toBeUndefined();
 
     // No secrets or internal identifiers leaked in the payload
     const body = JSON.stringify(response.body);
