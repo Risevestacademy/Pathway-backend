@@ -1,11 +1,18 @@
 import {
   ConflictException,
+  HttpStatus,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma';
 import { AnalyticsService } from '../../analytics';
+import { DomainException } from '../../common';
+import {
+  CAREER_SNAPSHOT_SCHEMA_VERSION,
+  type CareerSnapshot,
+  type CareerSnapshotCareer,
+} from '../content-revisions';
 import { GetCareersQueryDto } from './dto/get-careers-query.dto';
 import { CareerListItemDto } from './dto/list-careers.dto';
 import {
@@ -15,10 +22,25 @@ import {
 } from '../../generated/prisma/client';
 import { CareerDetailDto } from './dto/career-detail.dto';
 import { DeleteCareerResponseDto } from './dto/delete-career-response.dto';
+import { CreateCareerDto } from './dto/create-career.dto';
+import { CreateCareerResponseDto } from './dto/create-career-response.dto';
 
 const decimalToString = (
   value: { toString(): string } | null,
 ): string | null => (value === null ? null : value.toString());
+
+const initialSnapshot = (career: CareerSnapshotCareer): CareerSnapshot => ({
+  schemaVersion: CAREER_SNAPSHOT_SCHEMA_VERSION,
+  career,
+  pathway: null,
+  steps: [],
+  skills: [],
+  outlook: [],
+  resources: [],
+});
+
+const isPrismaError = (error: unknown, code: string) =>
+  error instanceof Prisma.PrismaClientKnownRequestError && error.code === code;
 
 @Injectable()
 export class CareersService {
@@ -150,7 +172,7 @@ export class CareersService {
       slug: career.slug,
       title: career.title,
       description: career.description,
-      roleSummary: career.roleSummary,
+      roleSummary: career.roleSummary ?? '',
       exampleActivities: career.exampleActivities,
       typicalEducationNote: career.typicalEducationNote,
       certificationsNote: career.certificationsNote,
@@ -185,6 +207,128 @@ export class CareersService {
 
   getTargetLevels(): TargetLevel[] {
     return Object.values(TargetLevel);
+  }
+
+  async createCareer(
+    dto: CreateCareerDto,
+    actorUserId: string,
+  ): Promise<CreateCareerResponseDto> {
+    const field = await this.prisma.field.findUnique({
+      where: { id: dto.fieldId },
+      select: { id: true },
+    });
+    if (!field) this.rejectUnknownField(dto.fieldId, actorUserId);
+
+    await this.assertTitleAndSlugFree(dto, actorUserId);
+
+    const draft: CareerSnapshotCareer = {
+      title: dto.title,
+      slug: dto.slug,
+      description: dto.description,
+      roleSummary: dto.roleSummary ?? null,
+      fieldId: dto.fieldId,
+      targetLevels: dto.targetLevels ?? [],
+      exampleActivities: [],
+      typicalEducationNote: null,
+      certificationsNote: null,
+    };
+
+    let created;
+    try {
+      created = await this.prisma.career.create({
+        data: {
+          title: draft.title,
+          slug: draft.slug,
+          description: draft.description,
+          roleSummary: draft.roleSummary,
+          fieldId: dto.fieldId,
+          targetLevels: draft.targetLevels,
+          status: CareerStatus.DRAFT,
+          version: 1,
+          revisions: {
+            create: {
+              baseVersion: 1,
+              snapshot: initialSnapshot(draft),
+              createdById: actorUserId,
+            },
+          },
+        },
+        select: {
+          id: true,
+          slug: true,
+          title: true,
+          description: true,
+          roleSummary: true,
+          fieldId: true,
+          targetLevels: true,
+          status: true,
+          version: true,
+          createdAt: true,
+          revisions: { select: { id: true, status: true, baseVersion: true } },
+        },
+      });
+    } catch (error) {
+      if (isPrismaError(error, 'P2002')) {
+        await this.assertTitleAndSlugFree(dto, actorUserId);
+      }
+
+      if (isPrismaError(error, 'P2003')) {
+        this.rejectUnknownField(dto.fieldId, actorUserId);
+      }
+
+      throw error;
+    }
+
+    const {
+      revisions: [revision],
+      ...career
+    } = created;
+
+    this.logger.log(
+      { careerId: career.id, revisionId: revision.id, actorUserId },
+      'Career draft created',
+    );
+
+    return { ...career, revision };
+  }
+
+  private async assertTitleAndSlugFree(
+    { title, slug }: CreateCareerDto,
+    actorUserId: string,
+  ): Promise<void> {
+    const [titleTaken, slugTaken] = await Promise.all([
+      this.prisma.career.findFirst({
+        where: { title: { equals: title, mode: 'insensitive' } },
+        select: { id: true },
+      }),
+      this.prisma.career.findFirst({
+        where: { slug: { equals: slug, mode: 'insensitive' } },
+        select: { id: true },
+      }),
+    ]);
+
+    if (!titleTaken && !slugTaken) return;
+
+    const taken = titleTaken ? 'title' : 'slug';
+    const code = titleTaken ? 'CAREER_TITLE_TAKEN' : 'CAREER_SLUG_TAKEN';
+    this.logger.warn({ actorUserId, reason: code }, 'Career draft rejected');
+    throw new DomainException(
+      HttpStatus.CONFLICT,
+      code,
+      `A career with this ${taken} already exists`,
+    );
+  }
+
+  private rejectUnknownField(fieldId: string, actorUserId: string): never {
+    this.logger.warn(
+      { fieldId, actorUserId, reason: 'FIELD_NOT_FOUND' },
+      'Career draft rejected',
+    );
+    throw new DomainException(
+      HttpStatus.BAD_REQUEST,
+      'FIELD_NOT_FOUND',
+      'Field not found',
+    );
   }
 
   async deleteCareer(

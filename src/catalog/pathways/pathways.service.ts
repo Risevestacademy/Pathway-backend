@@ -260,7 +260,7 @@ export class PathwaysService {
         id: career.id,
         slug: career.slug,
         title: career.title,
-        roleSummary: career.roleSummary,
+        roleSummary: career.roleSummary ?? '',
         retired: career.status === CareerStatus.RETIRED,
       },
       pathway: { id: pathway.id, title: pathway.title },

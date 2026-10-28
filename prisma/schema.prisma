@@ -169,6 +169,8 @@ model User {
   contentRevisions      ContentRevision[]
   reviews               Review[]
   staffInvites          StaffInvite[]
+  publishedCareers      Career[]               @relation("CareerPublishedBy")
+  reviewedCareers       Career[]               @relation("CareerReviewedBy")
 }
 
 model UserProfile {
@@ -274,7 +276,7 @@ model Career {
   slug                 String   @unique
   title                String   @unique
   description          String // card summary
-  roleSummary          String // "What the role involves"
+  roleSummary          String? // "What the role involves"
   exampleActivities    String[] // "Example work activities"
   typicalEducationNote String? // "Degree in computing... or bootcamps/self-study"
   certificationsNote   String? // "Rarely required. Portfolio matters more."
@@ -283,15 +285,18 @@ model Career {
   field        Field         @relation(fields: [fieldId], references: [id])
   targetLevels TargetLevel[]
 
-  status      CareerStatus @default(DRAFT)
-  publishedAt DateTime?
-  reviewedBy  String?
-  reviewedAt  DateTime?
-  version     Int          @default(1)
+  status        CareerStatus @default(DRAFT)
+  publishedAt   DateTime?
+  publishedById String?
+  reviewedById  String?
+  reviewedAt    DateTime?
+  version       Int          @default(1)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  publishedBy  User?             @relation("CareerPublishedBy", fields: [publishedById], references: [id], onDelete: SetNull)
+  reviewedBy   User?             @relation("CareerReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
   skills       CareerSkill[]
   outlook      OutlookData[]
   pathway      Pathway?
@@ -300,6 +305,8 @@ model Career {
   revisions    ContentRevision[]
 
   @@index([fieldId])
+  @@index([publishedById])
+  @@index([reviewedById])
 }
 
 model CareerSkill {
@@ -579,7 +586,7 @@ model Source {
 model ContentRevision {
   id          String         @id @default(uuid())
   careerId    String
-  version     Int
+  baseVersion Int
   snapshot    Json
   status      RevisionStatus @default(DRAFT)
   createdById String

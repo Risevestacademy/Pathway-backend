@@ -13,6 +13,10 @@ import type {
 import type { Request, Response } from 'express';
 import * as Sentry from '@sentry/node';
 import {
+  DomainErrorDetails,
+  DomainException,
+} from '../exceptions/domain.exception';
+import {
   ValidationException,
   ValidationFields,
 } from '../exceptions/validation.exception';
@@ -45,6 +49,12 @@ export class HttpExceptionFilter implements ExceptionFilter {
     let message: string | string[];
     let errorCode: string;
     let fields: ValidationFields | undefined;
+    let code: string | undefined;
+    let details: DomainErrorDetails | undefined;
+
+    if (exception instanceof DomainException) {
+      ({ code, details } = exception);
+    }
 
     if (exception instanceof ValidationException) {
       statusCode = HttpStatus.BAD_REQUEST;
@@ -90,6 +100,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
       statusCode,
       message,
       error: errorCode,
+      ...(code && { code }),
+      ...(details && { details }),
       ...(fields && { fields }),
       path: request.originalUrl,
       timestamp: new Date().toISOString(),
