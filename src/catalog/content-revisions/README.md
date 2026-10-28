@@ -14,6 +14,8 @@ If you find yourself writing comparison logic for revisions anywhere else, stop.
 | `career-snapshot.types.ts` | Snapshot type definitions | Prisma enum types only |
 | `career-snapshot.plan.ts` | `buildPlan` and helpers (pure) | `career-snapshot.types` only |
 | `career-snapshot.plan.spec.ts` | Unit tests with plain objects | Test scope |
+| `career-snapshot.consistency.ts` | `findSnapshotProblems`: structural checks within one snapshot (pure) | `career-snapshot.types` only |
+| `admin-career-revisions.controller.ts` | HTTP wiring for saving a career's draft revision | Nest |
 | `content-revisions.service.ts` | Loads live career and revision, calls `buildPlan`, formats the diff | Prisma, Nest |
 | `content-revisions.controller.ts` | HTTP wiring for the diff endpoint | Nest |
 
