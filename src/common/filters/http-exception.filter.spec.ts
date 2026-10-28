@@ -2,6 +2,7 @@ import { jest } from '@jest/globals';
 import { HttpException, HttpStatus, NotFoundException } from '@nestjs/common';
 import type { ArgumentsHost } from '@nestjs/common';
 import type { Request } from 'express';
+import { DomainException } from '../exceptions/domain.exception';
 import { ValidationException } from '../exceptions/validation.exception';
 
 const captureException = jest.fn();
@@ -13,6 +14,8 @@ type ErrorResponseBody = {
   statusCode: number;
   message: string | string[];
   error: string;
+  code?: string;
+  details?: Record<string, unknown>;
   fields?: Record<string, string>;
   path: string;
   timestamp: string;
@@ -107,6 +110,56 @@ describe('HttpExceptionFilter', () => {
 
     const body = mockResponse.json.mock.calls[0][0];
     expect(body.fields).toBeUndefined();
+  });
+
+  it('should add the domain code and keep the status-derived error', () => {
+    filter.catch(
+      new DomainException(
+        HttpStatus.CONFLICT,
+        'CAREER_TITLE_TAKEN',
+        'A career with this title already exists',
+      ),
+      mockHost,
+    );
+
+    expect(mockResponse.status).toHaveBeenCalledWith(409);
+    const body = mockResponse.json.mock.calls[0][0];
+    expect(body).toEqual(
+      expect.objectContaining({
+        statusCode: 409,
+        message: 'A career with this title already exists',
+        error: 'CONFLICT',
+        code: 'CAREER_TITLE_TAKEN',
+      }),
+    );
+    expect(body.details).toBeUndefined();
+  });
+
+  it('should add domain details when present', () => {
+    filter.catch(
+      new DomainException(
+        HttpStatus.CONFLICT,
+        'STEP_HAS_PROGRESS',
+        'A removed step has learner progress',
+        { stepId: 'step-1', learnersAffected: 3 },
+      ),
+      mockHost,
+    );
+
+    expect(mockResponse.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: 'STEP_HAS_PROGRESS',
+        details: { stepId: 'step-1', learnersAffected: 3 },
+      }),
+    );
+  });
+
+  it('should not add a code to other HTTP exceptions', () => {
+    filter.catch(new NotFoundException('User not found'), mockHost);
+
+    const body = mockResponse.json.mock.calls[0][0];
+    expect(body.code).toBeUndefined();
+    expect(body.details).toBeUndefined();
   });
 
   it('should treat a 400 with a plain message array as BAD_REQUEST', () => {
