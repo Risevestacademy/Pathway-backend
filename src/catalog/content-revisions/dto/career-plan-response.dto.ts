@@ -29,6 +29,7 @@ export class PlanOperationDto {
       'ID of the entity being changed. For creates on new entities, this ' +
       'is a temporary ID like "new-1".',
     example: 'a3f2c1d4-…',
+    type: String,
   })
   entityId?: string;
 
@@ -36,26 +37,34 @@ export class PlanOperationDto {
     description:
       'For link/unlink operations on step skills or step resources: the ' +
       'ID of the parent step.',
+    type: String,
   })
   parentId?: string;
 
   @ApiPropertyOptional({
     description: 'For update operations: the name of the field being changed.',
     example: 'title',
+    type: String,
   })
   field?: string;
 
   @ApiPropertyOptional({
     description:
-      'Value before publishing. Only present for update/move/delete/unlink.',
-    example: 'Frontend Engineer',
+      'Value before publishing. The shape depends on `kind`, `section` and ' +
+      '`field`: a string for career text fields, an order number for moves, ' +
+      'an object for outlook updates, and so on. Present only for update, ' +
+      'move, delete and unlink.',
+    type: 'object',
+    additionalProperties: true,
   })
   before?: unknown;
 
   @ApiPropertyOptional({
     description:
-      'Value after publishing. Only present for update/move/create/link.',
-    example: 'Senior Frontend Engineer',
+      'Value after publishing. Same shape rules as `before`. Present only ' +
+      'for create, update, move and link.',
+    type: 'object',
+    additionalProperties: true,
   })
   after?: unknown;
 }
