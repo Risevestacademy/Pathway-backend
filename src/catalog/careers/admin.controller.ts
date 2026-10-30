@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -31,6 +32,7 @@ import {
   ADMIN_CAREER_MAX_STEPS,
   ADMIN_STEP_MAX_RESOURCES,
 } from './admin-career-read';
+import { RetireCareerResponseDto } from './dto/retire-career-response.dto';
 
 @ApiTags('Admin')
 @Controller('admin')
@@ -121,5 +123,29 @@ export class AdminCareersController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<AdminCareerDetailDto> {
     return this.careersService.getCareerForStaff(id);
+  }
+
+  @ApiOperation({
+    summary: 'Retire a published career',
+    description:
+      'Minimum role: PUBLISHER. Hides a PUBLISHED career from new selection by setting it to RETIRED. The version, saved pathways and learner progress are untouched, so people who already saved it keep their progress. Only a PUBLISHED career can be retired.',
+  })
+  @ApiResponse({ status: 200, type: RetireCareerResponseDto })
+  @ApiResponse({ status: 400, description: 'id is not a UUID' })
+  @ApiResponse({ status: 401, description: 'Access token missing or invalid' })
+  @ApiResponse({ status: 403, description: 'The user is below PUBLISHER' })
+  @ApiResponse({ status: 404, description: 'Career not found' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'The career is not PUBLISHED (CONFLICT, code CAREER_NOT_PUBLISHED)',
+  })
+  @MinRole(Role.PUBLISHER)
+  @Patch('careers/:id/retire')
+  async retireCareer(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<RetireCareerResponseDto> {
+    return this.careersService.retireCareer(id, user.id);
   }
 }

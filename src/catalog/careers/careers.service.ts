@@ -35,6 +35,8 @@ import {
   AdminCareerDetailDto,
   AdminCareerListResponseDto,
 } from './dto/admin-career.dto';
+import { RetireCareerResponseDto } from './dto/retire-career-response.dto';
+import { canRetire } from './career-status.rules';
 
 const decimalToString = (
   value: { toString(): string } | null,
@@ -432,5 +434,49 @@ export class CareersService {
     }
 
     return toAdminCareerDetail(career);
+  }
+
+  async retireCareer(
+    id: string,
+    actorUserId: string,
+  ): Promise<RetireCareerResponseDto> {
+    const result = await this.prisma.$transaction(async (tx) => {
+      const [row] = await tx.$queryRaw<{ status: CareerStatus }[]>`
+        SELECT "status"::text AS "status" FROM "Career"
+        WHERE "id" = ${id} FOR UPDATE`;
+      if (!row) return { failure: 'CAREER_NOT_FOUND' as const };
+      if (!canRetire(row.status))
+        return { failure: 'CAREER_NOT_PUBLISHED' as const, status: row.status };
+
+      const career = await tx.career.update({
+        where: { id },
+        data: { status: CareerStatus.RETIRED },
+        select: { id: true, status: true, version: true, updatedAt: true },
+      });
+      return { career };
+    });
+
+    if ('failure' in result) {
+      this.logger.warn(
+        { careerId: id, actorUserId, reason: result.failure },
+        'Career retire rejected',
+      );
+      if (result.failure === 'CAREER_NOT_FOUND')
+        throw new NotFoundException('Career not found');
+      throw new DomainException(
+        HttpStatus.CONFLICT,
+        'CAREER_NOT_PUBLISHED',
+        'Only a published career can be retired',
+        { status: result.status },
+      );
+    }
+
+    this.logger.log({ careerId: id, actorUserId }, 'Career retired');
+    this.analytics.capture('career_status_changed', actorUserId, {
+      oldStatus: CareerStatus.PUBLISHED,
+      newStatus: CareerStatus.RETIRED,
+    });
+
+    return result.career;
   }
 }

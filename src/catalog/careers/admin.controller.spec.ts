@@ -12,6 +12,7 @@ import type {
   AdminCareerDetailDto,
   AdminCareerListResponseDto,
 } from './dto/admin-career.dto';
+import { RetireCareerResponseDto } from './dto/retire-career-response.dto';
 
 describe('AdminCareersController', () => {
   let controller: AdminCareersController;
@@ -33,6 +34,10 @@ describe('AdminCareersController', () => {
         (query: GetAdminCareersQueryDto) => Promise<AdminCareerListResponseDto>
       >(),
     getCareerForStaff: jest.fn<(id: string) => Promise<AdminCareerDetailDto>>(),
+    retireCareer:
+      jest.fn<
+        (id: string, actorUserId: string) => Promise<RetireCareerResponseDto>
+      >(),
   };
 
   const admin: AuthenticatedUser = {
@@ -132,6 +137,24 @@ describe('AdminCareersController', () => {
         'career-1',
       );
       expect(result).toBe(career);
+    });
+  });
+
+  describe('retireCareer', () => {
+    it("should pass the id and the actor's id to careersService.retireCareer and return its result", async () => {
+      const retired = {
+        id: 'career-1',
+        status: 'RETIRED',
+      } as RetireCareerResponseDto;
+      mockCareersService.retireCareer.mockResolvedValue(retired);
+
+      const result = await controller.retireCareer('career-1', admin);
+
+      expect(mockCareersService.retireCareer).toHaveBeenCalledWith(
+        'career-1',
+        'admin-1',
+      );
+      expect(result).toBe(retired);
     });
   });
 });
