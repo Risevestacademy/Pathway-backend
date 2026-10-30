@@ -11,6 +11,7 @@ import { RevisionsService } from './content-revisions.service';
 import type { ReviewRevisionDto } from './dto/review-revision.dto';
 import type { ReviewRevisionResponseDto } from './dto/review-revision-response.dto';
 import type { RecallRevisionResponseDto } from './dto/recall-revision-response.dto';
+import { DeleteRevisionResponseDto } from './dto/delete-revision-response.dto';
 
 describe('AdminRevisionsController', () => {
   let controller: AdminRevisionsController;
@@ -30,6 +31,13 @@ describe('AdminRevisionsController', () => {
           revisionId: string,
           actor: { id: string; role: Role },
         ) => Promise<RecallRevisionResponseDto>
+      >(),
+    deleteDraftRevision:
+      jest.fn<
+        (
+          revisionId: string,
+          actorUserId: string,
+        ) => Promise<DeleteRevisionResponseDto>
       >(),
   };
 
@@ -100,6 +108,21 @@ describe('AdminRevisionsController', () => {
       expect(mockRevisionsService.recallRevision).toHaveBeenCalledWith(
         'revision-1',
         { id: 'editor-1', role: Role.EDITOR },
+      );
+      expect(result).toBe(response);
+    });
+  });
+
+  describe('deleteRevision', () => {
+    it("passes the id and the actor's id to the service and returns its result", async () => {
+      const response = { message: 'Draft revision deleted' };
+      mockRevisionsService.deleteDraftRevision.mockResolvedValue(response);
+
+      const result = await controller.deleteRevision('revision-1', reviewer);
+
+      expect(mockRevisionsService.deleteDraftRevision).toHaveBeenCalledWith(
+        'revision-1',
+        'reviewer-1',
       );
       expect(result).toBe(response);
     });

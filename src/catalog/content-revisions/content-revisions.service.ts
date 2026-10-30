@@ -30,6 +30,7 @@ import {
 import type { ReviewRevisionDto } from './dto/review-revision.dto';
 import type { ReviewRevisionResponseDto } from './dto/review-revision-response.dto';
 import type { RecallRevisionResponseDto } from './dto/recall-revision-response.dto';
+import { DeleteRevisionResponseDto } from './dto/delete-revision-response.dto';
 
 const OPEN_STATUSES = [RevisionStatus.DRAFT, RevisionStatus.IN_REVIEW];
 
@@ -605,5 +606,39 @@ export class RevisionsService {
       revisionStatus,
       createdAt: review.createdAt,
     };
+  }
+
+  async deleteDraftRevision(
+    revisionId: string,
+    actorUserId: string,
+  ): Promise<DeleteRevisionResponseDto> {
+    const { count } = await this.prisma.contentRevision.deleteMany({
+      where: { id: revisionId, status: RevisionStatus.DRAFT },
+    });
+
+    if (count === 0) {
+      const revision = await this.prisma.contentRevision.findUnique({
+        where: { id: revisionId },
+        select: { status: true },
+      });
+      this.logger.warn(
+        {
+          revisionId,
+          actorUserId,
+          reason: revision ? 'INVALID_REVISION_STATE' : 'REVISION_NOT_FOUND',
+        },
+        'Draft revision delete rejected',
+      );
+      if (!revision) throw new NotFoundException('Revision not found');
+      throw new DomainException(
+        HttpStatus.CONFLICT,
+        'INVALID_REVISION_STATE',
+        'Only a draft revision can be deleted',
+        { status: revision.status },
+      );
+    }
+
+    this.logger.log({ revisionId, actorUserId }, 'Draft revision deleted');
+    return { message: 'Draft revision deleted' };
   }
 }

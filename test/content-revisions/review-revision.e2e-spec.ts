@@ -129,11 +129,12 @@ describe('Review revision (e2e)', () => {
   });
 
   afterAll(async () => {
-    // Careers first: revisions and reviews cascade, and both point at users.
-    await prisma.career.deleteMany({ where: { id: { in: careerIds } } });
-    await prisma.field.deleteMany({ where: { id: fieldId } });
-    await prisma.user.deleteMany({ where: { id: { in: userIds } } });
-    await app.close();
+    if (careerIds.length)
+      await prisma.career.deleteMany({ where: { id: { in: careerIds } } });
+    if (fieldId) await prisma.field.deleteMany({ where: { id: fieldId } });
+    if (userIds.length)
+      await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+    await app?.close();
   });
 
   describe('authorization', () => {

@@ -213,15 +213,19 @@ describe('Admin careers read (e2e)', () => {
   });
 
   afterAll(async () => {
-    await prisma.career.deleteMany({
-      where: { id: { in: Object.values(careerIds) } },
-    });
-    await prisma.resource.deleteMany({ where: { id: { in: resourceIds } } });
-    await prisma.skill.deleteMany({ where: { id: skillId } });
-    await prisma.source.deleteMany({ where: { id: sourceId } });
-    await prisma.field.deleteMany({ where: { id: fieldId } });
-    await prisma.user.deleteMany({ where: { id: { in: userIds } } });
-    await app.close();
+    const createdCareerIds = Object.values(careerIds);
+    if (createdCareerIds.length)
+      await prisma.career.deleteMany({
+        where: { id: { in: createdCareerIds } },
+      });
+    if (resourceIds.length)
+      await prisma.resource.deleteMany({ where: { id: { in: resourceIds } } });
+    if (skillId) await prisma.skill.deleteMany({ where: { id: skillId } });
+    if (sourceId) await prisma.source.deleteMany({ where: { id: sourceId } });
+    if (fieldId) await prisma.field.deleteMany({ where: { id: fieldId } });
+    if (userIds.length)
+      await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+    await app?.close();
   });
 
   describe('authorization', () => {
