@@ -51,6 +51,11 @@ describe('RevisionsService', () => {
     ),
     contentRevision: {
       findUniqueOrThrow: jest.fn<(args: unknown) => Promise<unknown>>(),
+      findUnique:
+        jest.fn<
+          (args: unknown) => Promise<{ status: RevisionStatus } | null>
+        >(),
+      deleteMany: jest.fn<(args: unknown) => Promise<{ count: number }>>(),
     },
     career: {
       findUniqueOrThrow: jest.fn<(args: unknown) => Promise<unknown>>(),
@@ -924,6 +929,54 @@ describe('RevisionsService', () => {
         }),
       ).rejects.toThrow(new NotFoundException('Revision not found'));
       expectNoWrites();
+    });
+  });
+
+  describe('deleteDraftRevision', () => {
+    it('deletes only while the revision is still a DRAFT and logs', async () => {
+      mockPrisma.contentRevision.deleteMany.mockResolvedValue({ count: 1 });
+
+      const result = await service.deleteDraftRevision(
+        'revision-1',
+        'editor-1',
+      );
+
+      expect(mockPrisma.contentRevision.deleteMany).toHaveBeenCalledWith({
+        where: { id: 'revision-1', status: RevisionStatus.DRAFT },
+      });
+      expect(result).toEqual({ message: 'Draft revision deleted' });
+      expect(logSpy).toHaveBeenCalledWith(
+        { revisionId: 'revision-1', actorUserId: 'editor-1' },
+        'Draft revision deleted',
+      );
+      expect(mockPrisma.contentRevision.findUnique).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      RevisionStatus.IN_REVIEW,
+      RevisionStatus.APPROVED,
+      RevisionStatus.REJECTED,
+      RevisionStatus.PUBLISHED,
+    ])('rejects a %s revision with INVALID_REVISION_STATE', async (status) => {
+      mockPrisma.contentRevision.deleteMany.mockResolvedValue({ count: 0 });
+      mockPrisma.contentRevision.findUnique.mockResolvedValue({ status });
+
+      const error = await service
+        .deleteDraftRevision('revision-1', 'editor-1')
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(DomainException);
+      expect(error).toMatchObject({ code: 'INVALID_REVISION_STATE' });
+      expect((error as DomainException).getStatus()).toBe(409);
+    });
+
+    it('throws NotFoundException for an unknown revision', async () => {
+      mockPrisma.contentRevision.deleteMany.mockResolvedValue({ count: 0 });
+      mockPrisma.contentRevision.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.deleteDraftRevision('missing', 'editor-1'),
+      ).rejects.toThrow(new NotFoundException('Revision not found'));
     });
   });
 });
