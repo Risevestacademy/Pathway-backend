@@ -560,6 +560,124 @@ describe('RevisionsService', () => {
     });
   });
 
+  describe('recallRevision', () => {
+    const editor = { id: 'editor-1', role: Role.EDITOR };
+
+    const setRows = (
+      revision: { status: RevisionStatus; createdById: string } | null,
+    ) => {
+      tx.contentRevision.findUnique.mockResolvedValue({ careerId: 'career-1' });
+      tx.$queryRaw
+        .mockResolvedValueOnce([{ '?column?': 1 }])
+        .mockResolvedValueOnce(revision ? [revision] : []);
+    };
+
+    const failure = (promise: Promise<unknown>) =>
+      promise.catch((e: unknown) => e) as Promise<DomainException>;
+
+    beforeEach(() => {
+      tx.$queryRaw.mockReset();
+      tx.contentRevision.update.mockResolvedValue(savedRevision());
+    });
+
+    it('locks the career row, then the revision row', async () => {
+      setRows({ status: RevisionStatus.IN_REVIEW, createdById: 'editor-1' });
+
+      await service.recallRevision('revision-1', editor);
+
+      const [careerLock, revisionLock] = tx.$queryRaw.mock.calls as [
+        [TemplateStringsArray, string],
+        [TemplateStringsArray, string],
+      ];
+      expect(careerLock[0].join('?')).toContain('"Career"');
+      expect(careerLock[0].join('?')).toContain('FOR UPDATE');
+      expect(careerLock[1]).toBe('career-1');
+      expect(revisionLock[0].join('?')).toContain('"ContentRevision"');
+      expect(revisionLock[0].join('?')).toContain('FOR UPDATE');
+      expect(revisionLock[1]).toBe('revision-1');
+    });
+
+    it("sets the creator's IN_REVIEW revision back to DRAFT and returns it", async () => {
+      setRows({ status: RevisionStatus.IN_REVIEW, createdById: 'editor-1' });
+
+      const result = await service.recallRevision('revision-1', editor);
+
+      expect(tx.contentRevision.update).toHaveBeenCalledWith({
+        where: { id: 'revision-1' },
+        data: { status: RevisionStatus.DRAFT },
+        select,
+      });
+      expect(result).toEqual(savedRevision());
+      expect(logSpy).toHaveBeenCalledWith(
+        { revisionId: 'revision-1', actorUserId: 'editor-1' },
+        'Revision recalled',
+      );
+      expect(analytics.capture).not.toHaveBeenCalled();
+    });
+
+    it("lets an ADMIN recall someone else's revision", async () => {
+      setRows({ status: RevisionStatus.IN_REVIEW, createdById: 'editor-1' });
+
+      await service.recallRevision('revision-1', {
+        id: 'admin-1',
+        role: Role.ADMIN,
+      });
+
+      expect(tx.contentRevision.update).toHaveBeenCalled();
+    });
+
+    it('rejects another editor with NOT_REVISION_CREATOR before checking status', async () => {
+      setRows({ status: RevisionStatus.DRAFT, createdById: 'editor-2' });
+
+      const error = await failure(service.recallRevision('revision-1', editor));
+
+      expect(error).toMatchObject({ code: 'NOT_REVISION_CREATOR' });
+      expect(error.getStatus()).toBe(403);
+      expect(tx.contentRevision.update).not.toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledWith(
+        {
+          revisionId: 'revision-1',
+          actorUserId: 'editor-1',
+          reason: 'NOT_REVISION_CREATOR',
+        },
+        'Recall rejected',
+      );
+    });
+
+    it.each([
+      RevisionStatus.DRAFT,
+      RevisionStatus.APPROVED,
+      RevisionStatus.REJECTED,
+      RevisionStatus.PUBLISHED,
+    ])('rejects a %s revision with INVALID_REVISION_STATE', async (status) => {
+      setRows({ status, createdById: 'editor-1' });
+
+      const error = await failure(service.recallRevision('revision-1', editor));
+
+      expect(error).toMatchObject({ code: 'INVALID_REVISION_STATE' });
+      expect(error.getStatus()).toBe(409);
+      expect(tx.contentRevision.update).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException for an unknown revision', async () => {
+      tx.contentRevision.findUnique.mockResolvedValue(null);
+
+      await expect(service.recallRevision('missing', editor)).rejects.toThrow(
+        new NotFoundException('Revision not found'),
+      );
+      expect(tx.$queryRaw).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException when the revision disappears before the lock', async () => {
+      setRows(null);
+
+      await expect(
+        service.recallRevision('revision-1', editor),
+      ).rejects.toThrow(NotFoundException);
+      expect(tx.contentRevision.update).not.toHaveBeenCalled();
+    });
+  });
+
   describe('reviewRevision', () => {
     const reviewer = { id: 'reviewer-1', role: Role.REVIEWER };
     const reviewedAt = new Date('2026-10-30T10:00:00.000Z');

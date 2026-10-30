@@ -22,9 +22,14 @@ import type { ReviewerDiffResponseDto } from './dto/reviewer-diff-response.dto';
 import type { SaveDraftRevisionResponseDto } from './dto/save-draft-revision-response.dto';
 import { AnalyticsService } from '../../analytics';
 import type { RebaseRevisionResponseDto } from './dto/rebase-revision-response.dto';
-import { isRevisionStale, isSelfReviewBlocked } from './revision.rules';
+import {
+  isCreatorOrAdmin,
+  isRevisionStale,
+  isSelfReviewBlocked,
+} from './revision.rules';
 import type { ReviewRevisionDto } from './dto/review-revision.dto';
 import type { ReviewRevisionResponseDto } from './dto/review-revision-response.dto';
+import type { RecallRevisionResponseDto } from './dto/recall-revision-response.dto';
 
 const OPEN_STATUSES = [RevisionStatus.DRAFT, RevisionStatus.IN_REVIEW];
 
@@ -380,6 +385,68 @@ export class RevisionsService {
     }
 
     return { ...revision, liveVersion, rebased };
+  }
+
+  async recallRevision(
+    revisionId: string,
+    actor: { id: string; role: Role },
+  ): Promise<RecallRevisionResponseDto> {
+    const result = await this.prisma.$transaction(async (tx) => {
+      // Lock career, then revision
+      const peek = await tx.contentRevision.findUnique({
+        where: { id: revisionId },
+        select: { careerId: true },
+      });
+      if (!peek) return { failure: 'REVISION_NOT_FOUND' as const };
+
+      await tx.$queryRaw`SELECT 1 FROM "Career" WHERE "id" = ${peek.careerId} FOR UPDATE`;
+
+      const [revision] = await tx.$queryRaw<
+        { status: RevisionStatus; createdById: string }[]
+      >`SELECT "status"::text AS "status", "createdById"
+        FROM "ContentRevision" WHERE "id" = ${revisionId} FOR UPDATE`;
+      if (!revision) return { failure: 'REVISION_NOT_FOUND' as const };
+
+      if (!isCreatorOrAdmin(revision.createdById, actor))
+        return { failure: 'NOT_REVISION_CREATOR' as const };
+
+      if (revision.status !== RevisionStatus.IN_REVIEW)
+        return { failure: 'INVALID_REVISION_STATE' as const };
+
+      const recalled = await tx.contentRevision.update({
+        where: { id: revisionId },
+        data: { status: RevisionStatus.DRAFT },
+        select: REVISION_SELECT,
+      });
+      return { revision: recalled };
+    });
+
+    if ('failure' in result) {
+      this.logger.warn(
+        { revisionId, actorUserId: actor.id, reason: result.failure },
+        'Recall rejected',
+      );
+
+      if (result.failure === 'REVISION_NOT_FOUND')
+        throw new NotFoundException('Revision not found');
+
+      if (result.failure === 'NOT_REVISION_CREATOR')
+        throw new DomainException(
+          HttpStatus.FORBIDDEN,
+          'NOT_REVISION_CREATOR',
+          'Only the revision creator or an admin can recall it',
+        );
+
+      throw new DomainException(
+        HttpStatus.CONFLICT,
+        'INVALID_REVISION_STATE',
+        'Only a revision in review can be recalled',
+      );
+    }
+
+    this.logger.log({ revisionId, actorUserId: actor.id }, 'Revision recalled');
+
+    return result.revision;
   }
 
   private async loadStepLearnerCounts(

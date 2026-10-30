@@ -28,6 +28,7 @@ import { ReviewerDiffResponseDto } from './dto/reviewer-diff-response.dto';
 import { RebaseRevisionResponseDto } from './dto/rebase-revision-response.dto';
 import { ReviewRevisionResponseDto } from './dto/review-revision-response.dto';
 import { ReviewRevisionDto } from './dto/review-revision.dto';
+import { RecallRevisionResponseDto } from './dto/recall-revision-response.dto';
 
 @ApiTags('Admin - Revisions')
 @ApiBearerAuth()
@@ -226,5 +227,37 @@ export class AdminRevisionsController {
       { id: user.id, role: user.role },
       dto,
     );
+  }
+
+  @ApiOperation({
+    summary: 'Recall a revision from review to draft',
+    description:
+      'Minimum role: EDITOR. Creator only, unless ADMIN. Moves an IN_REVIEW revision back to DRAFT so the editor can save changes again. Past reviews are kept.',
+  })
+  @ApiResponse({ status: 200, type: RecallRevisionResponseDto })
+  @ApiResponse({ status: 400, description: 'revisionId is not a UUID' })
+  @ApiResponse({ status: 401, description: 'Access token missing or invalid' })
+  @ApiResponse({
+    status: 403,
+    description:
+      'The user is below EDITOR, or is not the revision creator and not an ADMIN (FORBIDDEN, code NOT_REVISION_CREATOR)',
+  })
+  @ApiResponse({ status: 404, description: 'Revision not found' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'The revision is not in review (CONFLICT, code INVALID_REVISION_STATE)',
+  })
+  @Post(':revisionId/recall')
+  @HttpCode(HttpStatus.OK)
+  @MinRole(Role.EDITOR)
+  async recall(
+    @Param('revisionId', ParseUUIDPipe) revisionId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<RecallRevisionResponseDto> {
+    return this.revisionsService.recallRevision(revisionId, {
+      id: user.id,
+      role: user.role,
+    });
   }
 }
