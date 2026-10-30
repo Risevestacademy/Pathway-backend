@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import {
   CareerStatus,
+  ReviewDecision,
   RevisionStatus,
   Role,
 } from '../../generated/prisma/client';
@@ -21,6 +22,9 @@ import type { ReviewerDiffResponseDto } from './dto/reviewer-diff-response.dto';
 import type { SaveDraftRevisionResponseDto } from './dto/save-draft-revision-response.dto';
 import { AnalyticsService } from '../../analytics';
 import type { RebaseRevisionResponseDto } from './dto/rebase-revision-response.dto';
+import { isRevisionStale, isSelfReviewBlocked } from './revision.rules';
+import type { ReviewRevisionDto } from './dto/review-revision.dto';
+import type { ReviewRevisionResponseDto } from './dto/review-revision-response.dto';
 
 const OPEN_STATUSES = [RevisionStatus.DRAFT, RevisionStatus.IN_REVIEW];
 
@@ -31,6 +35,11 @@ const REVISION_SELECT = {
   baseVersion: true,
   updatedAt: true,
 } as const;
+
+const DECISION_STATUS: Record<ReviewDecision, RevisionStatus> = {
+  [ReviewDecision.APPROVED]: RevisionStatus.APPROVED,
+  [ReviewDecision.REJECTED]: RevisionStatus.REJECTED,
+};
 
 @Injectable()
 export class RevisionsService {
@@ -304,7 +313,7 @@ export class RevisionsService {
       const liveVersion = career.version;
 
       // Already fresh: no write, no event.
-      if (oldBaseVersion === liveVersion) {
+      if (!isRevisionStale(oldBaseVersion, liveVersion)) {
         const current = await tx.contentRevision.findUniqueOrThrow({
           where: { id: revisionId },
           select: REVISION_SELECT,
@@ -390,5 +399,144 @@ export class RevisionsService {
     return Object.fromEntries(
       counts.map((c) => [c.pathwayStepId, c._count.pathwayStepId]),
     );
+  }
+
+  async reviewRevision(
+    revisionId: string,
+    reviewer: { id: string; role: Role },
+    dto: ReviewRevisionDto,
+  ): Promise<ReviewRevisionResponseDto> {
+    const note = dto.note?.trim() || null;
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      // Same lock order as save and rebase: career first, then revision.
+      const peek = await tx.contentRevision.findUnique({
+        where: { id: revisionId },
+        select: { careerId: true },
+      });
+      if (!peek) return { failure: 'REVISION_NOT_FOUND' as const };
+
+      const [career] = await tx.$queryRaw<{ version: number }[]>`
+        SELECT "version" FROM "Career"
+        WHERE "id" = ${peek.careerId} FOR UPDATE`;
+      if (!career) return { failure: 'CAREER_NOT_FOUND' as const };
+
+      const [revision] = await tx.$queryRaw<
+        {
+          status: RevisionStatus;
+          baseVersion: number;
+          createdById: string;
+        }[]
+      >`SELECT "status"::text AS "status", "baseVersion", "createdById"
+        FROM "ContentRevision" WHERE "id" = ${revisionId} FOR UPDATE`;
+      if (!revision) return { failure: 'REVISION_NOT_FOUND' as const };
+
+      if (revision.status !== RevisionStatus.IN_REVIEW)
+        return { failure: 'INVALID_REVISION_STATE' as const };
+
+      if (isSelfReviewBlocked(revision.createdById, reviewer))
+        return { failure: 'SELF_REVIEW_NOT_ALLOWED' as const };
+
+      // Rejection is always allowed. Only approval needs a fresh revision.
+      if (
+        dto.decision === ReviewDecision.APPROVED &&
+        isRevisionStale(revision.baseVersion, career.version)
+      )
+        return {
+          failure: 'REVISION_STALE' as const,
+          baseVersion: revision.baseVersion,
+          liveVersion: career.version,
+        };
+
+      const review = await tx.review.create({
+        data: {
+          revisionId,
+          reviewerId: reviewer.id,
+          decision: dto.decision,
+          note,
+        },
+        select: {
+          id: true,
+          revisionId: true,
+          decision: true,
+          note: true,
+          createdAt: true,
+        },
+      });
+
+      // Only the revision's status changes. Approving publishes nothing.
+      const updated = await tx.contentRevision.update({
+        where: { id: revisionId },
+        data: { status: DECISION_STATUS[dto.decision] },
+        select: { careerId: true, status: true },
+      });
+
+      return {
+        review,
+        careerId: updated.careerId,
+        revisionStatus: updated.status,
+      };
+    });
+
+    if ('failure' in result) {
+      this.logger.warn(
+        {
+          revisionId,
+          reviewerId: reviewer.id,
+          decision: dto.decision,
+          reason: result.failure,
+        },
+        'Review rejected',
+      );
+
+      if (result.failure === 'REVISION_NOT_FOUND')
+        throw new NotFoundException('Revision not found');
+      if (result.failure === 'CAREER_NOT_FOUND')
+        throw new NotFoundException('Career not found');
+      if (result.failure === 'SELF_REVIEW_NOT_ALLOWED')
+        throw new DomainException(
+          HttpStatus.FORBIDDEN,
+          'SELF_REVIEW_NOT_ALLOWED',
+          'You cannot review a revision you created',
+        );
+      if (result.failure === 'REVISION_STALE')
+        throw new DomainException(
+          HttpStatus.CONFLICT,
+          'REVISION_STALE',
+          'The live career changed since this revision was created; the editor must rebase it first',
+          {
+            baseVersion: result.baseVersion,
+            liveVersion: result.liveVersion,
+          },
+        );
+      throw new DomainException(
+        HttpStatus.CONFLICT,
+        'INVALID_REVISION_STATE',
+        'Only a revision in review can be reviewed',
+      );
+    }
+
+    const { review, careerId, revisionStatus } = result;
+
+    // The note is free text, so it is never logged.
+    this.logger.log(
+      { revisionId, decision: review.decision, reviewerId: reviewer.id },
+      'Revision reviewed',
+    );
+
+    this.analytics.capture('revision_reviewed', reviewer.id, {
+      revisionId,
+      careerId,
+      decision: review.decision,
+    });
+
+    return {
+      id: review.id,
+      revisionId: review.revisionId,
+      decision: review.decision,
+      note: review.note,
+      revisionStatus,
+      createdAt: review.createdAt,
+    };
   }
 }
