@@ -14,30 +14,21 @@ import { Prisma, RevisionStatus } from '../../generated/prisma/client';
 import { AnalyticsService } from '../../analytics';
 import { DomainException } from '../../common';
 import type { CreateCareerDto } from './dto/create-career.dto';
+import {
+  adminCareerDetailSelect,
+  adminCareerListSelect,
+  buildAdminCareerWhere,
+} from './admin-career-read';
 
 describe('CareersService', () => {
   let service: CareersService;
 
   const mockPrismaService = {
     career: {
-      findMany: jest.fn<
-        () => Promise<
-          {
-            id: string;
-            slug: string;
-            title: string;
-            description: string;
-          }[]
-        >
-      >(),
+      findMany: jest.fn<(args: unknown) => Promise<unknown>>(),
       findFirst: jest.fn<(args: unknown) => Promise<unknown>>(),
-      findUnique: jest.fn<
-        (args: unknown) => Promise<{
-          status: CareerStatus;
-          publishedAt: Date | null;
-          _count: { userPathways: number };
-        } | null>
-      >(),
+      findUnique: jest.fn<(args: unknown) => Promise<unknown>>(),
+      count: jest.fn<(args: unknown) => Promise<number>>(),
       delete: jest.fn<(args: unknown) => Promise<{ id: string }>>(),
       create: jest.fn<(args: unknown) => Promise<unknown>>(),
     },
@@ -818,6 +809,76 @@ describe('CareersService', () => {
         failure,
       );
       expect(mockPrismaService.career.findUnique).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('listCareersForStaff', () => {
+    it('applies the filter, the page window and newest-updated order, and returns the total', async () => {
+      mockPrismaService.career.findMany.mockResolvedValue([{ id: 'c1' }]);
+      mockPrismaService.career.count.mockResolvedValue(41);
+
+      const result = await service.listCareersForStaff({
+        status: CareerStatus.DRAFT,
+        search: 'data',
+        page: 3,
+        limit: 10,
+      });
+
+      const where = buildAdminCareerWhere({
+        status: CareerStatus.DRAFT,
+        search: 'data',
+      });
+      expect(mockPrismaService.career.findMany).toHaveBeenCalledWith({
+        where,
+        select: adminCareerListSelect,
+        orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
+        skip: 20,
+        take: 10,
+      });
+      expect(mockPrismaService.career.count).toHaveBeenCalledWith({ where });
+      expect(result).toEqual({
+        items: [{ id: 'c1' }],
+        total: 41,
+        page: 3,
+        limit: 10,
+      });
+    });
+
+    it('does not restrict to PUBLISHED when no status is given', async () => {
+      mockPrismaService.career.findMany.mockResolvedValue([]);
+      mockPrismaService.career.count.mockResolvedValue(0);
+
+      await service.listCareersForStaff({ page: 1, limit: 20 });
+
+      expect(mockPrismaService.career.count).toHaveBeenCalledWith({
+        where: {},
+      });
+    });
+  });
+
+  describe('getCareerForStaff', () => {
+    it('throws NotFoundException for an unknown career', async () => {
+      mockPrismaService.career.findUnique.mockResolvedValue(null);
+
+      await expect(service.getCareerForStaff('missing')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('looks the career up by id with no status filter', async () => {
+      mockPrismaService.career.findUnique.mockResolvedValue({
+        id: 'c1',
+        skills: [],
+        outlook: [],
+        pathway: null,
+      });
+
+      await service.getCareerForStaff('c1');
+
+      expect(mockPrismaService.career.findUnique).toHaveBeenCalledWith({
+        where: { id: 'c1' },
+        select: adminCareerDetailSelect,
+      });
     });
   });
 });

@@ -2,9 +2,11 @@ import {
   Body,
   Controller,
   Delete,
+  Get,
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
@@ -20,6 +22,15 @@ import { CareersService } from './careers.service';
 import { DeleteCareerResponseDto } from './dto/delete-career-response.dto';
 import { CreateCareerDto } from './dto/create-career.dto';
 import { CreateCareerResponseDto } from './dto/create-career-response.dto';
+import {
+  AdminCareerDetailDto,
+  AdminCareerListResponseDto,
+} from './dto/admin-career.dto';
+import { GetAdminCareersQueryDto } from './dto/get-admin-careers-query.dto';
+import {
+  ADMIN_CAREER_MAX_STEPS,
+  ADMIN_STEP_MAX_RESOURCES,
+} from './admin-career-read';
 
 @ApiTags('Admin')
 @Controller('admin')
@@ -76,5 +87,39 @@ export class AdminCareersController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<DeleteCareerResponseDto> {
     return this.careersService.deleteCareer(id, user.id);
+  }
+
+  @ApiOperation({
+    summary: 'List careers in any status',
+    description:
+      'Minimum role: EDITOR. Includes DRAFT and RETIRED careers, which public endpoints never return. Most recently updated first. search matches the title or slug, ignoring case.',
+  })
+  @ApiResponse({ status: 200, type: AdminCareerListResponseDto })
+  @ApiResponse({ status: 400, description: 'A query parameter is invalid' })
+  @ApiResponse({ status: 401, description: 'Access token missing or invalid' })
+  @ApiResponse({ status: 403, description: 'The user is below EDITOR' })
+  @MinRole(Role.EDITOR)
+  @Get('careers')
+  async listCareers(
+    @Query() query: GetAdminCareersQueryDto,
+  ): Promise<AdminCareerListResponseDto> {
+    return this.careersService.listCareersForStaff(query);
+  }
+
+  @ApiOperation({
+    summary: 'Get a career in any status',
+    description: `Minimum role: EDITOR. The live career with its skills, outlook, and pathway steps with their skills and linked resources (WITHDRAWN resources included). Steps are capped at ${ADMIN_CAREER_MAX_STEPS} and resources per step at ${ADMIN_STEP_MAX_RESOURCES}. Revisions are never included.`,
+  })
+  @ApiResponse({ status: 200, type: AdminCareerDetailDto })
+  @ApiResponse({ status: 400, description: 'id is not a UUID' })
+  @ApiResponse({ status: 401, description: 'Access token missing or invalid' })
+  @ApiResponse({ status: 403, description: 'The user is below EDITOR' })
+  @ApiResponse({ status: 404, description: 'Career not found' })
+  @MinRole(Role.EDITOR)
+  @Get('careers/:id')
+  async getCareer(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<AdminCareerDetailDto> {
+    return this.careersService.getCareerForStaff(id);
   }
 }

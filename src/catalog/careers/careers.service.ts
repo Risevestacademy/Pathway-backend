@@ -24,6 +24,17 @@ import { CareerDetailDto } from './dto/career-detail.dto';
 import { DeleteCareerResponseDto } from './dto/delete-career-response.dto';
 import { CreateCareerDto } from './dto/create-career.dto';
 import { CreateCareerResponseDto } from './dto/create-career-response.dto';
+import {
+  adminCareerDetailSelect,
+  adminCareerListSelect,
+  buildAdminCareerWhere,
+  toAdminCareerDetail,
+} from './admin-career-read';
+import { GetAdminCareersQueryDto } from './dto/get-admin-careers-query.dto';
+import {
+  AdminCareerDetailDto,
+  AdminCareerListResponseDto,
+} from './dto/admin-career.dto';
 
 const decimalToString = (
   value: { toString(): string } | null,
@@ -388,5 +399,38 @@ export class CareersService {
     throw new ConflictException(
       'Only a draft career that was never published or saved can be deleted',
     );
+  }
+
+  async listCareersForStaff(
+    query: GetAdminCareersQueryDto,
+  ): Promise<AdminCareerListResponseDto> {
+    const { page, limit } = query;
+    const where = buildAdminCareerWhere(query);
+
+    const [items, total] = await Promise.all([
+      this.prisma.career.findMany({
+        where,
+        select: adminCareerListSelect,
+        orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.career.count({ where }),
+    ]);
+
+    return { items, total, page, limit };
+  }
+
+  async getCareerForStaff(id: string): Promise<AdminCareerDetailDto> {
+    const career = await this.prisma.career.findUnique({
+      where: { id },
+      select: adminCareerDetailSelect,
+    });
+
+    if (!career) {
+      throw new NotFoundException('Career not found');
+    }
+
+    return toAdminCareerDetail(career);
   }
 }
