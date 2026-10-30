@@ -145,10 +145,12 @@ describe('Retire career (e2e)', () => {
   });
 
   afterAll(async () => {
-    await prisma.career.deleteMany({ where: { id: { in: careerIds } } });
-    await prisma.field.deleteMany({ where: { id: fieldId } });
-    await prisma.user.deleteMany({ where: { id: { in: userIds } } });
-    await app.close();
+    if (careerIds.length)
+      await prisma.career.deleteMany({ where: { id: { in: careerIds } } });
+    if (fieldId) await prisma.field.deleteMany({ where: { id: fieldId } });
+    if (userIds.length)
+      await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+    await app?.close();
   });
 
   it('retires a published career and leaves version and progress untouched', async () => {
