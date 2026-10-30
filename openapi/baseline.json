@@ -727,6 +727,98 @@
         ]
       }
     },
+    "/admin/careers": {
+      "post": {
+        "description": "Minimum role: EDITOR. Creates the career in DRAFT at version 1, with its first DRAFT revision (baseVersion 1), in one write. Title and slug are unique, ignoring case.",
+        "operationId": "AdminCareersController_createCareer",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCareerDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateCareerResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Body failed validation (VALIDATION_ERROR), or fieldId matches no field (BAD_REQUEST, code FIELD_NOT_FOUND)"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "403": {
+            "description": "The user is below EDITOR"
+          },
+          "409": {
+            "description": "The title or slug is taken (CONFLICT, code CAREER_TITLE_TAKEN or CAREER_SLUG_TAKEN)"
+          }
+        },
+        "summary": "Create a draft career",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/admin/careers/{id}": {
+      "delete": {
+        "description": "Minimum role: ADMIN. Only a DRAFT career that was never published and that no user has saved can be deleted. Its pathway, skills, outlook and revisions are deleted with it.",
+        "operationId": "AdminCareersController_deleteCareer",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteCareerResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "id is not a UUID"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "403": {
+            "description": "The user is not an admin"
+          },
+          "404": {
+            "description": "Career not found"
+          },
+          "409": {
+            "description": "The career is published, retired, was published before, or has been saved by a user"
+          }
+        },
+        "summary": "Delete a never-published draft career",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
     "/pathway-steps/{stepId}": {
       "get": {
         "operationId": "PathwayStepsController_getPathwayStep",
@@ -1211,17 +1303,396 @@
           "Admin"
         ]
       }
+    },
+    "/admin/teams/invites": {
+      "post": {
+        "description": "Minimum role: ADMIN. Creates a single-use invite (24h TTL) and emails an accept link. Replaces any pending invite for the same email. If the email fails to send, the invite stays and can be re-sent by re-inviting.",
+        "operationId": "AdminTeamsController_createInvite",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateStaffInviteDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateStaffInviteResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Body failed validation"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "403": {
+            "description": "The user is not an admin"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Invite a staff member",
+        "tags": [
+          "Admin"
+        ]
+      },
+      "get": {
+        "description": "Minimum role: ADMIN. Newest first. PENDING and EXPIRED are computed from expiresAt at request time. Paginated with page and limit.",
+        "operationId": "AdminTeamsController_getInvites",
+        "parameters": [
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": "PENDING",
+              "type": "string",
+              "enum": [
+                "PENDING",
+                "ACCEPTED",
+                "EXPIRED",
+                "REVOKED"
+              ]
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 10000,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteListResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A query parameter is invalid"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "403": {
+            "description": "The user is not an admin"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List staff invites",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/admin/teams/invites/{id}": {
+      "delete": {
+        "description": "Minimum role: ADMIN. Sets revokedAt and keeps the invite in the list.",
+        "operationId": "AdminTeamsController_revokeInvite",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevokeInviteResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "id is not a UUID"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "403": {
+            "description": "The user is not an admin"
+          },
+          "404": {
+            "description": "Invite not found"
+          },
+          "409": {
+            "description": "The invite is accepted, expired or already revoked (error CONFLICT)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Revoke a pending staff invite",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/admin/revisions/{revisionId}/diff": {
+      "get": {
+        "description": "REVIEWER+ can view any revision. EDITOR can view their own revisions (creator-only — ADMIN does not bypass this for other people’s drafts).\n\nReturns a reviewer-shaped diff grouped by section: career fields, Read-only. The plan that backs this response is the same plan that submit, review, and publish use. Any divergence would let a reviewer approve something publish can't safely apply.\n\n**stale** — `true` means the live career changed since this revision was created. The reviewer should request a rebase before approving.\n\n**blockers** — hard stops. Non-empty means publish would fail. E.g. removing a step that learners have completed, missing required career fields, or an empty skills/steps list.\n\n**advisories** — soft warnings shown as info banners. Do not block approval.\n\nField values are sent raw: decimals as strings (`\"230000.00\"`), arrays as arrays, foreign keys as both the raw UUID (`before` / `after`) and a human label (`beforeLabel` / `afterLabel`). The frontend formats currency and joins arrays.",
+        "operationId": "AdminRevisionsController_getDiff",
+        "parameters": [
+          {
+            "name": "revisionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewerDiffResponseDto"
+                },
+                "example": {
+                  "revisionId": "a3f2c1d4-0000-0000-0000-000000000000",
+                  "title": "UX Designer: salary range",
+                  "submittedBy": "Chidi E.",
+                  "submittedAt": "5 hours ago",
+                  "baseVersion": 3,
+                  "liveVersion": 3,
+                  "stale": false,
+                  "blockers": [],
+                  "advisories": [],
+                  "sections": {
+                    "career": {
+                      "changed": [
+                        {
+                          "field": "title",
+                          "label": "Title",
+                          "before": "Frontend Engineer",
+                          "after": "Senior Frontend Engineer"
+                        }
+                      ],
+                      "added": [],
+                      "removed": [],
+                      "moved": []
+                    },
+                    "outlook": {
+                      "changed": [
+                        {
+                          "field": "sourceId",
+                          "label": "Source",
+                          "before": "a3f2c1d4-0000-0000-0000-000000000000",
+                          "after": "b7e2d1a9-0000-0000-0000-000000000000",
+                          "beforeLabel": "Jobberman salary guide 2025",
+                          "afterLabel": "Jobberman salary guide 2026"
+                        }
+                      ],
+                      "added": [],
+                      "removed": [],
+                      "moved": []
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "403": {
+            "description": "The user is below EDITOR, or is an EDITOR who is not the revision creator"
+          },
+          "404": {
+            "description": "Revision not found"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Preview the diff for a revision",
+        "tags": [
+          "Admin - Revisions"
+        ]
+      }
+    },
+    "/admin/revisions/{revisionId}/rebase": {
+      "post": {
+        "description": "Minimum role: EDITOR. Creator only — ADMIN does not bypass.\n\nRebase re-anchors a DRAFT revision onto the current live career version. It does NOT merge: the editor's snapshot is preserved as-is, and only `baseVersion` is moved forward. The editor then re-checks their draft against the new live state before submitting.\n\n**Fresh draft (baseVersion === live version):** returns 200 with `rebased: false`. No write, no event.\n\n**Stale draft:** writes the new `baseVersion`, returns 200 with `rebased: true`, emits `revision_rebased`.\n\n**IN_REVIEW:** 409 `INVALID_REVISION_STATE`. Recall first (ticket 12), then rebase.\n\n**Not the creator:** 403 `NOT_REVISION_CREATOR`.",
+        "operationId": "AdminRevisionsController_rebase",
+        "parameters": [
+          {
+            "name": "revisionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Draft re-anchored (rebased: true) or already fresh (rebased: false).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RebaseRevisionResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "403": {
+            "description": "The user is below EDITOR, or is not the revision creator"
+          },
+          "404": {
+            "description": "Revision (or its career) not found"
+          },
+          "409": {
+            "description": "INVALID_REVISION_STATE (not a draft) or CAREER_RETIRED (career is retired)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Rebase a stale draft onto the current live version",
+        "tags": [
+          "Admin - Revisions"
+        ]
+      }
+    },
+    "/admin/careers/{careerId}/revision": {
+      "put": {
+        "description": "Minimum role: EDITOR. The body is the full proposed snapshot and replaces the stored one; it is not a patch. Updates the open DRAFT revision, or creates one with baseVersion set to the live career version. A career has at most one open (DRAFT or IN_REVIEW) revision. A revision in review is never edited: recall it first.",
+        "operationId": "AdminCareerRevisionsController_saveDraftRevision",
+        "parameters": [
+          {
+            "name": "careerId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveDraftRevisionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SaveDraftRevisionResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "careerId is not a UUID (BAD_REQUEST), the body failed validation (VALIDATION_ERROR), or the snapshot is inconsistent (BAD_REQUEST, code INVALID_SNAPSHOT, details.problems)"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "403": {
+            "description": "The user is below EDITOR"
+          },
+          "404": {
+            "description": "Career not found"
+          },
+          "409": {
+            "description": "The open revision is in review (CONFLICT, code REVISION_IN_REVIEW, details.revisionId), or the career is retired (CONFLICT, code CAREER_RETIRED)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Save the career's draft revision",
+        "tags": [
+          "Admin"
+        ]
+      }
     }
   },
   "info": {
     "title": "Pathways API",
-    "description": "API documentation for the Pathways backend",
+    "description": "API documentation for the Pathways backend.\n\nStaff routes state their minimum role in the operation description. A minimum role also admits every higher role (ADMIN > PUBLISHER > REVIEWER > EDITOR > USER). A route that also lists exact roles requires both checks to pass. A missing token returns 401; an insufficient or unknown role returns 403.",
     "version": "1.0",
     "contact": {}
   },
   "tags": [],
   "servers": [],
   "components": {
+    "securitySchemes": {
+      "bearer": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http",
+        "description": "Access token from POST /auth/login or POST /auth/verify-email."
+      }
+    },
     "schemas": {
       "UpdateUserDto": {
         "type": "object",
@@ -2003,6 +2474,187 @@
         },
         "required": [
           "pathway"
+        ]
+      },
+      "CreateCareerDto": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "example": "DevOps Engineer",
+            "description": "Unique, ignoring case. Trimmed, 1 to 120 characters.",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "slug": {
+            "type": "string",
+            "example": "devops-engineer",
+            "description": "Unique. Lowercased, then lowercase letters, digits and single hyphens, 1 to 100 characters.",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "fieldId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "6d1f3c2a-8b4e-4f7a-9c5d-2e1b0a9f8c7d",
+            "description": "Career field (category), from GET /fields."
+          },
+          "description": {
+            "type": "string",
+            "example": "Automates how software is built, tested and deployed.",
+            "description": "One-line card summary. Trimmed, 1 to 300 characters.",
+            "minLength": 1,
+            "maxLength": 300
+          },
+          "roleSummary": {
+            "type": "string",
+            "nullable": true,
+            "example": "Builds and runs the pipelines and infrastructure that ship software.",
+            "description": "What the role involves. Trimmed, 1 to 2000 characters.",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "targetLevels": {
+            "type": "array",
+            "example": [
+              "RECENT_GRAD",
+              "EARLY_CAREER"
+            ],
+            "description": "Target levels. Defaults to none.",
+            "items": {
+              "type": "string",
+              "enum": [
+                "STUDENT",
+                "RECENT_GRAD",
+                "EARLY_CAREER"
+              ]
+            }
+          }
+        },
+        "required": [
+          "title",
+          "slug",
+          "fieldId",
+          "description"
+        ]
+      },
+      "CareerDraftRevisionDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "0b7e4a1c-3d2f-4e8a-9b6c-5f1a2d3e4c7b"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "IN_REVIEW",
+              "APPROVED",
+              "REJECTED",
+              "PUBLISHED"
+            ],
+            "example": "DRAFT"
+          },
+          "baseVersion": {
+            "type": "number",
+            "example": 1
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "baseVersion"
+        ]
+      },
+      "CreateCareerResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "9a4c2e1f-7b3d-4c5e-8f6a-1d2b3c4e5f6a"
+          },
+          "slug": {
+            "type": "string",
+            "example": "devops-engineer"
+          },
+          "title": {
+            "type": "string",
+            "example": "DevOps Engineer"
+          },
+          "description": {
+            "type": "string",
+            "example": "Automates how software is built, tested and deployed."
+          },
+          "roleSummary": {
+            "type": "string",
+            "nullable": true,
+            "example": null
+          },
+          "fieldId": {
+            "type": "string",
+            "example": "6d1f3c2a-8b4e-4f7a-9c5d-2e1b0a9f8c7d"
+          },
+          "targetLevels": {
+            "type": "array",
+            "example": [
+              "RECENT_GRAD"
+            ],
+            "items": {
+              "type": "string",
+              "enum": [
+                "STUDENT",
+                "RECENT_GRAD",
+                "EARLY_CAREER"
+              ]
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "PUBLISHED",
+              "RETIRED"
+            ],
+            "example": "DRAFT"
+          },
+          "version": {
+            "type": "number",
+            "example": 1
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-10-28T10:30:00.000Z"
+          },
+          "revision": {
+            "$ref": "#/components/schemas/CareerDraftRevisionDto"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "title",
+          "description",
+          "roleSummary",
+          "fieldId",
+          "targetLevels",
+          "status",
+          "version",
+          "createdAt",
+          "revision"
+        ]
+      },
+      "DeleteCareerResponseDto": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "example": "Career deleted"
+          }
+        },
+        "required": [
+          "message"
         ]
       },
       "PathwayStepSkillDto": {
@@ -2805,6 +3457,997 @@
         },
         "required": [
           "status"
+        ]
+      },
+      "CreateStaffInviteDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "example": "ada@example.com",
+            "description": "Email address to invite.",
+            "maxLength": 254
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "EDITOR",
+              "REVIEWER",
+              "PUBLISHER",
+              "ADMIN"
+            ],
+            "example": "EDITOR",
+            "description": "Staff role to assign on acceptance."
+          }
+        },
+        "required": [
+          "email",
+          "role"
+        ]
+      },
+      "CreateStaffInviteResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "b2c3d4e5-..."
+          },
+          "email": {
+            "type": "string",
+            "example": "ada@example.com"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "USER",
+              "EDITOR",
+              "REVIEWER",
+              "PUBLISHER",
+              "ADMIN"
+            ],
+            "example": "EDITOR"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-10-26T09:00:00.000Z"
+          },
+          "emailSent": {
+            "type": "boolean",
+            "example": true,
+            "description": "Whether the invitation email was dispatched. When false, the invite exists and can be re-sent by re-inviting the same email."
+          },
+          "message": {
+            "type": "string",
+            "example": "Invite created, but the email could not be sent. Re-invite to retry."
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "role",
+          "expiresAt",
+          "emailSent"
+        ]
+      },
+      "InviteResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "email": {
+            "type": "string",
+            "example": "new.editor@example.com"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "USER",
+              "EDITOR",
+              "REVIEWER",
+              "PUBLISHER",
+              "ADMIN"
+            ],
+            "example": "EDITOR"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "ACCEPTED",
+              "EXPIRED",
+              "REVOKED"
+            ],
+            "example": "PENDING"
+          },
+          "invitedById": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "invitedByName": {
+            "type": "string",
+            "nullable": true,
+            "example": "Ada Lovelace"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "acceptedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "revokedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "role",
+          "status",
+          "invitedById",
+          "invitedByName",
+          "createdAt",
+          "expiresAt",
+          "acceptedAt",
+          "revokedAt"
+        ]
+      },
+      "InviteListResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InviteResponseDto"
+            }
+          },
+          "total": {
+            "type": "number",
+            "example": 42,
+            "description": "Total matching invites"
+          },
+          "page": {
+            "type": "number",
+            "example": 1
+          },
+          "limit": {
+            "type": "number",
+            "example": 20
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "limit"
+        ]
+      },
+      "RevokeInviteResponseDto": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "example": "Invite revoked"
+          }
+        },
+        "required": [
+          "message"
+        ]
+      },
+      "BlockerDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "example": "STEP_HAS_PROGRESS"
+          },
+          "message": {
+            "type": "string",
+            "example": "Cannot remove step \"HTML\" — 7 learners affected"
+          },
+          "section": {
+            "type": "string",
+            "example": "steps"
+          },
+          "entityId": {
+            "type": "string",
+            "example": "a3f2c1d4-…"
+          },
+          "entityTitle": {
+            "type": "string",
+            "example": "HTML"
+          },
+          "learnersAffected": {
+            "type": "number",
+            "example": 7
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "section"
+        ]
+      },
+      "AdvisoryDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "example": "SOURCE_DATE_CHECK"
+          },
+          "message": {
+            "type": "string",
+            "example": "The new source is dated 2026. Check before approving."
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ]
+      },
+      "FieldChangeDto": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "example": "sourceId"
+          },
+          "label": {
+            "type": "string",
+            "example": "Source"
+          },
+          "before": {
+            "description": "Raw value.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": true
+              }
+            ],
+            "example": "a3f2c1d4-…"
+          },
+          "after": {
+            "description": "Raw value.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": true
+              }
+            ],
+            "example": "b7e2d1a9-…"
+          },
+          "beforeLabel": {
+            "type": "string",
+            "example": "Jobberman salary guide 2025"
+          },
+          "afterLabel": {
+            "type": "string",
+            "example": "Jobberman salary guide 2026"
+          }
+        },
+        "required": [
+          "field",
+          "label",
+          "before",
+          "after"
+        ]
+      },
+      "StepChangeDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "a3f2c1d4-…"
+          },
+          "title": {
+            "type": "string",
+            "example": "Introduction to HTML"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ]
+      },
+      "MovedStepDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "a3f2c1d4-…"
+          },
+          "title": {
+            "type": "string",
+            "example": "Introduction to HTML"
+          },
+          "fromOrder": {
+            "type": "number",
+            "example": 2
+          },
+          "toOrder": {
+            "type": "number",
+            "example": 1
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "fromOrder",
+          "toOrder"
+        ]
+      },
+      "SectionChangesDto": {
+        "type": "object",
+        "properties": {
+          "section": {
+            "type": "string",
+            "example": "career"
+          },
+          "changed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FieldChangeDto"
+            }
+          },
+          "added": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StepChangeDto"
+            }
+          },
+          "removed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StepChangeDto"
+            }
+          },
+          "moved": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MovedStepDto"
+            }
+          }
+        },
+        "required": [
+          "section",
+          "changed",
+          "added",
+          "removed",
+          "moved"
+        ]
+      },
+      "ReviewerDiffResponseDto": {
+        "type": "object",
+        "properties": {
+          "revisionId": {
+            "type": "string",
+            "example": "a3f2c1d4-…"
+          },
+          "title": {
+            "type": "string",
+            "example": "UX Designer: salary range"
+          },
+          "submittedBy": {
+            "type": "string",
+            "example": "Chidi E."
+          },
+          "submittedAt": {
+            "type": "string",
+            "example": "5 hours ago"
+          },
+          "baseVersion": {
+            "type": "number",
+            "example": 3
+          },
+          "liveVersion": {
+            "type": "number",
+            "example": 4
+          },
+          "stale": {
+            "type": "boolean",
+            "example": false
+          },
+          "blockers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BlockerDto"
+            }
+          },
+          "advisories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdvisoryDto"
+            }
+          },
+          "sections": {
+            "description": "Changes grouped by section. Empty sections are omitted.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SectionChangesDto"
+            }
+          }
+        },
+        "required": [
+          "revisionId",
+          "title",
+          "submittedBy",
+          "submittedAt",
+          "baseVersion",
+          "liveVersion",
+          "stale",
+          "blockers",
+          "advisories",
+          "sections"
+        ]
+      },
+      "RebaseRevisionResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "a3f2c1d4-0000-0000-0000-000000000000"
+          },
+          "careerId": {
+            "type": "string",
+            "example": "b7e2d1a9-0000-0000-0000-000000000000"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "IN_REVIEW",
+              "APPROVED",
+              "REJECTED",
+              "PUBLISHED"
+            ],
+            "example": "DRAFT"
+          },
+          "baseVersion": {
+            "type": "number",
+            "example": 4,
+            "description": "The live career version this revision is now anchored to."
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-10-30T12:00:00.000Z"
+          },
+          "liveVersion": {
+            "type": "number",
+            "example": 4,
+            "description": "Current live career version at the time of the call."
+          },
+          "rebased": {
+            "type": "boolean",
+            "example": true,
+            "description": "True if baseVersion was moved. False if the draft was already fresh (no write, no event)."
+          }
+        },
+        "required": [
+          "id",
+          "careerId",
+          "status",
+          "baseVersion",
+          "updatedAt",
+          "liveVersion",
+          "rebased"
+        ]
+      },
+      "SnapshotCareerDto": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "example": "DevOps Engineer",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "slug": {
+            "type": "string",
+            "example": "devops-engineer",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "description": {
+            "type": "string",
+            "example": "Automates how software is built, tested and deployed.",
+            "minLength": 1,
+            "maxLength": 300
+          },
+          "roleSummary": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 2000
+          },
+          "fieldId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "targetLevels": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "STUDENT",
+                "RECENT_GRAD",
+                "EARLY_CAREER"
+              ]
+            }
+          },
+          "exampleActivities": {
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "typicalEducationNote": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 2000
+          },
+          "certificationsNote": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "title",
+          "slug",
+          "description",
+          "roleSummary",
+          "fieldId",
+          "targetLevels",
+          "exampleActivities",
+          "typicalEducationNote",
+          "certificationsNote"
+        ]
+      },
+      "SnapshotPathwayDto": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "example": "DevOps Roadmap",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "title",
+          "description"
+        ]
+      },
+      "SnapshotStepDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "new-1",
+            "description": "A live step UUID, or a temporary id for a new step."
+          },
+          "order": {
+            "type": "number",
+            "example": 1,
+            "minimum": 1
+          },
+          "title": {
+            "type": "string",
+            "example": "Learn Linux basics",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 2000
+          },
+          "learningObjective": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "prerequisites": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 2000
+          },
+          "expectedActivity": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "skillIds": {
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "resourceIds": {
+            "maxItems": 50,
+            "description": "Shared resource UUIDs, or temporary ids of draft resources.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "order",
+          "title",
+          "description",
+          "learningObjective",
+          "prerequisites",
+          "expectedActivity",
+          "skillIds",
+          "resourceIds"
+        ]
+      },
+      "SnapshotSkillDto": {
+        "type": "object",
+        "properties": {
+          "skillId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "importance": {
+            "type": "string",
+            "enum": [
+              "REQUIRED",
+              "NICE_TO_HAVE"
+            ]
+          }
+        },
+        "required": [
+          "skillId",
+          "importance"
+        ]
+      },
+      "SnapshotOutlookDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "new-1"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "SALARY",
+              "EMPLOYMENT_GROWTH",
+              "DEMAND"
+            ]
+          },
+          "geography": {
+            "type": "string",
+            "example": "Lagos, Nigeria",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "period": {
+            "type": "string",
+            "example": "2026",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "sourceId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "median": {
+            "type": "string",
+            "nullable": true,
+            "example": "65000.00"
+          },
+          "percentile25": {
+            "type": "string",
+            "nullable": true
+          },
+          "percentile75": {
+            "type": "string",
+            "nullable": true
+          },
+          "currency": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 10
+          },
+          "payPeriod": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 50
+          },
+          "grossOrNet": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 50
+          },
+          "experienceLevel": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 100
+          },
+          "baseYear": {
+            "type": "number",
+            "nullable": true
+          },
+          "baseValue": {
+            "type": "number",
+            "nullable": true
+          },
+          "projectedYear": {
+            "type": "number",
+            "nullable": true
+          },
+          "projectedValue": {
+            "type": "number",
+            "nullable": true
+          },
+          "growthPercent": {
+            "type": "string",
+            "nullable": true,
+            "example": "8.00"
+          },
+          "demandLevel": {
+            "type": "string",
+            "enum": [
+              "LOW",
+              "MEDIUM",
+              "HIGH"
+            ],
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "geography",
+          "period",
+          "sourceId",
+          "median",
+          "percentile25",
+          "percentile75",
+          "currency",
+          "payPeriod",
+          "grossOrNet",
+          "experienceLevel",
+          "baseYear",
+          "baseValue",
+          "projectedYear",
+          "projectedValue",
+          "growthPercent",
+          "demandLevel"
+        ]
+      },
+      "SnapshotResourceDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "new-1"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 2000
+          },
+          "url": {
+            "type": "string",
+            "example": "https://example.com/course"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "COURSE",
+              "CERTIFICATION",
+              "ARTICLE",
+              "VIDEO",
+              "BOOK"
+            ]
+          },
+          "provider": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "costStatus": {
+            "type": "string",
+            "enum": [
+              "FREE",
+              "PAID",
+              "UNKNOWN"
+            ]
+          },
+          "certificationCost": {
+            "type": "string",
+            "nullable": true,
+            "example": "150.00"
+          },
+          "curationRationale": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "lastCheckedDate": {
+            "type": "string",
+            "example": "2026-10-01"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "description",
+          "url",
+          "type",
+          "provider",
+          "costStatus",
+          "certificationCost",
+          "curationRationale",
+          "lastCheckedDate"
+        ]
+      },
+      "SaveDraftRevisionDto": {
+        "type": "object",
+        "properties": {
+          "schemaVersion": {
+            "type": "number",
+            "enum": [
+              1
+            ],
+            "example": 1
+          },
+          "career": {
+            "$ref": "#/components/schemas/SnapshotCareerDto"
+          },
+          "pathway": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SnapshotPathwayDto"
+              }
+            ]
+          },
+          "steps": {
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SnapshotStepDto"
+            }
+          },
+          "skills": {
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SnapshotSkillDto"
+            }
+          },
+          "outlook": {
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SnapshotOutlookDto"
+            }
+          },
+          "resources": {
+            "maxItems": 300,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SnapshotResourceDto"
+            }
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "career",
+          "pathway",
+          "steps",
+          "skills",
+          "outlook",
+          "resources"
+        ]
+      },
+      "SaveDraftRevisionResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "0b7e4a1c-3d2f-4e8a-9b6c-5f1a2d3e4c7b"
+          },
+          "careerId": {
+            "type": "string",
+            "example": "9a4c2e1f-7b3d-4c5e-8f6a-1d2b3c4e5f6a"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "IN_REVIEW",
+              "APPROVED",
+              "REJECTED",
+              "PUBLISHED"
+            ],
+            "example": "DRAFT"
+          },
+          "baseVersion": {
+            "type": "number",
+            "example": 3
+          },
+          "created": {
+            "type": "boolean",
+            "example": false,
+            "description": "true when this save opened a new draft revision."
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-10-28T17:30:00.000Z"
+          }
+        },
+        "required": [
+          "id",
+          "careerId",
+          "status",
+          "baseVersion",
+          "created",
+          "updatedAt"
         ]
       }
     }
