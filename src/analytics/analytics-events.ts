@@ -23,6 +23,11 @@ export interface AnalyticsEventMap {
   staff_invite_sent: { role: Role };
   staff_invite_revoked: { role: Role };
   career_deleted: { careerId: string };
+  revision_rebased: {
+    revisionId: string;
+    careerId: string;
+    newBaseVersion: number;
+  };
 }
 
 export type AnalyticsEventName = keyof AnalyticsEventMap;

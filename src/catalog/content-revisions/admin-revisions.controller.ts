@@ -3,7 +3,10 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  HttpStatus,
+  Post,
   UseGuards,
+  HttpCode,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -21,8 +24,9 @@ import {
 import { Role } from '../../generated/prisma/client';
 import { RevisionsService } from './content-revisions.service';
 import { ReviewerDiffResponseDto } from './dto/reviewer-diff-response.dto';
+import { RebaseRevisionResponseDto } from './dto/rebase-revision-response.dto';
 
-@ApiTags('Admin')
+@ApiTags('Admin - Revisions')
 @ApiBearerAuth()
 @Controller('admin/revisions')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -32,13 +36,11 @@ export class AdminRevisionsController {
   @ApiOperation({
     summary: 'Preview the diff for a revision',
     description: [
-      'Minimum role: REVIEWER.',
+      'REVIEWER+ can view any revision. EDITOR can view their own revisions ' +
+        '(creator-only — ADMIN does not bypass this for other people’s drafts).',
       '',
       'Returns a reviewer-shaped diff grouped by section: career fields, ' +
-        'outlook, steps, resources. Each section has `changed`, `added`, ' +
-        '`removed` and `moved` buckets. Sections with no changes are omitted.',
-      '',
-      'Read-only. The plan that backs this response is the same plan that ' +
+        'Read-only. The plan that backs this response is the same plan that ' +
         'submit, review, and publish use. Any divergence would let a reviewer ' +
         "approve something publish can't safely apply.",
       '',
@@ -104,14 +106,73 @@ export class AdminRevisionsController {
     },
   })
   @ApiResponse({ status: 401, description: 'Access token missing or invalid' })
-  @ApiResponse({ status: 403, description: 'The user is below REVIEWER' })
+  @ApiResponse({
+    status: 403,
+    description:
+      'The user is below EDITOR, or is an EDITOR who is not the revision creator',
+  })
   @ApiResponse({ status: 404, description: 'Revision not found' })
   @Get(':revisionId/diff')
-  @MinRole(Role.REVIEWER)
+  @MinRole(Role.EDITOR)
   async getDiff(
     @Param('revisionId', ParseUUIDPipe) revisionId: string,
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<ReviewerDiffResponseDto> {
-    return this.revisionsService.buildDiff(revisionId, user.id);
+    return this.revisionsService.buildDiff(revisionId, {
+      id: user.id,
+      role: user.role,
+    });
+  }
+
+  @ApiOperation({
+    summary: 'Rebase a stale draft onto the current live version',
+    description: [
+      'Minimum role: EDITOR. Creator only — ADMIN does not bypass.',
+      '',
+      'Rebase re-anchors a DRAFT revision onto the current live career version. ' +
+        "It does NOT merge: the editor's snapshot is preserved as-is, and only " +
+        '`baseVersion` is moved forward. The editor then re-checks their draft ' +
+        'against the new live state before submitting.',
+      '',
+      '**Fresh draft (baseVersion === live version):** returns 200 with ' +
+        '`rebased: false`. No write, no event.',
+      '',
+      '**Stale draft:** writes the new `baseVersion`, returns 200 with ' +
+        '`rebased: true`, emits `revision_rebased`.',
+      '',
+      '**IN_REVIEW:** 409 `INVALID_REVISION_STATE`. Recall first (ticket 12), ' +
+        'then rebase.',
+      '',
+      '**Not the creator:** 403 `NOT_REVISION_CREATOR`.',
+    ].join('\n'),
+  })
+  @ApiResponse({
+    status: 200,
+    type: RebaseRevisionResponseDto,
+    description:
+      'Draft re-anchored (rebased: true) or already fresh (rebased: false).',
+  })
+  @ApiResponse({ status: 401, description: 'Access token missing or invalid' })
+  @ApiResponse({
+    status: 403,
+    description: 'The user is below EDITOR, or is not the revision creator',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Revision (or its career) not found',
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'INVALID_REVISION_STATE (not a draft) or CAREER_RETIRED (career is retired)',
+  })
+  @Post(':revisionId/rebase')
+  @HttpCode(HttpStatus.OK)
+  @MinRole(Role.EDITOR)
+  async rebase(
+    @Param('revisionId', ParseUUIDPipe) revisionId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<RebaseRevisionResponseDto> {
+    return this.revisionsService.rebaseRevision(revisionId, user.id);
   }
 }
