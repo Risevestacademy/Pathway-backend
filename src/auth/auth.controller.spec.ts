@@ -14,6 +14,7 @@ type RefreshRequest = Parameters<AuthController['refresh']>[0];
 type LogoutRequest = Parameters<AuthController['logout']>[0];
 type GoogleRequest = Parameters<AuthController['google']>[1];
 type VerifyEmailRequest = Parameters<AuthController['verifyEmail']>[1];
+type AcceptInviteRequest = Parameters<AuthController['acceptInvite']>[2];
 
 const requestWith = (platform?: string, cookies: object = {}) => ({
   get: () => platform,
@@ -46,6 +47,8 @@ describe('AuthController', () => {
     confirmPasswordReset: jest.fn<() => Promise<void>>(),
     requestPasswordReset: jest.fn<() => Promise<void>>(),
     findCurrentUser: jest.fn<() => Promise<UserResponse>>(),
+    acceptStaffInvite:
+      jest.fn<(userId: string, token: string) => Promise<AuthResult>>(),
   };
 
   const mockConfigService = {
@@ -546,6 +549,70 @@ describe('AuthController', () => {
 
       expect(mockAuthService.confirmPasswordReset).toHaveBeenCalledWith(dto);
       expect(result).toBeUndefined();
+    });
+  });
+
+  describe('acceptInvite', () => {
+    const signedIn: AuthenticatedUser = {
+      id: mockUser.id,
+      email: mockUser.email,
+      role: 'USER',
+    };
+    const promoted: UserResponse = { ...mockUser, role: 'EDITOR' };
+
+    beforeEach(() => {
+      mockAuthService.acceptStaffInvite.mockResolvedValue({
+        user: promoted,
+        tokens: { accessToken: 'access', refreshToken: 'refresh' },
+      });
+    });
+
+    it("passes the signed-in user's id and the token, and sets the refresh cookie for web", async () => {
+      const result = await controller.acceptInvite(
+        { token: 'raw-token' },
+        signedIn,
+        requestWith() as unknown as AcceptInviteRequest,
+        mockResponse as unknown as Response,
+      );
+
+      expect(mockAuthService.acceptStaffInvite).toHaveBeenCalledWith(
+        mockUser.id,
+        'raw-token',
+      );
+      expect(mockResponse.cookie).toHaveBeenCalledWith(
+        'refreshToken',
+        'refresh',
+        expect.objectContaining({ httpOnly: true, path: cookiePath }),
+      );
+      expect(result).toEqual({ accessToken: 'access', user: promoted });
+    });
+
+    it('returns the refresh token in the body for mobile', async () => {
+      const result = await controller.acceptInvite(
+        { token: 'raw-token' },
+        signedIn,
+        requestWith('mobile') as unknown as AcceptInviteRequest,
+        mockResponse as unknown as Response,
+      );
+
+      expect(mockResponse.cookie).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        accessToken: 'access',
+        refreshToken: 'refresh',
+        user: promoted,
+      });
+    });
+
+    it('rejects an unsupported platform before touching the invite', async () => {
+      await expect(
+        controller.acceptInvite(
+          { token: 'raw-token' },
+          signedIn,
+          requestWith('desktop') as unknown as AcceptInviteRequest,
+          mockResponse as unknown as Response,
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockAuthService.acceptStaffInvite).not.toHaveBeenCalled();
     });
   });
 

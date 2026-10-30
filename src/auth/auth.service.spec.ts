@@ -18,6 +18,8 @@ import { Role } from '../generated/prisma/enums';
 import * as bcrypt from 'bcrypt';
 import { GoogleOAuthService } from './oauth/google-oauth.service';
 import { AnalyticsService } from '../analytics';
+import { TeamsService, type InviteClaim } from '../teams';
+import { DomainException } from '../common';
 
 const sha256 = (value: string) =>
   createHash('sha256').update(value).digest('hex');
@@ -30,7 +32,12 @@ describe('AuthService', () => {
     create: jest.fn<(dto: unknown) => Promise<unknown>>(),
     findById: jest.fn<(id: string) => Promise<unknown>>(),
     updatePasswordHash: jest.fn<(...args: unknown[]) => Promise<void>>(),
+    updateRole: jest.fn<(...args: unknown[]) => Promise<unknown>>(),
     toUserResponse: jest.fn(UsersService.prototype.toUserResponse),
+  };
+
+  const mockTeamsService = {
+    claimInvite: jest.fn<(...args: unknown[]) => Promise<InviteClaim>>(),
   };
 
   const mockGoogleOAuthService = {
@@ -144,10 +151,173 @@ describe('AuthService', () => {
         { provide: NotificationService, useValue: mockNotificationService },
         { provide: GoogleOAuthService, useValue: mockGoogleOAuthService },
         { provide: AnalyticsService, useValue: mockAnalyticsService },
+        { provide: TeamsService, useValue: mockTeamsService },
       ],
     }).compile();
 
     service = module.get<AuthService>(AuthService);
+  });
+
+  describe('acceptStaffInvite', () => {
+    const staffUser = {
+      id: 'user-1',
+      email: 'ada@example.com',
+      role: Role.USER,
+      emailVerifiedAt: createdAt,
+      createdAt,
+      updatedAt: createdAt,
+      profile: { fullName: 'Ada Obi' },
+    };
+    let logSpy: jest.SpiedFunction<Logger['log']>;
+    let warnSpy: jest.SpiedFunction<Logger['warn']>;
+
+    beforeEach(() => {
+      mockUsersService.findById.mockResolvedValue(staffUser);
+      mockUsersService.updateRole.mockResolvedValue({
+        ...staffUser,
+        role: Role.EDITOR,
+      });
+      mockTeamsService.claimInvite.mockResolvedValue({
+        claimed: true,
+        inviteId: 'invite-1',
+        role: Role.EDITOR,
+      });
+      logSpy = jest
+        .spyOn(Logger.prototype, 'log')
+        .mockImplementation(() => undefined);
+      warnSpy = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      logSpy.mockRestore();
+      warnSpy.mockRestore();
+    });
+
+    it('claims the invite, promotes the user, revokes old sessions and issues tokens in one transaction', async () => {
+      const result = await service.acceptStaffInvite('user-1', 'raw-token');
+
+      expect(mockPrismaService.$transaction).toHaveBeenCalledTimes(1);
+      expect(mockTeamsService.claimInvite).toHaveBeenCalledWith(
+        'raw-token',
+        staffUser,
+        mockPrismaService,
+      );
+      expect(mockUsersService.updateRole).toHaveBeenCalledWith(
+        'user-1',
+        Role.EDITOR,
+        mockPrismaService,
+      );
+      expect(mockPrismaService.refreshToken.updateMany).toHaveBeenCalledWith({
+        where: { userId: 'user-1', revokedAt: null },
+        data: { revokedAt: expect.any(Date) as Date },
+      });
+      expect(
+        mockPrismaService.refreshToken.updateMany.mock.invocationCallOrder[0],
+      ).toBeLessThan(
+        mockPrismaService.refreshToken.create.mock.invocationCallOrder[0],
+      );
+      expect(result).toEqual({
+        user: {
+          id: 'user-1',
+          email: 'ada@example.com',
+          role: Role.EDITOR,
+          fullName: 'Ada Obi',
+          emailVerified: true,
+          createdAt,
+        },
+        tokens: { accessToken: 'mock-token', refreshToken: 'mock-token' },
+      });
+    });
+
+    it('signs the new access token with the new role', async () => {
+      await service.acceptStaffInvite('user-1', 'raw-token');
+
+      expect(mockJwtService.signAsync).toHaveBeenCalledWith(
+        { sub: 'user-1', email: 'ada@example.com', role: Role.EDITOR },
+        expect.anything(),
+      );
+    });
+
+    it('logs ids and the role, and emits staff_invite_accepted after the transaction', async () => {
+      await service.acceptStaffInvite('user-1', 'raw-token');
+
+      expect(logSpy).toHaveBeenCalledWith(
+        { userId: 'user-1', inviteId: 'invite-1', role: Role.EDITOR },
+        'Staff invite accepted',
+      );
+      expect(mockAnalyticsService.capture).toHaveBeenCalledWith(
+        'staff_invite_accepted',
+        'user-1',
+        { role: Role.EDITOR },
+      );
+      expect(capturesInsideTransaction).toBe(0);
+    });
+
+    it.each([
+      ['INVITE_NOT_FOUND', 404],
+      ['INVITE_EXPIRED', 410],
+      ['INVITE_ALREADY_ACCEPTED', 409],
+      ['INVITE_EMAIL_MISMATCH', 403],
+      ['EMAIL_NOT_VERIFIED', 403],
+    ] as const)(
+      'rejects %s with %i and changes nothing',
+      async (reason, status) => {
+        mockTeamsService.claimInvite.mockResolvedValue({
+          claimed: false,
+          reason,
+        });
+
+        const error = await service
+          .acceptStaffInvite('user-1', 'raw-token')
+          .catch((e: unknown) => e);
+
+        expect(error).toBeInstanceOf(DomainException);
+        expect(error).toMatchObject({ code: reason });
+        expect((error as DomainException).getStatus()).toBe(status);
+        expect(mockUsersService.updateRole).not.toHaveBeenCalled();
+        expect(
+          mockPrismaService.refreshToken.updateMany,
+        ).not.toHaveBeenCalled();
+        expect(mockPrismaService.refreshToken.create).not.toHaveBeenCalled();
+        expect(mockAnalyticsService.capture).not.toHaveBeenCalled();
+        expect(warnSpy).toHaveBeenCalledWith(
+          { userId: 'user-1', reason },
+          'Staff invite acceptance failed',
+        );
+      },
+    );
+
+    it('never logs the token or the email', async () => {
+      mockTeamsService.claimInvite.mockResolvedValue({
+        claimed: false,
+        reason: 'INVITE_EMAIL_MISMATCH',
+      });
+      await service.acceptStaffInvite('user-1', 'raw-token').catch(() => {});
+      mockTeamsService.claimInvite.mockResolvedValue({
+        claimed: true,
+        inviteId: 'invite-1',
+        role: Role.EDITOR,
+      });
+      await service.acceptStaffInvite('user-1', 'raw-token');
+
+      const logged = JSON.stringify([
+        ...logSpy.mock.calls,
+        ...warnSpy.mock.calls,
+      ]);
+      expect(logged).not.toContain('raw-token');
+      expect(logged).not.toContain('ada@example.com');
+    });
+
+    it('throws UnauthorizedException when the user no longer exists', async () => {
+      mockUsersService.findById.mockRejectedValue(new NotFoundException());
+
+      await expect(
+        service.acceptStaffInvite('user-1', 'raw-token'),
+      ).rejects.toThrow(UnauthorizedException);
+      expect(mockTeamsService.claimInvite).not.toHaveBeenCalled();
+    });
   });
 
   describe('register', () => {
