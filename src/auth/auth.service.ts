@@ -2,6 +2,7 @@ import {
   Injectable,
   BadRequestException,
   ConflictException,
+  HttpStatus,
   NotFoundException,
   UnauthorizedException,
   Logger,
@@ -27,8 +28,33 @@ import { GoogleOAuthService } from './oauth/google-oauth.service';
 import { AnalyticsService } from '../analytics';
 import { RequestPasswordResetOtpDto } from './dto/request-password-reset-otp.dto';
 import { ConfirmPasswordResetOtpDto } from './dto/confirm-password-reset-otp.dto';
+import { TeamsService, type InviteClaimFailure } from '../teams';
+import { DomainException } from '../common';
 
 type PrismaTransactionClient = Pick<PrismaService, 'refreshToken'>;
+
+const INVITE_FAILURES: Record<
+  InviteClaimFailure,
+  { status: HttpStatus; message: string }
+> = {
+  INVITE_NOT_FOUND: {
+    status: HttpStatus.NOT_FOUND,
+    message: 'Invite not found',
+  },
+  INVITE_EXPIRED: { status: HttpStatus.GONE, message: 'Invite has expired' },
+  INVITE_ALREADY_ACCEPTED: {
+    status: HttpStatus.CONFLICT,
+    message: 'Invite has already been accepted',
+  },
+  INVITE_EMAIL_MISMATCH: {
+    status: HttpStatus.FORBIDDEN,
+    message: 'This invite was sent to a different email',
+  },
+  EMAIL_NOT_VERIFIED: {
+    status: HttpStatus.FORBIDDEN,
+    message: 'Verify your email before accepting an invite',
+  },
+};
 
 type EmailVerificationFailure =
   'UNKNOWN_OR_VERIFIED_EMAIL' | 'OTP_EXPIRED_OR_LOCKED' | 'INVALID_OTP';
@@ -94,6 +120,7 @@ export class AuthService {
     private readonly notificationService: NotificationService,
     private readonly googleOAuthService: GoogleOAuthService,
     private readonly analytics: AnalyticsService,
+    private readonly teamsService: TeamsService,
   ) {}
 
   // Register a new user
@@ -237,6 +264,61 @@ export class AuthService {
 
       return this.issueTokens(user, tx);
     });
+  }
+
+  async acceptStaffInvite(userId: string, token: string): Promise<AuthResult> {
+    const user = await this.usersService
+      .findById(userId)
+      .catch((error: unknown) => {
+        if (error instanceof NotFoundException) return null;
+
+        throw error;
+      });
+
+    if (!user) throw new UnauthorizedException();
+
+    // Failures are returned, so the caller throws after the transaction
+    const outcome = await this.prisma.$transaction(async (tx) => {
+      const claim = await this.teamsService.claimInvite(token, user, tx);
+      if (!claim.claimed) return claim;
+
+      const promoted = await this.usersService.updateRole(
+        user.id,
+        claim.role,
+        tx,
+      );
+
+      await tx.refreshToken.updateMany({
+        where: { userId: user.id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+
+      const tokens = await this.issueTokens(promoted, tx);
+
+      return {
+        claimed: true as const,
+        inviteId: claim.inviteId,
+        result: { user: this.usersService.toUserResponse(promoted), tokens },
+      };
+    });
+
+    if (!outcome.claimed) {
+      const { status, message } = INVITE_FAILURES[outcome.reason];
+      this.logger.warn(
+        { userId, reason: outcome.reason },
+        'Staff invite acceptance failed',
+      );
+      throw new DomainException(status, outcome.reason, message);
+    }
+
+    const { role } = outcome.result.user;
+    this.logger.log(
+      { userId, inviteId: outcome.inviteId, role },
+      'Staff invite accepted',
+    );
+    this.analytics.capture('staff_invite_accepted', userId, { role });
+
+    return outcome.result;
   }
 
   private async decodeRefreshToken(

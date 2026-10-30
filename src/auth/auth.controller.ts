@@ -12,7 +12,12 @@ import {
 import { type Request, type Response } from 'express';
 import ms, { type StringValue } from 'ms';
 import { ConfigService } from '@nestjs/config';
-import { ApiHeader, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiHeader,
+  ApiOperation,
+  ApiResponse,
+} from '@nestjs/swagger';
 
 import { AuthService } from './auth.service';
 import {
@@ -29,6 +34,7 @@ import {
   RegisterResponseDto,
   RequestPasswordResetOtpDto,
   ConfirmPasswordResetOtpDto,
+  AcceptInviteDto,
 } from './dto';
 import { UserResponseDto } from '../users';
 import {
@@ -385,6 +391,74 @@ export class AuthController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<UserResponseDto> {
     return this.authService.findCurrentUser(user.id);
+  }
+
+  @ApiOperation({
+    summary: 'Accept a staff invite',
+    description:
+      "Requires an access token. The invite token must belong to an invite sent to the signed-in user's email, and that email must be verified. Sets the user's role to the invite's role, revokes their existing refresh tokens and returns a fresh token pair, so the new role applies immediately. Unknown and revoked tokens both return 404.",
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Invite accepted. Returns the updated user and an access token (and for mobile, a refresh token), or sets a refresh token cookie for web clients.',
+    type: AuthResponseDto,
+    headers: {
+      'Set-Cookie': {
+        description: 'HttpOnly refresh token cookie for web clients',
+        schema: {
+          type: 'string',
+          example:
+            'refreshToken=eyJhbGciOiJIUzI1Ni...; Path=/api/v1/auth; HttpOnly; SameSite=Lax',
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'The body failed validation, or the X-Client-Platform value is unsupported',
+  })
+  @ApiResponse({ status: 401, description: 'Access token missing or invalid' })
+  @ApiResponse({
+    status: 403,
+    description:
+      "The invite was sent to a different email (FORBIDDEN, code INVITE_EMAIL_MISMATCH), or the user's email isn't verified (FORBIDDEN, code EMAIL_NOT_VERIFIED)",
+  })
+  @ApiResponse({
+    status: 404,
+    description:
+      'The token matches no invite, or the invite was revoked (NOT_FOUND, code INVITE_NOT_FOUND)',
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'The invite has already been accepted (CONFLICT, code INVITE_ALREADY_ACCEPTED)',
+  })
+  @ApiResponse({
+    status: 410,
+    description: 'The invite has expired (GONE, code INVITE_EXPIRED)',
+  })
+  @ApiHeader(CLIENT_PLATFORM_API_HEADER)
+  @ApiBearerAuth()
+  @AuthThrottle()
+  @UseGuards(JwtAuthGuard)
+  @Post('invites/accept')
+  @HttpCode(200)
+  async acceptInvite(
+    @Body() dto: AcceptInviteDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const platform = resolveClientPlatform(request);
+
+    const { user: updated, tokens } = await this.authService.acceptStaffInvite(
+      user.id,
+      dto.token,
+    );
+
+    return this.deliverTokens(response, platform, tokens, updated);
   }
 
   private deliverTokens(
