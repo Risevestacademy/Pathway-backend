@@ -26,7 +26,7 @@ import { RevisionsService } from './content-revisions.service';
 import { ReviewerDiffResponseDto } from './dto/reviewer-diff-response.dto';
 import { RebaseRevisionResponseDto } from './dto/rebase-revision-response.dto';
 
-@ApiTags('Admin')
+@ApiTags('Admin - Revisions')
 @ApiBearerAuth()
 @Controller('admin/revisions')
 @UseGuards(JwtAuthGuard, RolesGuard)

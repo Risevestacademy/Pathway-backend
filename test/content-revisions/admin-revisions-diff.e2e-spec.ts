@@ -25,6 +25,8 @@ describe('Admin revisions — diff (e2e)', () => {
   const marker = `e2e-diff-${Date.now()}`;
   const tokens = {} as Record<Role, string>;
 
+  let editorId: string;
+  let editor2Token: string;
   let fieldId: string;
   let careerId: string;
   let revisionId: string;
@@ -47,7 +49,7 @@ describe('Admin revisions — diff (e2e)', () => {
     await app.init();
     wireNotificationMock();
 
-    for (const role of [Role.USER, Role.REVIEWER, Role.ADMIN]) {
+    for (const role of [Role.USER, Role.EDITOR, Role.REVIEWER, Role.ADMIN]) {
       const email = `${marker}-${role.toLowerCase()}@test.com`;
       const registered = await registerAndVerify(app, apiPrefix, {
         email,
@@ -63,7 +65,24 @@ describe('Admin revisions — diff (e2e)', () => {
         .send({ email, password: 'Password123!' })
         .expect(200);
       tokens[role] = (login.body as { accessToken: string }).accessToken;
+      if (role === Role.EDITOR) editorId = registered.id;
     }
+
+    const editor2Email = `${marker}-editor2@test.com`;
+    const editor2 = await registerAndVerify(app, apiPrefix, {
+      email: editor2Email,
+      password: 'Password123!',
+    });
+    userIds.push(editor2.id);
+    await prisma.user.update({
+      where: { id: editor2.id },
+      data: { role: Role.EDITOR },
+    });
+    const editor2Login = await request(app.getHttpServer())
+      .post(`${apiPrefix}/auth/login`)
+      .send({ email: editor2Email, password: 'Password123!' })
+      .expect(200);
+    editor2Token = (editor2Login.body as { accessToken: string }).accessToken;
 
     const field = await prisma.field.create({
       data: { name: `Field ${marker}`, slug: `field-${marker}` },
@@ -142,7 +161,7 @@ describe('Admin revisions — diff (e2e)', () => {
         careerId,
         baseVersion: 3,
         snapshot: snapshot as unknown as object,
-        createdById: userIds[0],
+        createdById: editorId,
       },
     });
     revisionId = revision.id;
@@ -156,6 +175,7 @@ describe('Admin revisions — diff (e2e)', () => {
     await prisma.user.deleteMany({ where: { id: { in: userIds } } });
     await app.close();
   });
+
   const getDiff = (token = tokens[Role.REVIEWER]) =>
     request(app.getHttpServer())
       .get(`${apiPrefix}/admin/revisions/${revisionId}/diff`)
@@ -164,34 +184,28 @@ describe('Admin revisions — diff (e2e)', () => {
   it('returns a reviewer-shaped diff grouped by section', async () => {
     const response = await getDiff().expect(200);
 
-    // ── Revision metadata ─────────────────────────────────────────────
     expect(response.body.revisionId).toBe(revisionId);
     expect(response.body.title).toContain('Career');
     expect(typeof response.body.submittedBy).toBe('string');
     expect(response.body.submittedAt).toMatch(/ago|Just now/);
 
-    // ── Plan metadata (still at the top level) ────────────────────────
     expect(response.body.baseVersion).toBe(3);
     expect(response.body.liveVersion).toBe(3);
     expect(response.body.stale).toBe(false);
     expect(response.body.blockers).toEqual([]);
     expect(response.body.advisories).toEqual([]);
 
-    // ── Sections (grouped, not flat operations) ───────────────────────
     expect(response.body.sections).toBeDefined();
-    expect(Array.isArray(response.body.sections)).toBe(true); // Ensure it's an array now
+    expect(Array.isArray(response.body.sections)).toBe(true);
 
-    // Find the career section in the array
     const careerSection = response.body.sections.find(
       (s: { section: string }) => s.section === 'career',
     );
     expect(careerSection).toBeDefined();
 
-    // The title was changed in the fixture → one entry in career.changed
     const titleChange = careerSection.changed.find(
       (c: { field: string }) => c.field === 'title',
     );
-
     expect(titleChange).toEqual({
       field: 'title',
       label: 'Title',
@@ -199,16 +213,29 @@ describe('Admin revisions — diff (e2e)', () => {
       after: `Career ${marker} (revised)`,
     });
 
-    // Empty sections are stripped, so unchanged areas don't appear
     const outlookSection = response.body.sections.find(
       (s: { section: string }) => s.section === 'outlook',
     );
     expect(outlookSection).toBeUndefined();
 
-    // No secrets or internal identifiers leaked in the payload
     const body = JSON.stringify(response.body);
     expect(body).not.toMatch(/[0-9a-f]{64}/);
     expect(body).not.toContain('tokenHash');
+  });
+
+  it('allows the creator (EDITOR) to view their own diff', async () => {
+    const response = await getDiff(tokens[Role.EDITOR]).expect(200);
+    expect(response.body.revisionId).toBe(revisionId);
+    expect(response.body.sections).toBeDefined();
+  });
+
+  it('403 DIFF_FORBIDDEN for an EDITOR who is not the creator', async () => {
+    const response = await getDiff(editor2Token).expect(403);
+    expect(response.body.code).toBe('DIFF_FORBIDDEN');
+  });
+
+  it('still allows a REVIEWER who is not the creator', async () => {
+    await getDiff(tokens[Role.REVIEWER]).expect(200);
   });
 
   it('returns 401 without a token', async () => {
