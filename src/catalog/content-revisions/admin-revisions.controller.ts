@@ -8,6 +8,7 @@ import {
   UseGuards,
   HttpCode,
   Body,
+  Delete,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -29,6 +30,7 @@ import { RebaseRevisionResponseDto } from './dto/rebase-revision-response.dto';
 import { ReviewRevisionResponseDto } from './dto/review-revision-response.dto';
 import { ReviewRevisionDto } from './dto/review-revision.dto';
 import { RecallRevisionResponseDto } from './dto/recall-revision-response.dto';
+import { DeleteRevisionResponseDto } from './dto/delete-revision-response.dto';
 
 @ApiTags('Admin - Revisions')
 @ApiBearerAuth()
@@ -259,5 +261,28 @@ export class AdminRevisionsController {
       id: user.id,
       role: user.role,
     });
+  }
+
+  @ApiOperation({
+    summary: 'Delete a draft revision',
+    description:
+      'Minimum role: EDITOR. Discards a DRAFT revision. The career is left in place, including a never-published one; deleting a career is a separate admin action. A revision that is in review or already decided cannot be deleted: 409 INVALID_REVISION_STATE.',
+  })
+  @ApiResponse({ status: 200, type: DeleteRevisionResponseDto })
+  @ApiResponse({ status: 400, description: 'id is not a UUID' })
+  @ApiResponse({ status: 401, description: 'Access token missing or invalid' })
+  @ApiResponse({ status: 403, description: 'The user is below EDITOR' })
+  @ApiResponse({ status: 404, description: 'Revision not found' })
+  @ApiResponse({
+    status: 409,
+    description: 'The revision is not a draft (INVALID_REVISION_STATE)',
+  })
+  @Delete(':revisionId')
+  @MinRole(Role.EDITOR)
+  async deleteRevision(
+    @Param('revisionId', ParseUUIDPipe) revisionId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<DeleteRevisionResponseDto> {
+    return this.revisionsService.deleteDraftRevision(revisionId, user.id);
   }
 }
