@@ -7,6 +7,7 @@ import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { UsersModule } from '../users';
 import { NotificationsModule } from '../notifications';
+import { TeamsModule } from '../teams';
 import { GoogleOAuthService } from './oauth/google-oauth.service';
 import { StringValue } from 'ms';
 
@@ -30,6 +31,7 @@ import { StringValue } from 'ms';
 
     UsersModule,
     NotificationsModule,
+    TeamsModule,
   ],
 
   controllers: [AuthController],

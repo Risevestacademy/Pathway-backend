@@ -39,7 +39,11 @@ describe('TeamsService', () => {
     staffInvite: {
       findMany: jest.fn<(args: unknown) => Promise<InviteRow[]>>(),
       count: jest.fn<(args: unknown) => Promise<number>>(),
-      findUnique: jest.fn<(args: unknown) => Promise<InviteState | null>>(),
+      findUnique:
+        jest.fn<
+          (args: unknown) => Promise<(InviteState & Partial<InviteRow>) | null>
+        >(),
+      updateMany: jest.fn<(args: unknown) => Promise<{ count: number }>>(),
       update:
         jest.fn<(args: unknown) => Promise<{ role: InviteRow['role'] }>>(),
       create: jest.fn<(args: unknown) => Promise<InviteRow>>(),
@@ -151,6 +155,134 @@ describe('TeamsService', () => {
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  describe('claimInvite', () => {
+    const verified = { email: 'new.editor@example.com', emailVerifiedAt: now };
+    const pending = () => {
+      const { id, email, role, expiresAt, acceptedAt, revokedAt } = row();
+      return { id, email, role, expiresAt, acceptedAt, revokedAt };
+    };
+
+    beforeEach(() => {
+      mockPrismaService.staffInvite.findUnique.mockResolvedValue(pending());
+      mockPrismaService.staffInvite.updateMany.mockResolvedValue({ count: 1 });
+    });
+
+    it('looks the invite up by the SHA-256 hash of the token', async () => {
+      await service.claimInvite('raw-token', verified);
+
+      expect(mockPrismaService.staffInvite.findUnique).toHaveBeenCalledWith({
+        where: { tokenHash: sha256('raw-token') },
+        select: {
+          id: true,
+          email: true,
+          role: true,
+          expiresAt: true,
+          acceptedAt: true,
+          revokedAt: true,
+        },
+      });
+    });
+
+    it('accepts a pending invite with a conditional update and returns its role', async () => {
+      const result = await service.claimInvite('raw-token', verified);
+
+      expect(mockPrismaService.staffInvite.updateMany).toHaveBeenCalledWith({
+        where: { id: 'invite-1', acceptedAt: null, revokedAt: null },
+        data: { acceptedAt: now },
+      });
+      expect(result).toEqual({
+        claimed: true,
+        inviteId: 'invite-1',
+        role: Role.EDITOR,
+      });
+    });
+
+    it('matches the email ignoring case', async () => {
+      const result = await service.claimInvite('raw-token', {
+        ...verified,
+        email: 'New.Editor@Example.com',
+      });
+
+      expect(result.claimed).toBe(true);
+    });
+
+    it.each([
+      ['an unknown token', null, verified, 'INVITE_NOT_FOUND'],
+      [
+        'a revoked invite',
+        { revokedAt: earlier },
+        verified,
+        'INVITE_NOT_FOUND',
+      ],
+      ['an expired invite', { expiresAt: earlier }, verified, 'INVITE_EXPIRED'],
+      [
+        'an expired invite that was accepted',
+        { expiresAt: earlier, acceptedAt: earlier },
+        verified,
+        'INVITE_EXPIRED',
+      ],
+      [
+        'an accepted invite',
+        { acceptedAt: earlier },
+        verified,
+        'INVITE_ALREADY_ACCEPTED',
+      ],
+      [
+        'another email, even when unverified',
+        {},
+        { email: 'someone@example.com', emailVerifiedAt: null },
+        'INVITE_EMAIL_MISMATCH',
+      ],
+      [
+        'an unverified email',
+        {},
+        { ...verified, emailVerifiedAt: null },
+        'EMAIL_NOT_VERIFIED',
+      ],
+    ] as const)(
+      'rejects %s in check order and writes nothing',
+      async (_label, overrides, claimant, reason) => {
+        mockPrismaService.staffInvite.findUnique.mockResolvedValue(
+          overrides && { ...pending(), ...overrides },
+        );
+
+        const result = await service.claimInvite('raw-token', claimant);
+
+        expect(result).toEqual({ claimed: false, reason });
+        expect(mockPrismaService.staffInvite.updateMany).not.toHaveBeenCalled();
+      },
+    );
+
+    it('reports a lost race as already accepted', async () => {
+      mockPrismaService.staffInvite.updateMany.mockResolvedValue({ count: 0 });
+
+      const result = await service.claimInvite('raw-token', verified);
+
+      expect(result).toEqual({
+        claimed: false,
+        reason: 'INVITE_ALREADY_ACCEPTED',
+      });
+    });
+
+    it('uses the client it is given so callers can run it in a transaction', async () => {
+      const tx = {
+        staffInvite: {
+          findUnique: jest
+            .fn<(args: unknown) => Promise<unknown>>()
+            .mockResolvedValue(pending()),
+          updateMany: jest
+            .fn<(args: unknown) => Promise<{ count: number }>>()
+            .mockResolvedValue({ count: 1 }),
+        },
+      } as unknown as Pick<PrismaService, 'staffInvite'>;
+
+      await service.claimInvite('raw-token', verified, tx);
+
+      expect(mockPrismaService.staffInvite.findUnique).not.toHaveBeenCalled();
+      expect(mockPrismaService.staffInvite.updateMany).not.toHaveBeenCalled();
+    });
   });
 
   describe('getInvites', () => {

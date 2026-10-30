@@ -291,4 +291,38 @@ describe('UsersService', () => {
       expect(update).not.toHaveBeenCalled();
     });
   });
+
+  describe('updateRole', () => {
+    it('updates only the role and returns the public user', async () => {
+      update.mockResolvedValue({ ...publicUser, role: Role.EDITOR });
+
+      const result = await service.updateRole('user-1', Role.EDITOR);
+
+      expect(update).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        data: { role: Role.EDITOR },
+        select: expect.objectContaining({
+          id: true,
+          email: true,
+          role: true,
+          emailVerifiedAt: true,
+        }) as object,
+      });
+      expect(result).toEqual({ ...publicUser, role: Role.EDITOR });
+    });
+
+    it('uses the client it is given so callers can run it in a transaction', async () => {
+      const txUpdate = jest.fn<() => Promise<unknown>>();
+      txUpdate.mockResolvedValue(publicUser);
+      const tx = { user: { update: txUpdate } } as unknown as Pick<
+        PrismaService,
+        'user'
+      >;
+
+      await service.updateRole('user-1', Role.EDITOR, tx);
+
+      expect(txUpdate).toHaveBeenCalled();
+      expect(update).not.toHaveBeenCalled();
+    });
+  });
 });

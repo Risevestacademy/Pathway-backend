@@ -154,6 +154,21 @@ describe('HttpExceptionFilter', () => {
     );
   });
 
+  it('should map 410 to GONE', () => {
+    filter.catch(
+      new DomainException(HttpStatus.GONE, 'INVITE_EXPIRED', 'Invite expired'),
+      mockHost,
+    );
+
+    expect(mockResponse.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        statusCode: 410,
+        error: 'GONE',
+        code: 'INVITE_EXPIRED',
+      }),
+    );
+  });
+
   it('should not add a code to other HTTP exceptions', () => {
     filter.catch(new NotFoundException('User not found'), mockHost);
 

@@ -57,6 +57,19 @@ type InviteState = {
   revokedAt: Date | null;
 };
 
+type InviteClient = Pick<PrismaService, 'staffInvite'>;
+
+export type InviteClaimFailure =
+  | 'INVITE_NOT_FOUND'
+  | 'INVITE_EXPIRED'
+  | 'INVITE_ALREADY_ACCEPTED'
+  | 'INVITE_EMAIL_MISMATCH'
+  | 'EMAIL_NOT_VERIFIED';
+
+export type InviteClaim =
+  | { claimed: true; inviteId: string; role: Role }
+  | { claimed: false; reason: InviteClaimFailure };
+
 @Injectable()
 export class TeamsService {
   private readonly logger = new Logger(TeamsService.name);
@@ -133,6 +146,49 @@ export class TeamsService {
               'Invite created, but the email could not be sent. Re-invite to retry.',
           }),
     };
+  }
+
+  async claimInvite(
+    token: string,
+    claimant: { email: string; emailVerifiedAt: Date | null },
+    client: InviteClient = this.prisma,
+  ): Promise<InviteClaim> {
+    const now = new Date();
+    const invite = await client.staffInvite.findUnique({
+      where: { tokenHash: hashToken(token) },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        expiresAt: true,
+        acceptedAt: true,
+        revokedAt: true,
+      },
+    });
+
+    if (!invite || invite.revokedAt)
+      return { claimed: false, reason: 'INVITE_NOT_FOUND' };
+
+    if (invite.expiresAt < now)
+      return { claimed: false, reason: 'INVITE_EXPIRED' };
+
+    if (invite.acceptedAt)
+      return { claimed: false, reason: 'INVITE_ALREADY_ACCEPTED' };
+
+    if (invite.email !== claimant.email.toLowerCase())
+      return { claimed: false, reason: 'INVITE_EMAIL_MISMATCH' };
+
+    if (!claimant.emailVerifiedAt)
+      return { claimed: false, reason: 'EMAIL_NOT_VERIFIED' };
+
+    const accepted = await client.staffInvite.updateMany({
+      where: { id: invite.id, acceptedAt: null, revokedAt: null },
+      data: { acceptedAt: now },
+    });
+    if (accepted.count === 0)
+      return { claimed: false, reason: 'INVITE_ALREADY_ACCEPTED' };
+
+    return { claimed: true, inviteId: invite.id, role: invite.role };
   }
 
   private async sendInviteEmail(

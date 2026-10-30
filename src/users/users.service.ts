@@ -130,4 +130,16 @@ export class UsersService {
       data: { passwordHash },
     });
   }
+
+  async updateRole(
+    id: string,
+    role: Role,
+    client: UserClient = this.prisma,
+  ): Promise<PublicUser> {
+    return client.user.update({
+      where: { id },
+      data: { role },
+      select: publicUserSelect,
+    });
+  }
 }

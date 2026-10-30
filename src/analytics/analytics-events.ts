@@ -22,6 +22,7 @@ export interface AnalyticsEventMap {
   };
   staff_invite_sent: { role: Role };
   staff_invite_revoked: { role: Role };
+  staff_invite_accepted: { role: Role };
   career_deleted: { careerId: string };
   revision_rebased: {
     revisionId: string;
