@@ -4,6 +4,7 @@ import {
   type CareerSnapshotStep,
   isTempId,
 } from './career-snapshot.types';
+import { isRevisionStale } from './revision.rules';
 
 // ─────────────────────────────────────────────────────────────────────
 // Plan types
@@ -191,7 +192,7 @@ export function buildPlan({
   return {
     baseVersion,
     liveVersion: liveCareer.version,
-    stale: baseVersion !== liveCareer.version,
+    stale: isRevisionStale(baseVersion, liveCareer.version),
     operations,
     blockers,
     counts: computeCounts(operations, blockers),

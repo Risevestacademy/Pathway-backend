@@ -12,6 +12,7 @@ import { PrismaService } from '../../prisma';
 import { DomainException, ROLE_RANK } from '../../common';
 import {
   CareerStatus,
+  ReviewDecision,
   RevisionStatus,
   Role,
 } from '../../generated/prisma/client';
@@ -26,12 +27,8 @@ describe('RevisionsService', () => {
   let warnSpy: jest.SpiedFunction<Logger['warn']>;
 
   const tx = {
-    $queryRaw:
-      jest.fn<
-        (
-          ...args: unknown[]
-        ) => Promise<{ version: number; status: CareerStatus }[]>
-      >(),
+    $queryRaw: jest.fn<(...args: unknown[]) => Promise<unknown[]>>(),
+    review: { create: jest.fn<(args: unknown) => Promise<unknown>>() },
     contentRevision: {
       findFirst:
         jest.fn<
@@ -560,6 +557,255 @@ describe('RevisionsService', () => {
         service.rebaseRevision('revision-1', 'editor-1'),
       ).rejects.toMatchObject({ code: 'CAREER_RETIRED' });
       expect(tx.contentRevision.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('reviewRevision', () => {
+    const reviewer = { id: 'reviewer-1', role: Role.REVIEWER };
+    const reviewedAt = new Date('2026-10-30T10:00:00.000Z');
+
+    const revisionRow = (
+      overrides: Partial<{
+        status: RevisionStatus;
+        baseVersion: number;
+        createdById: string;
+      }> = {},
+    ) => ({
+      id: 'revision-1',
+      careerId: 'career-1',
+      status: RevisionStatus.IN_REVIEW,
+      baseVersion: 3,
+      createdById: 'editor-1',
+      ...overrides,
+    });
+
+    // Mirrors the service's lock order: peek, career row, revision row.
+    const setRows = (
+      revision: ReturnType<typeof revisionRow>,
+      liveVersion = 3,
+    ) => {
+      tx.contentRevision.findUnique.mockResolvedValue({
+        careerId: revision.careerId,
+      });
+      tx.$queryRaw
+        .mockResolvedValueOnce([{ version: liveVersion }])
+        .mockResolvedValueOnce([revision]);
+    };
+
+    const expectNoWrites = () => {
+      expect(tx.review.create).not.toHaveBeenCalled();
+      expect(tx.contentRevision.update).not.toHaveBeenCalled();
+      expect(analytics.capture).not.toHaveBeenCalled();
+    };
+
+    const failure = (promise: Promise<unknown>) =>
+      promise.catch((e: unknown) => e) as Promise<DomainException>;
+
+    beforeEach(() => {
+      tx.$queryRaw.mockReset();
+      tx.review.create.mockImplementation(async (args) => {
+        const { data } = args as {
+          data: {
+            revisionId: string;
+            decision: ReviewDecision;
+            note: string | null;
+          };
+        };
+        return {
+          id: 'review-1',
+          revisionId: data.revisionId,
+          decision: data.decision,
+          note: data.note,
+          createdAt: reviewedAt,
+        };
+      });
+      tx.contentRevision.update.mockImplementation(async (args) => {
+        const { data } = args as { data: { status: RevisionStatus } };
+        return { careerId: 'career-1', status: data.status };
+      });
+    });
+
+    it('approves a fresh revision: writes the review, then sets APPROVED and nothing else', async () => {
+      setRows(revisionRow());
+
+      const result = await service.reviewRevision('revision-1', reviewer, {
+        decision: ReviewDecision.APPROVED,
+        note: 'Looks good',
+      });
+
+      expect(tx.review.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: {
+            revisionId: 'revision-1',
+            reviewerId: 'reviewer-1',
+            decision: ReviewDecision.APPROVED,
+            note: 'Looks good',
+          },
+        }),
+      );
+      expect(tx.contentRevision.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'revision-1' },
+          data: { status: RevisionStatus.APPROVED },
+        }),
+      );
+      expect(tx.review.create.mock.invocationCallOrder[0]).toBeLessThan(
+        tx.contentRevision.update.mock.invocationCallOrder[0],
+      );
+      expect(result).toEqual({
+        id: 'review-1',
+        revisionId: 'revision-1',
+        decision: ReviewDecision.APPROVED,
+        note: 'Looks good',
+        revisionStatus: RevisionStatus.APPROVED,
+        createdAt: reviewedAt,
+      });
+    });
+
+    it('logs without the note and emits revision_reviewed after the write', async () => {
+      setRows(revisionRow());
+
+      await service.reviewRevision('revision-1', reviewer, {
+        decision: ReviewDecision.APPROVED,
+        note: 'Looks good',
+      });
+
+      expect(logSpy).toHaveBeenCalledWith(
+        {
+          revisionId: 'revision-1',
+          decision: ReviewDecision.APPROVED,
+          reviewerId: 'reviewer-1',
+        },
+        'Revision reviewed',
+      );
+      expect(JSON.stringify(logSpy.mock.calls)).not.toContain('Looks good');
+      expect(analytics.capture).toHaveBeenCalledWith(
+        'revision_reviewed',
+        'reviewer-1',
+        {
+          revisionId: 'revision-1',
+          careerId: 'career-1',
+          decision: ReviewDecision.APPROVED,
+        },
+      );
+      expect(analytics.capture.mock.invocationCallOrder[0]).toBeGreaterThan(
+        tx.contentRevision.update.mock.invocationCallOrder[0],
+      );
+    });
+
+    it.each([
+      ['fresh', 3],
+      ['stale', 2],
+    ])('records a rejection on a %s revision', async (_label, baseVersion) => {
+      setRows(revisionRow({ baseVersion }));
+
+      const result = await service.reviewRevision('revision-1', reviewer, {
+        decision: ReviewDecision.REJECTED,
+        note: 'Needs sources',
+      });
+
+      expect(result.revisionStatus).toBe(RevisionStatus.REJECTED);
+      expect(tx.contentRevision.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { status: RevisionStatus.REJECTED } }),
+      );
+    });
+
+    it('blocks approving a stale revision with REVISION_STALE', async () => {
+      setRows(revisionRow({ baseVersion: 2 }), 3);
+
+      const error = await failure(
+        service.reviewRevision('revision-1', reviewer, {
+          decision: ReviewDecision.APPROVED,
+        }),
+      );
+
+      expect(error).toBeInstanceOf(DomainException);
+      expect(error).toMatchObject({
+        code: 'REVISION_STALE',
+        details: { baseVersion: 2, liveVersion: 3 },
+      });
+      expect(error.getStatus()).toBe(409);
+      expectNoWrites();
+    });
+
+    it.each([ReviewDecision.APPROVED, ReviewDecision.REJECTED])(
+      'blocks a REVIEWER from a %s decision on their own revision',
+      async (decision) => {
+        setRows(revisionRow({ createdById: 'reviewer-1' }));
+
+        const error = await failure(
+          service.reviewRevision('revision-1', reviewer, { decision }),
+        );
+
+        expect(error).toMatchObject({ code: 'SELF_REVIEW_NOT_ALLOWED' });
+        expect(error.getStatus()).toBe(403);
+        expectNoWrites();
+      },
+    );
+
+    it('lets an ADMIN review their own revision', async () => {
+      setRows(revisionRow({ createdById: 'admin-1' }));
+
+      const result = await service.reviewRevision(
+        'revision-1',
+        { id: 'admin-1', role: Role.ADMIN },
+        { decision: ReviewDecision.APPROVED },
+      );
+
+      expect(result.revisionStatus).toBe(RevisionStatus.APPROVED);
+    });
+
+    it('checks separation of duties before staleness', async () => {
+      setRows(revisionRow({ createdById: 'reviewer-1', baseVersion: 2 }), 3);
+
+      const error = await failure(
+        service.reviewRevision('revision-1', reviewer, {
+          decision: ReviewDecision.APPROVED,
+        }),
+      );
+
+      expect(error).toMatchObject({ code: 'SELF_REVIEW_NOT_ALLOWED' });
+    });
+
+    it.each([
+      RevisionStatus.DRAFT,
+      RevisionStatus.APPROVED,
+      RevisionStatus.REJECTED,
+      RevisionStatus.PUBLISHED,
+    ])('rejects a %s revision with INVALID_REVISION_STATE', async (status) => {
+      setRows(revisionRow({ status }));
+
+      const error = await failure(
+        service.reviewRevision('revision-1', reviewer, {
+          decision: ReviewDecision.APPROVED,
+        }),
+      );
+
+      expect(error).toMatchObject({ code: 'INVALID_REVISION_STATE' });
+      expect(error.getStatus()).toBe(409);
+      expectNoWrites();
+    });
+
+    it('stores a blank note as null', async () => {
+      setRows(revisionRow());
+
+      const result = await service.reviewRevision('revision-1', reviewer, {
+        decision: ReviewDecision.REJECTED,
+        note: '   ',
+      });
+
+      expect(result.note).toBeNull();
+    });
+
+    it('throws NotFoundException for an unknown revision', async () => {
+      tx.contentRevision.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.reviewRevision('missing', reviewer, {
+          decision: ReviewDecision.APPROVED,
+        }),
+      ).rejects.toThrow(new NotFoundException('Revision not found'));
+      expectNoWrites();
     });
   });
 });

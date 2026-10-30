@@ -7,6 +7,7 @@ import {
   Post,
   UseGuards,
   HttpCode,
+  Body,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -25,6 +26,8 @@ import { Role } from '../../generated/prisma/client';
 import { RevisionsService } from './content-revisions.service';
 import { ReviewerDiffResponseDto } from './dto/reviewer-diff-response.dto';
 import { RebaseRevisionResponseDto } from './dto/rebase-revision-response.dto';
+import { ReviewRevisionResponseDto } from './dto/review-revision-response.dto';
+import { ReviewRevisionDto } from './dto/review-revision.dto';
 
 @ApiTags('Admin - Revisions')
 @ApiBearerAuth()
@@ -174,5 +177,54 @@ export class AdminRevisionsController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<RebaseRevisionResponseDto> {
     return this.revisionsService.rebaseRevision(revisionId, user.id);
+  }
+
+  @ApiOperation({
+    summary: 'Approve or reject a revision in review',
+    description: [
+      'Minimum role: REVIEWER.',
+      '',
+      'Records a review and sets the revision to APPROVED or REJECTED. ' +
+        'Approving publishes nothing; publishing is a separate step.',
+      '',
+      '**Separation of duties:** a reviewer cannot review a revision they ' +
+        'created, unless they are an ADMIN. Otherwise 403 `SELF_REVIEW_NOT_ALLOWED`.',
+      '',
+      '**Stale revisions:** approving is blocked with 409 `REVISION_STALE` when ' +
+        'the live career changed since the revision was created. Rejecting is ' +
+        'always allowed.',
+      '',
+      '**Not in review:** 409 `INVALID_REVISION_STATE`.',
+    ].join('\n'),
+  })
+  @ApiResponse({ status: 201, type: ReviewRevisionResponseDto })
+  @ApiResponse({
+    status: 400,
+    description: 'id is not a UUID, or the body failed validation',
+  })
+  @ApiResponse({ status: 401, description: 'Access token missing or invalid' })
+  @ApiResponse({
+    status: 403,
+    description:
+      'The user is below REVIEWER, or reviewed their own revision (SELF_REVIEW_NOT_ALLOWED)',
+  })
+  @ApiResponse({ status: 404, description: 'Revision not found' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'INVALID_REVISION_STATE (not in review) or REVISION_STALE (approval of a stale revision)',
+  })
+  @Post(':revisionId/review')
+  @MinRole(Role.REVIEWER)
+  async review(
+    @Param('revisionId', ParseUUIDPipe) revisionId: string,
+    @Body() dto: ReviewRevisionDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ReviewRevisionResponseDto> {
+    return this.revisionsService.reviewRevision(
+      revisionId,
+      { id: user.id, role: user.role },
+      dto,
+    );
   }
 }
