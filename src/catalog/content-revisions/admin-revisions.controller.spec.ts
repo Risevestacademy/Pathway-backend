@@ -8,6 +8,7 @@ import {
 } from '../../generated/prisma/client';
 import { AdminRevisionsController } from './admin-revisions.controller';
 import { RevisionsService } from './content-revisions.service';
+import type { SubmitRevisionResponseDto } from './dto/submit-revision-response.dto';
 import type { ReviewRevisionDto } from './dto/review-revision.dto';
 import type { ReviewRevisionResponseDto } from './dto/review-revision-response.dto';
 import type { RecallRevisionResponseDto } from './dto/recall-revision-response.dto';
@@ -17,6 +18,13 @@ describe('AdminRevisionsController', () => {
   let controller: AdminRevisionsController;
 
   const mockRevisionsService = {
+    submitRevision:
+      jest.fn<
+        (
+          revisionId: string,
+          actor: { id: string; role: Role },
+        ) => Promise<SubmitRevisionResponseDto>
+      >(),
     reviewRevision:
       jest.fn<
         (
@@ -58,6 +66,32 @@ describe('AdminRevisionsController', () => {
     }).compile();
 
     controller = module.get(AdminRevisionsController);
+  });
+
+  describe('submit', () => {
+    it("passes the id and the editor's id to the service and returns its result", async () => {
+      const editor: AuthenticatedUser = {
+        id: 'editor-1',
+        email: 'editor@example.com',
+        role: Role.EDITOR,
+      };
+      const response: SubmitRevisionResponseDto = {
+        id: 'revision-1',
+        careerId: 'career-1',
+        status: RevisionStatus.IN_REVIEW,
+        baseVersion: 3,
+        updatedAt: new Date(),
+      };
+      mockRevisionsService.submitRevision.mockResolvedValue(response);
+
+      const result = await controller.submit('revision-1', editor);
+
+      expect(mockRevisionsService.submitRevision).toHaveBeenCalledWith(
+        'revision-1',
+        { id: 'editor-1', role: Role.EDITOR },
+      );
+      expect(result).toBe(response);
+    });
   });
 
   describe('review', () => {

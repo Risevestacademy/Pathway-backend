@@ -13,6 +13,7 @@ import { DomainException, ROLE_RANK } from '../../common';
 import {
   CareerStatus,
   ReviewDecision,
+  SkillImportance,
   RevisionStatus,
   Role,
 } from '../../generated/prisma/client';
@@ -41,6 +42,15 @@ describe('RevisionsService', () => {
       findUniqueOrThrow: jest.fn<(args: unknown) => Promise<unknown>>(),
       update: jest.fn<(args: unknown) => Promise<unknown>>(),
       create: jest.fn<(args: unknown) => Promise<unknown>>(),
+    },
+    career: {
+      findUnique: jest.fn<(args: unknown) => Promise<unknown>>(),
+    },
+    resource: {
+      findMany: jest.fn<(args: unknown) => Promise<unknown[]>>(),
+    },
+    userPathwayStep: {
+      groupBy: jest.fn<(args: unknown) => Promise<unknown[]>>(),
     },
   };
 
@@ -418,6 +428,216 @@ describe('RevisionsService', () => {
       });
       expect((error as DomainException).getStatus()).toBe(400);
       expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('submitRevision', () => {
+    const readySnapshot: CareerSnapshot = {
+      ...snapshot,
+      career: {
+        ...snapshot.career,
+        roleSummary: 'Runs pipelines.',
+        fieldId: 'field-1',
+      },
+      pathway: { title: 'DevOps path', description: null },
+      steps: [
+        {
+          id: 'new-1',
+          order: 1,
+          title: 'Learn Linux',
+          description: null,
+          learningObjective: 'Use the shell',
+          prerequisites: null,
+          expectedActivity: 'Practice',
+          skillIds: [],
+          resourceIds: [],
+        },
+      ],
+      skills: [{ skillId: 'skill-1', importance: SkillImportance.REQUIRED }],
+    };
+
+    const liveCareer = {
+      id: 'career-1',
+      version: 3,
+      title: 'DevOps Engineer',
+      slug: 'devops-engineer',
+      description: 'Automates delivery.',
+      roleSummary: 'Runs pipelines.',
+      fieldId: 'field-1',
+      targetLevels: [],
+      exampleActivities: [],
+      typicalEducationNote: null,
+      certificationsNote: null,
+      skills: [],
+      outlook: [],
+      pathway: null,
+    };
+
+    const editor = { id: 'editor-1', role: Role.EDITOR };
+
+    const setRevision = (
+      row: { status: RevisionStatus; baseVersion: number } | null,
+      draft: CareerSnapshot = readySnapshot,
+      careerStatus: CareerStatus = CareerStatus.PUBLISHED,
+    ) => {
+      tx.contentRevision.findUnique.mockResolvedValue(
+        row ? { careerId: 'career-1' } : null,
+      );
+      if (row)
+        tx.$queryRaw
+          .mockResolvedValueOnce([{ status: careerStatus }])
+          .mockResolvedValueOnce([{ ...row, snapshot: draft }]);
+      tx.career.findUnique.mockResolvedValue(liveCareer);
+      tx.resource.findMany.mockResolvedValue([]);
+      tx.userPathwayStep.groupBy.mockResolvedValue([]);
+      tx.contentRevision.update.mockResolvedValue(
+        savedRevision(RevisionStatus.IN_REVIEW),
+      );
+    };
+
+    it('moves a ready draft to IN_REVIEW, logs and emits revision_submitted', async () => {
+      setRevision({ status: RevisionStatus.DRAFT, baseVersion: 3 });
+
+      const result = await service.submitRevision('revision-1', editor);
+
+      expect(tx.contentRevision.update).toHaveBeenCalledWith({
+        where: { id: 'revision-1' },
+        data: { status: RevisionStatus.IN_REVIEW },
+        select,
+      });
+      expect(result).toEqual(savedRevision(RevisionStatus.IN_REVIEW));
+      expect(logSpy).toHaveBeenCalledWith(
+        {
+          revisionId: 'revision-1',
+          careerId: 'career-1',
+          actorUserId: 'editor-1',
+        },
+        'Revision submitted',
+      );
+      expect(analytics.capture).toHaveBeenCalledWith(
+        'revision_submitted',
+        'editor-1',
+        { revisionId: 'revision-1', careerId: 'career-1', baseVersion: 3 },
+      );
+    });
+
+    it('builds the plan inside the transaction', async () => {
+      setRevision({ status: RevisionStatus.DRAFT, baseVersion: 3 });
+
+      await service.submitRevision('revision-1', editor);
+
+      expect(tx.career.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'career-1' } }),
+      );
+      expect(mockPrisma.career.findUniqueOrThrow).not.toHaveBeenCalled();
+    });
+
+    it('submits a stale draft', async () => {
+      setRevision({ status: RevisionStatus.DRAFT, baseVersion: 2 });
+
+      await service.submitRevision('revision-1', editor);
+
+      expect(tx.contentRevision.update).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns 400 REVISION_NOT_READY with every blocker and leaves the draft', async () => {
+      setRevision({ status: RevisionStatus.DRAFT, baseVersion: 3 }, snapshot);
+
+      const error = await service
+        .submitRevision('revision-1', editor)
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(DomainException);
+      const domain = error as DomainException;
+      expect(domain.getStatus()).toBe(400);
+      expect(domain.code).toBe('REVISION_NOT_READY');
+      const blockers = (domain.details as { blockers: { code: string }[] })
+        .blockers;
+      expect(blockers.map((b) => b.code).sort()).toEqual([
+        'MISSING_CAREER_FIELD',
+        'MISSING_CAREER_FIELD',
+        'NO_PATHWAY_STEPS',
+        'NO_SKILLS',
+      ]);
+      expect(tx.contentRevision.update).not.toHaveBeenCalled();
+      expect(analytics.capture).not.toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledWith(
+        {
+          revisionId: 'revision-1',
+          actorUserId: 'editor-1',
+          reason: 'REVISION_NOT_READY',
+          blockerCodes: [
+            'MISSING_CAREER_FIELD',
+            'MISSING_CAREER_FIELD',
+            'NO_SKILLS',
+            'NO_PATHWAY_STEPS',
+          ],
+        },
+        'Revision submit rejected',
+      );
+    });
+
+    it.each([
+      RevisionStatus.IN_REVIEW,
+      RevisionStatus.APPROVED,
+      RevisionStatus.REJECTED,
+      RevisionStatus.PUBLISHED,
+    ])(
+      'returns 409 INVALID_REVISION_STATE for a %s revision without building a plan',
+      async (status) => {
+        setRevision({ status, baseVersion: 3 });
+
+        const error = await service
+          .submitRevision('revision-1', editor)
+          .catch((e: unknown) => e);
+
+        expect(error).toBeInstanceOf(DomainException);
+        expect((error as DomainException).getStatus()).toBe(409);
+        expect((error as DomainException).code).toBe('INVALID_REVISION_STATE');
+        expect(tx.career.findUnique).not.toHaveBeenCalled();
+        expect(tx.contentRevision.update).not.toHaveBeenCalled();
+      },
+    );
+
+    it('returns 409 CAREER_RETIRED when a non-admin submits on a retired career', async () => {
+      setRevision(
+        { status: RevisionStatus.DRAFT, baseVersion: 3 },
+        readySnapshot,
+        CareerStatus.RETIRED,
+      );
+
+      const error = await service
+        .submitRevision('revision-1', editor)
+        .catch((e: unknown) => e);
+
+      expect((error as DomainException).getStatus()).toBe(409);
+      expect((error as DomainException).code).toBe('CAREER_RETIRED');
+      expect(tx.career.findUnique).not.toHaveBeenCalled();
+      expect(tx.contentRevision.update).not.toHaveBeenCalled();
+    });
+
+    it('lets an ADMIN submit on a retired career', async () => {
+      setRevision(
+        { status: RevisionStatus.DRAFT, baseVersion: 3 },
+        readySnapshot,
+        CareerStatus.RETIRED,
+      );
+
+      await service.submitRevision('revision-1', {
+        id: 'admin-1',
+        role: Role.ADMIN,
+      });
+
+      expect(tx.contentRevision.update).toHaveBeenCalledTimes(1);
+    });
+
+    it('throws NotFoundException for an unknown revision', async () => {
+      setRevision(null);
+
+      await expect(service.submitRevision('missing', editor)).rejects.toThrow(
+        new NotFoundException('Revision not found'),
+      );
+      expect(tx.$queryRaw).not.toHaveBeenCalled();
     });
   });
 

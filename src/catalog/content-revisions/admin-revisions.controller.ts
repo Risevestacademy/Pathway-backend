@@ -29,6 +29,7 @@ import { Role } from '../../generated/prisma/client';
 import { RevisionsService } from './content-revisions.service';
 import { ReviewerDiffResponseDto } from './dto/reviewer-diff-response.dto';
 import { RebaseRevisionResponseDto } from './dto/rebase-revision-response.dto';
+import { SubmitRevisionResponseDto } from './dto/submit-revision-response.dto';
 import { ReviewRevisionResponseDto } from './dto/review-revision-response.dto';
 import { ReviewRevisionDto } from './dto/review-revision.dto';
 import { RecallRevisionResponseDto } from './dto/recall-revision-response.dto';
@@ -164,6 +165,53 @@ export class AdminRevisionsController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<ReviewerDiffResponseDto> {
     return this.revisionsService.buildDiff(revisionId, {
+      id: user.id,
+      role: user.role,
+    });
+  }
+
+  @ApiOperation({
+    summary: 'Submit a draft revision for review',
+    description: [
+      'Minimum role: EDITOR.',
+      '',
+      'Moves a DRAFT revision to IN_REVIEW, where it is frozen until a ' +
+        'reviewer decides or the editor recalls it.',
+      '',
+      '**Readiness:** the plan for the revision must have no blockers. ' +
+        'Otherwise 400 `REVISION_NOT_READY` with the `blockers` list, and the ' +
+        'revision stays DRAFT. A stale revision can still be submitted.',
+      '',
+      '**Not a draft:** 409 `INVALID_REVISION_STATE`.',
+      '',
+      '**Retired career:** 409 `CAREER_RETIRED`, unless the user is an ADMIN.',
+    ].join('\n'),
+  })
+  @ApiResponse({ status: 200, type: SubmitRevisionResponseDto })
+  @ApiResponse({
+    status: 400,
+    description:
+      'id is not a UUID, or REVISION_NOT_READY (the plan has blockers)',
+  })
+  @ApiResponse({ status: 401, description: 'Access token missing or invalid' })
+  @ApiResponse({ status: 403, description: 'The user is below EDITOR' })
+  @ApiResponse({
+    status: 404,
+    description: 'Revision (or its career) not found',
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'INVALID_REVISION_STATE (not a draft) or CAREER_RETIRED (career is retired and the user is not an ADMIN)',
+  })
+  @Post(':revisionId/submit')
+  @HttpCode(HttpStatus.OK)
+  @MinRole(Role.EDITOR)
+  async submit(
+    @Param('revisionId', ParseUUIDPipe) revisionId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<SubmitRevisionResponseDto> {
+    return this.revisionsService.submitRevision(revisionId, {
       id: user.id,
       role: user.role,
     });
