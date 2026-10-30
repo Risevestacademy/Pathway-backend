@@ -1,4 +1,8 @@
-import type { ReviewDecision, Role } from '../generated/prisma/enums';
+import type {
+  CareerStatus,
+  ReviewDecision,
+  Role,
+} from '../generated/prisma/enums';
 
 export type SignUpMethod = 'email' | 'google';
 export type LoginMethod = 'password' | 'google';
@@ -34,6 +38,7 @@ export interface AnalyticsEventMap {
     careerId: string;
     decision: ReviewDecision;
   };
+  career_status_changed: { oldStatus: CareerStatus; newStatus: CareerStatus };
 }
 
 export type AnalyticsEventName = keyof AnalyticsEventMap;
