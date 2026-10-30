@@ -11,3 +11,9 @@ export const isSelfReviewBlocked = (
   revisionCreatorId: string,
   reviewer: { id: string; role: Role },
 ): boolean => revisionCreatorId === reviewer.id && reviewer.role !== Role.ADMIN;
+
+// Creator only, unless ADMIN
+export const isCreatorOrAdmin = (
+  revisionCreatorId: string,
+  actor: { id: string; role: Role },
+): boolean => revisionCreatorId === actor.id || actor.role === Role.ADMIN;
