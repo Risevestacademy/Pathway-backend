@@ -36,13 +36,11 @@ export class AdminRevisionsController {
   @ApiOperation({
     summary: 'Preview the diff for a revision',
     description: [
-      'Minimum role: REVIEWER.',
+      'REVIEWER+ can view any revision. EDITOR can view their own revisions ' +
+        '(creator-only — ADMIN does not bypass this for other people’s drafts).',
       '',
       'Returns a reviewer-shaped diff grouped by section: career fields, ' +
-        'outlook, steps, resources. Each section has `changed`, `added`, ' +
-        '`removed` and `moved` buckets. Sections with no changes are omitted.',
-      '',
-      'Read-only. The plan that backs this response is the same plan that ' +
+        'Read-only. The plan that backs this response is the same plan that ' +
         'submit, review, and publish use. Any divergence would let a reviewer ' +
         "approve something publish can't safely apply.",
       '',
@@ -108,15 +106,22 @@ export class AdminRevisionsController {
     },
   })
   @ApiResponse({ status: 401, description: 'Access token missing or invalid' })
-  @ApiResponse({ status: 403, description: 'The user is below REVIEWER' })
+  @ApiResponse({
+    status: 403,
+    description:
+      'The user is below EDITOR, or is an EDITOR who is not the revision creator',
+  })
   @ApiResponse({ status: 404, description: 'Revision not found' })
   @Get(':revisionId/diff')
-  @MinRole(Role.REVIEWER)
+  @MinRole(Role.EDITOR)
   async getDiff(
     @Param('revisionId', ParseUUIDPipe) revisionId: string,
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<ReviewerDiffResponseDto> {
-    return this.revisionsService.buildDiff(revisionId, user.id);
+    return this.revisionsService.buildDiff(revisionId, {
+      id: user.id,
+      role: user.role,
+    });
   }
 
   @ApiOperation({

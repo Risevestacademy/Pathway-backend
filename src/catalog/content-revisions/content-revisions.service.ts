@@ -1,12 +1,18 @@
 import {
+  ForbiddenException,
   HttpStatus,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import {
+  CareerStatus,
+  RevisionStatus,
+  Role,
+} from '../../generated/prisma/client';
+import { ROLE_RANK } from '../../common';
 import { PrismaService } from '../../prisma';
 import { DomainException } from '../../common';
-import { CareerStatus, RevisionStatus } from '../../generated/prisma/client';
 import { buildPlan, type LiveCareerForPlan } from './career-snapshot.plan';
 import { findSnapshotProblems } from './career-snapshot.consistency';
 import type { CareerSnapshot } from './career-snapshot.types';
@@ -38,7 +44,7 @@ export class RevisionsService {
 
   async buildDiff(
     revisionId: string,
-    reviewerId: string,
+    actor: { id: string; role: Role },
   ): Promise<ReviewerDiffResponseDto> {
     const revision = await this.prisma.contentRevision.findUniqueOrThrow({
       where: { id: revisionId },
@@ -47,9 +53,25 @@ export class RevisionsService {
         baseVersion: true,
         snapshot: true,
         createdAt: true,
+        createdById: true,
         createdBy: { select: { profile: { select: { fullName: true } } } },
       },
     });
+
+    const isCreator = revision.createdById === actor.id;
+    const isReviewerOrAbove =
+      (ROLE_RANK[actor.role] ?? -1) >= ROLE_RANK[Role.REVIEWER];
+    if (!isCreator && !isReviewerOrAbove) {
+      this.logger.warn(
+        { revisionId, actorUserId: actor.id, reason: 'DIFF_FORBIDDEN' },
+        'Revision diff denied',
+      );
+      throw new DomainException(
+        HttpStatus.FORBIDDEN,
+        'DIFF_FORBIDDEN',
+        'Only the creator or a reviewer can view this diff',
+      );
+    }
 
     const liveCareer = await this.prisma.career.findUniqueOrThrow({
       where: { id: revision.careerId },
@@ -134,7 +156,7 @@ export class RevisionsService {
     });
 
     this.logger.log(
-      { revisionId, stale: plan.stale, reviewerId },
+      { revisionId, stale: plan.stale, actorUserId: actor.id },
       'Revision diff generated',
     );
 
