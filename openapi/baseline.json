@@ -547,6 +547,257 @@
         ]
       }
     },
+    "/auth/invites/accept": {
+      "post": {
+        "description": "Requires an access token. The invite token must belong to an invite sent to the signed-in user's email, and that email must be verified. Sets the user's role to the invite's role, revokes their existing refresh tokens and returns a fresh token pair, so the new role applies immediately. Unknown and revoked tokens both return 404.",
+        "operationId": "AuthController_acceptInvite",
+        "parameters": [
+          {
+            "name": "X-Client-Platform",
+            "in": "header",
+            "description": "'mobile' carries the refresh token in the request body; 'web' or an absent header carries it in the HttpOnly cookie. Any other value is rejected with 400.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "web",
+                "mobile"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptInviteDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Invite accepted. Returns the updated user and an access token (and for mobile, a refresh token), or sets a refresh token cookie for web clients.",
+            "headers": {
+              "Set-Cookie": {
+                "description": "HttpOnly refresh token cookie for web clients",
+                "schema": {
+                  "type": "string",
+                  "example": "refreshToken=eyJhbGciOiJIUzI1Ni...; Path=/api/v1/auth; HttpOnly; SameSite=Lax"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body failed validation, or the X-Client-Platform value is unsupported"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "403": {
+            "description": "The invite was sent to a different email (FORBIDDEN, code INVITE_EMAIL_MISMATCH), or the user's email isn't verified (FORBIDDEN, code EMAIL_NOT_VERIFIED)"
+          },
+          "404": {
+            "description": "The token matches no invite, or the invite was revoked (NOT_FOUND, code INVITE_NOT_FOUND)"
+          },
+          "409": {
+            "description": "The invite has already been accepted (CONFLICT, code INVITE_ALREADY_ACCEPTED)"
+          },
+          "410": {
+            "description": "The invite has expired (GONE, code INVITE_EXPIRED)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Accept a staff invite",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/admin/teams/invites": {
+      "post": {
+        "description": "Minimum role: ADMIN. Creates a single-use invite (24h TTL) and emails an accept link. Replaces any pending invite for the same email. If the email fails to send, the invite stays and can be re-sent by re-inviting.",
+        "operationId": "AdminTeamsController_createInvite",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateStaffInviteDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateStaffInviteResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Body failed validation"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "403": {
+            "description": "The user is not an admin"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Invite a staff member",
+        "tags": [
+          "Admin"
+        ]
+      },
+      "get": {
+        "description": "Minimum role: ADMIN. Newest first. PENDING and EXPIRED are computed from expiresAt at request time. Paginated with page and limit.",
+        "operationId": "AdminTeamsController_getInvites",
+        "parameters": [
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": "PENDING",
+              "type": "string",
+              "enum": [
+                "PENDING",
+                "ACCEPTED",
+                "EXPIRED",
+                "REVOKED"
+              ]
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 10000,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteListResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A query parameter is invalid"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "403": {
+            "description": "The user is not an admin"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List staff invites",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/admin/teams/invites/{id}": {
+      "delete": {
+        "description": "Minimum role: ADMIN. Sets revokedAt and keeps the invite in the list.",
+        "operationId": "AdminTeamsController_revokeInvite",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevokeInviteResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "id is not a UUID"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "403": {
+            "description": "The user is not an admin"
+          },
+          "404": {
+            "description": "Invite not found"
+          },
+          "409": {
+            "description": "The invite is accepted, expired or already revoked (error CONFLICT)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Revoke a pending staff invite",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
     "/fields": {
       "get": {
         "operationId": "FieldsController_getFields",
@@ -770,6 +1021,83 @@
         "tags": [
           "Admin"
         ]
+      },
+      "get": {
+        "description": "Minimum role: EDITOR. Includes DRAFT and RETIRED careers, which public endpoints never return. Most recently updated first. search matches the title or slug, ignoring case.",
+        "operationId": "AdminCareersController_listCareers",
+        "parameters": [
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": "DRAFT",
+              "type": "string",
+              "enum": [
+                "DRAFT",
+                "PUBLISHED",
+                "RETIRED"
+              ]
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "description": "Matches the title or slug, ignoring case.",
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 10000,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminCareerListResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A query parameter is invalid"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "403": {
+            "description": "The user is below EDITOR"
+          }
+        },
+        "summary": "List careers in any status",
+        "tags": [
+          "Admin"
+        ]
       }
     },
     "/admin/careers/{id}": {
@@ -814,6 +1142,95 @@
           }
         },
         "summary": "Delete a never-published draft career",
+        "tags": [
+          "Admin"
+        ]
+      },
+      "get": {
+        "description": "Minimum role: EDITOR. The live career with its skills, outlook, and pathway steps with their skills and linked resources (WITHDRAWN resources included). Steps are capped at 100 and resources per step at 50. Revisions are never included.",
+        "operationId": "AdminCareersController_getCareer",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminCareerDetailDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "id is not a UUID"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "403": {
+            "description": "The user is below EDITOR"
+          },
+          "404": {
+            "description": "Career not found"
+          }
+        },
+        "summary": "Get a career in any status",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/admin/careers/{id}/retire": {
+      "patch": {
+        "description": "Minimum role: PUBLISHER. Hides a PUBLISHED career from new selection by setting it to RETIRED. The version, saved pathways and learner progress are untouched, so people who already saved it keep their progress. Only a PUBLISHED career can be retired.",
+        "operationId": "AdminCareersController_retireCareer",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetireCareerResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "id is not a UUID"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "403": {
+            "description": "The user is below PUBLISHER"
+          },
+          "404": {
+            "description": "Career not found"
+          },
+          "409": {
+            "description": "The career is not PUBLISHED (CONFLICT, code CAREER_NOT_PUBLISHED)"
+          }
+        },
+        "summary": "Retire a published career",
         "tags": [
           "Admin"
         ]
@@ -1304,113 +1721,56 @@
         ]
       }
     },
-    "/admin/teams/invites": {
-      "post": {
-        "description": "Minimum role: ADMIN. Creates a single-use invite (24h TTL) and emails an accept link. Replaces any pending invite for the same email. If the email fails to send, the invite stays and can be re-sent by re-inviting.",
-        "operationId": "AdminTeamsController_createInvite",
-        "parameters": [],
+    "/admin/revisions/{revisionId}": {
+      "put": {
+        "description": "Minimum role: EDITOR. The body is the full proposed snapshot and replaces the stored one; it is not a patch. Updates the open DRAFT revision, or creates one with baseVersion set to the live career version. A career has at most one open (DRAFT or IN_REVIEW) revision. A revision in review is never edited: recall it first.",
+        "operationId": "AdminRevisionsController_saveDraftRevision",
+        "parameters": [
+          {
+            "name": "revisionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CreateStaffInviteDto"
+                "$ref": "#/components/schemas/SaveDraftRevisionDto"
               }
             }
           }
         },
-        "responses": {
-          "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CreateStaffInviteResponseDto"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Body failed validation"
-          },
-          "401": {
-            "description": "Access token missing or invalid"
-          },
-          "403": {
-            "description": "The user is not an admin"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Invite a staff member",
-        "tags": [
-          "Admin"
-        ]
-      },
-      "get": {
-        "description": "Minimum role: ADMIN. Newest first. PENDING and EXPIRED are computed from expiresAt at request time. Paginated with page and limit.",
-        "operationId": "AdminTeamsController_getInvites",
-        "parameters": [
-          {
-            "name": "status",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "example": "PENDING",
-              "type": "string",
-              "enum": [
-                "PENDING",
-                "ACCEPTED",
-                "EXPIRED",
-                "REVOKED"
-              ]
-            }
-          },
-          {
-            "name": "page",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "minimum": 1,
-              "maximum": 10000,
-              "default": 1,
-              "type": "number"
-            }
-          },
-          {
-            "name": "limit",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "minimum": 1,
-              "maximum": 100,
-              "default": 20,
-              "type": "number"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/InviteListResponseDto"
+                  "$ref": "#/components/schemas/SaveDraftRevisionResponseDto"
                 }
               }
             }
           },
           "400": {
-            "description": "A query parameter is invalid"
+            "description": "revisionId is not a UUID (BAD_REQUEST), the body failed validation (VALIDATION_ERROR), or the snapshot is inconsistent (BAD_REQUEST, code INVALID_SNAPSHOT, details.problems)"
           },
           "401": {
             "description": "Access token missing or invalid"
           },
           "403": {
-            "description": "The user is not an admin"
+            "description": "The user is below EDITOR"
+          },
+          "404": {
+            "description": "Career not found"
+          },
+          "409": {
+            "description": "The open revision is in review (CONFLICT, code REVISION_IN_REVIEW, details.revisionId), or the career is retired (CONFLICT, code CAREER_RETIRED)"
           }
         },
         "security": [
@@ -1418,19 +1778,17 @@
             "bearer": []
           }
         ],
-        "summary": "List staff invites",
+        "summary": "Save the career's draft revision",
         "tags": [
-          "Admin"
+          "Admin - Revisions"
         ]
-      }
-    },
-    "/admin/teams/invites/{id}": {
+      },
       "delete": {
-        "description": "Minimum role: ADMIN. Sets revokedAt and keeps the invite in the list.",
-        "operationId": "AdminTeamsController_revokeInvite",
+        "description": "Minimum role: EDITOR. Discards a DRAFT revision. The career is left in place, including a never-published one; deleting a career is a separate admin action. A revision that is in review or already decided cannot be deleted: 409 INVALID_REVISION_STATE.",
+        "operationId": "AdminRevisionsController_deleteRevision",
         "parameters": [
           {
-            "name": "id",
+            "name": "revisionId",
             "required": true,
             "in": "path",
             "schema": {
@@ -1444,7 +1802,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RevokeInviteResponseDto"
+                  "$ref": "#/components/schemas/DeleteRevisionResponseDto"
                 }
               }
             }
@@ -1456,13 +1814,13 @@
             "description": "Access token missing or invalid"
           },
           "403": {
-            "description": "The user is not an admin"
+            "description": "The user is below EDITOR"
           },
           "404": {
-            "description": "Invite not found"
+            "description": "Revision not found"
           },
           "409": {
-            "description": "The invite is accepted, expired or already revoked (error CONFLICT)"
+            "description": "The revision is not a draft (INVALID_REVISION_STATE)"
           }
         },
         "security": [
@@ -1470,9 +1828,9 @@
             "bearer": []
           }
         ],
-        "summary": "Revoke a pending staff invite",
+        "summary": "Delete a draft revision",
         "tags": [
-          "Admin"
+          "Admin - Revisions"
         ]
       }
     },
@@ -1612,17 +1970,16 @@
         ]
       }
     },
-    "/admin/careers/{careerId}/revision": {
-      "put": {
-        "description": "Minimum role: EDITOR. The body is the full proposed snapshot and replaces the stored one; it is not a patch. Updates the open DRAFT revision, or creates one with baseVersion set to the live career version. A career has at most one open (DRAFT or IN_REVIEW) revision. A revision in review is never edited: recall it first.",
-        "operationId": "AdminCareerRevisionsController_saveDraftRevision",
+    "/admin/revisions/{revisionId}/review": {
+      "post": {
+        "description": "Minimum role: REVIEWER.\n\nRecords a review and sets the revision to APPROVED or REJECTED. Approving publishes nothing; publishing is a separate step.\n\n**Separation of duties:** a reviewer cannot review a revision they created, unless they are an ADMIN. Otherwise 403 `SELF_REVIEW_NOT_ALLOWED`.\n\n**Stale revisions:** approving is blocked with 409 `REVISION_STALE` when the live career changed since the revision was created. Rejecting is always allowed.\n\n**Not in review:** 409 `INVALID_REVISION_STATE`.",
+        "operationId": "AdminRevisionsController_review",
         "parameters": [
           {
-            "name": "careerId",
+            "name": "revisionId",
             "required": true,
             "in": "path",
             "schema": {
-              "format": "uuid",
               "type": "string"
             }
           }
@@ -1632,36 +1989,36 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SaveDraftRevisionDto"
+                "$ref": "#/components/schemas/ReviewRevisionDto"
               }
             }
           }
         },
         "responses": {
-          "200": {
+          "201": {
             "description": "",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SaveDraftRevisionResponseDto"
+                  "$ref": "#/components/schemas/ReviewRevisionResponseDto"
                 }
               }
             }
           },
           "400": {
-            "description": "careerId is not a UUID (BAD_REQUEST), the body failed validation (VALIDATION_ERROR), or the snapshot is inconsistent (BAD_REQUEST, code INVALID_SNAPSHOT, details.problems)"
+            "description": "id is not a UUID, or the body failed validation"
           },
           "401": {
             "description": "Access token missing or invalid"
           },
           "403": {
-            "description": "The user is below EDITOR"
+            "description": "The user is below REVIEWER, or reviewed their own revision (SELF_REVIEW_NOT_ALLOWED)"
           },
           "404": {
-            "description": "Career not found"
+            "description": "Revision not found"
           },
           "409": {
-            "description": "The open revision is in review (CONFLICT, code REVISION_IN_REVIEW, details.revisionId), or the career is retired (CONFLICT, code CAREER_RETIRED)"
+            "description": "INVALID_REVISION_STATE (not in review) or REVISION_STALE (approval of a stale revision)"
           }
         },
         "security": [
@@ -1669,9 +2026,110 @@
             "bearer": []
           }
         ],
-        "summary": "Save the career's draft revision",
+        "summary": "Approve or reject a revision in review",
         "tags": [
-          "Admin"
+          "Admin - Revisions"
+        ]
+      }
+    },
+    "/admin/revisions/{revisionId}/recall": {
+      "post": {
+        "description": "Minimum role: EDITOR. Creator only, unless ADMIN. Moves an IN_REVIEW revision back to DRAFT so the editor can save changes again. Past reviews are kept.",
+        "operationId": "AdminRevisionsController_recall",
+        "parameters": [
+          {
+            "name": "revisionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecallRevisionResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "revisionId is not a UUID"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "403": {
+            "description": "The user is below EDITOR, or is not the revision creator and not an ADMIN (FORBIDDEN, code NOT_REVISION_CREATOR)"
+          },
+          "404": {
+            "description": "Revision not found"
+          },
+          "409": {
+            "description": "The revision is not in review (CONFLICT, code INVALID_REVISION_STATE)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Recall a revision from review to draft",
+        "tags": [
+          "Admin - Revisions"
+        ]
+      }
+    },
+    "/admin/revisions/{revisionId}/publish": {
+      "post": {
+        "description": "Minimum role: PUBLISHER.\n\nApplies an APPROVED revision to the live career in a single transaction. Nothing changes on any failure path.\n\n**Pre-checks:**\n- `409 REVISION_STALE` — the live career moved since the revision was based. Rebase and re-approve.\n- `409 STEP_HAS_PROGRESS` — a removed step has learners. Details include stepId, stepTitle, learnersAffected.\n- `409 CAREER_RETIRED` — the career is retired and the publisher is not ADMIN. Only an ADMIN may republish a retired career.\n- `409 INVALID_REVISION_STATE` — the revision is not APPROVED.\n\n**Separation of duties:** the publisher may be the same person as the reviewer. Approve records intent; publish is the mechanical apply. This may be tightened by the team later.\n\n**On success:** applies the plan (career fields, outlook, resources, skills, pathway, steps with two-pass reorder, step skills, step resources), bumps `Career.version`, sets status PUBLISHED with publishedById/At and reviewedById/At, marks the revision PUBLISHED.",
+        "operationId": "AdminRevisionsController_publish",
+        "parameters": [
+          {
+            "name": "revisionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revision published; live career now reflects the snapshot.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublishRevisionResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "403": {
+            "description": "The user is below PUBLISHER"
+          },
+          "404": {
+            "description": "Revision (or its career) not found"
+          },
+          "409": {
+            "description": "INVALID_REVISION_STATE, REVISION_STALE, STEP_HAS_PROGRESS or CAREER_RETIRED"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Publish an approved revision to the live career",
+        "tags": [
+          "Admin - Revisions"
         ]
       }
     }
@@ -1979,6 +2437,206 @@
           "email",
           "otp",
           "newPassword"
+        ]
+      },
+      "AcceptInviteDto": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "example": "3f9c1a7e5b2d4c8e9a6f0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e",
+            "description": "The token from the invite link.",
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "token"
+        ]
+      },
+      "CreateStaffInviteDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "example": "ada@example.com",
+            "description": "Email address to invite.",
+            "maxLength": 254
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "EDITOR",
+              "REVIEWER",
+              "PUBLISHER",
+              "ADMIN"
+            ],
+            "example": "EDITOR",
+            "description": "Staff role to assign on acceptance."
+          }
+        },
+        "required": [
+          "email",
+          "role"
+        ]
+      },
+      "CreateStaffInviteResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "b2c3d4e5-..."
+          },
+          "email": {
+            "type": "string",
+            "example": "ada@example.com"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "USER",
+              "EDITOR",
+              "REVIEWER",
+              "PUBLISHER",
+              "ADMIN"
+            ],
+            "example": "EDITOR"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-10-26T09:00:00.000Z"
+          },
+          "emailSent": {
+            "type": "boolean",
+            "example": true,
+            "description": "Whether the invitation email was dispatched. When false, the invite exists and can be re-sent by re-inviting the same email."
+          },
+          "message": {
+            "type": "string",
+            "example": "Invite created, but the email could not be sent. Re-invite to retry."
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "role",
+          "expiresAt",
+          "emailSent"
+        ]
+      },
+      "InviteResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "email": {
+            "type": "string",
+            "example": "new.editor@example.com"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "USER",
+              "EDITOR",
+              "REVIEWER",
+              "PUBLISHER",
+              "ADMIN"
+            ],
+            "example": "EDITOR"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "ACCEPTED",
+              "EXPIRED",
+              "REVOKED"
+            ],
+            "example": "PENDING"
+          },
+          "invitedById": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "invitedByName": {
+            "type": "string",
+            "nullable": true,
+            "example": "Ada Lovelace"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "acceptedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "revokedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "role",
+          "status",
+          "invitedById",
+          "invitedByName",
+          "createdAt",
+          "expiresAt",
+          "acceptedAt",
+          "revokedAt"
+        ]
+      },
+      "InviteListResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InviteResponseDto"
+            }
+          },
+          "total": {
+            "type": "number",
+            "example": 42,
+            "description": "Total matching invites"
+          },
+          "page": {
+            "type": "number",
+            "example": 1
+          },
+          "limit": {
+            "type": "number",
+            "example": 20
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "limit"
+        ]
+      },
+      "RevokeInviteResponseDto": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "example": "Invite revoked"
+          }
+        },
+        "required": [
+          "message"
         ]
       },
       "FieldListItemDto": {
@@ -2655,6 +3313,586 @@
         },
         "required": [
           "message"
+        ]
+      },
+      "AdminCareerListFieldDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "slug"
+        ]
+      },
+      "AdminCareerListItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "PUBLISHED",
+              "RETIRED"
+            ]
+          },
+          "version": {
+            "type": "number"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "field": {
+            "$ref": "#/components/schemas/AdminCareerListFieldDto"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "title",
+          "status",
+          "version",
+          "updatedAt",
+          "field"
+        ]
+      },
+      "AdminCareerListResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminCareerListItemDto"
+            }
+          },
+          "total": {
+            "type": "number",
+            "example": 42
+          },
+          "page": {
+            "type": "number",
+            "example": 1
+          },
+          "limit": {
+            "type": "number",
+            "example": 20
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "limit"
+        ]
+      },
+      "AdminCareerFieldDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug"
+        ]
+      },
+      "AdminCareerSkillDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "importance": {
+            "type": "string",
+            "enum": [
+              "REQUIRED",
+              "NICE_TO_HAVE"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "importance"
+        ]
+      },
+      "AdminSourceDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastCheckedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "url",
+          "lastCheckedAt"
+        ]
+      },
+      "AdminOutlookDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "SALARY",
+              "EMPLOYMENT_GROWTH",
+              "DEMAND"
+            ]
+          },
+          "geography": {
+            "type": "string"
+          },
+          "period": {
+            "type": "string"
+          },
+          "median": {
+            "type": "string",
+            "nullable": true
+          },
+          "percentile25": {
+            "type": "string",
+            "nullable": true
+          },
+          "percentile75": {
+            "type": "string",
+            "nullable": true
+          },
+          "currency": {
+            "type": "string",
+            "nullable": true
+          },
+          "payPeriod": {
+            "type": "string",
+            "nullable": true
+          },
+          "grossOrNet": {
+            "type": "string",
+            "nullable": true
+          },
+          "experienceLevel": {
+            "type": "string",
+            "nullable": true
+          },
+          "baseYear": {
+            "type": "number",
+            "nullable": true
+          },
+          "baseValue": {
+            "type": "number",
+            "nullable": true
+          },
+          "projectedYear": {
+            "type": "number",
+            "nullable": true
+          },
+          "projectedValue": {
+            "type": "number",
+            "nullable": true
+          },
+          "growthPercent": {
+            "type": "string",
+            "nullable": true
+          },
+          "demandLevel": {
+            "type": "string",
+            "enum": [
+              "LOW",
+              "MEDIUM",
+              "HIGH"
+            ],
+            "nullable": true
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "source": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AdminSourceDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "geography",
+          "period",
+          "median",
+          "percentile25",
+          "percentile75",
+          "currency",
+          "payPeriod",
+          "grossOrNet",
+          "experienceLevel",
+          "baseYear",
+          "baseValue",
+          "projectedYear",
+          "projectedValue",
+          "growthPercent",
+          "demandLevel",
+          "updatedAt",
+          "source"
+        ]
+      },
+      "AdminSkillRefDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "AdminResourceDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "COURSE",
+              "CERTIFICATION",
+              "ARTICLE",
+              "VIDEO",
+              "BOOK"
+            ]
+          },
+          "provider": {
+            "type": "string"
+          },
+          "costStatus": {
+            "type": "string",
+            "enum": [
+              "FREE",
+              "PAID",
+              "UNKNOWN"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ACTIVE",
+              "WITHDRAWN"
+            ],
+            "description": "Staff also see WITHDRAWN resources."
+          },
+          "lastCheckedDate": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "url",
+          "type",
+          "provider",
+          "costStatus",
+          "status",
+          "lastCheckedDate"
+        ]
+      },
+      "AdminPathwayStepDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "order": {
+            "type": "number"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "learningObjective": {
+            "type": "string"
+          },
+          "prerequisites": {
+            "type": "string",
+            "nullable": true
+          },
+          "expectedActivity": {
+            "type": "string"
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminSkillRefDto"
+            }
+          },
+          "resources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminResourceDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "order",
+          "title",
+          "description",
+          "learningObjective",
+          "prerequisites",
+          "expectedActivity",
+          "skills",
+          "resources"
+        ]
+      },
+      "AdminPathwayDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminPathwayStepDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "description",
+          "steps"
+        ]
+      },
+      "AdminCareerDetailDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "roleSummary": {
+            "type": "string",
+            "nullable": true
+          },
+          "exampleActivities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "typicalEducationNote": {
+            "type": "string",
+            "nullable": true
+          },
+          "certificationsNote": {
+            "type": "string",
+            "nullable": true
+          },
+          "targetLevels": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "STUDENT",
+                "RECENT_GRAD",
+                "EARLY_CAREER"
+              ]
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "PUBLISHED",
+              "RETIRED"
+            ]
+          },
+          "version": {
+            "type": "number"
+          },
+          "publishedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "publishedById": {
+            "type": "string",
+            "nullable": true
+          },
+          "reviewedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "reviewedById": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "field": {
+            "$ref": "#/components/schemas/AdminCareerFieldDto"
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminCareerSkillDto"
+            }
+          },
+          "outlook": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminOutlookDto"
+            }
+          },
+          "pathway": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AdminPathwayDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "title",
+          "description",
+          "roleSummary",
+          "exampleActivities",
+          "typicalEducationNote",
+          "certificationsNote",
+          "targetLevels",
+          "status",
+          "version",
+          "publishedAt",
+          "publishedById",
+          "reviewedAt",
+          "reviewedById",
+          "createdAt",
+          "updatedAt",
+          "field",
+          "skills",
+          "outlook",
+          "pathway"
+        ]
+      },
+      "RetireCareerResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "PUBLISHED",
+              "RETIRED"
+            ],
+            "example": "RETIRED"
+          },
+          "version": {
+            "type": "number",
+            "description": "Unchanged by retiring."
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "version",
+          "updatedAt"
         ]
       },
       "PathwayStepSkillDto": {
@@ -3459,521 +4697,6 @@
           "status"
         ]
       },
-      "CreateStaffInviteDto": {
-        "type": "object",
-        "properties": {
-          "email": {
-            "type": "string",
-            "example": "ada@example.com",
-            "description": "Email address to invite.",
-            "maxLength": 254
-          },
-          "role": {
-            "type": "string",
-            "enum": [
-              "EDITOR",
-              "REVIEWER",
-              "PUBLISHER",
-              "ADMIN"
-            ],
-            "example": "EDITOR",
-            "description": "Staff role to assign on acceptance."
-          }
-        },
-        "required": [
-          "email",
-          "role"
-        ]
-      },
-      "CreateStaffInviteResponseDto": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "example": "b2c3d4e5-..."
-          },
-          "email": {
-            "type": "string",
-            "example": "ada@example.com"
-          },
-          "role": {
-            "type": "string",
-            "enum": [
-              "USER",
-              "EDITOR",
-              "REVIEWER",
-              "PUBLISHER",
-              "ADMIN"
-            ],
-            "example": "EDITOR"
-          },
-          "expiresAt": {
-            "format": "date-time",
-            "type": "string",
-            "example": "2026-10-26T09:00:00.000Z"
-          },
-          "emailSent": {
-            "type": "boolean",
-            "example": true,
-            "description": "Whether the invitation email was dispatched. When false, the invite exists and can be re-sent by re-inviting the same email."
-          },
-          "message": {
-            "type": "string",
-            "example": "Invite created, but the email could not be sent. Re-invite to retry."
-          }
-        },
-        "required": [
-          "id",
-          "email",
-          "role",
-          "expiresAt",
-          "emailSent"
-        ]
-      },
-      "InviteResponseDto": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "email": {
-            "type": "string",
-            "example": "new.editor@example.com"
-          },
-          "role": {
-            "type": "string",
-            "enum": [
-              "USER",
-              "EDITOR",
-              "REVIEWER",
-              "PUBLISHER",
-              "ADMIN"
-            ],
-            "example": "EDITOR"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "PENDING",
-              "ACCEPTED",
-              "EXPIRED",
-              "REVOKED"
-            ],
-            "example": "PENDING"
-          },
-          "invitedById": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "invitedByName": {
-            "type": "string",
-            "nullable": true,
-            "example": "Ada Lovelace"
-          },
-          "createdAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "expiresAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "acceptedAt": {
-            "format": "date-time",
-            "type": "string",
-            "nullable": true
-          },
-          "revokedAt": {
-            "format": "date-time",
-            "type": "string",
-            "nullable": true
-          }
-        },
-        "required": [
-          "id",
-          "email",
-          "role",
-          "status",
-          "invitedById",
-          "invitedByName",
-          "createdAt",
-          "expiresAt",
-          "acceptedAt",
-          "revokedAt"
-        ]
-      },
-      "InviteListResponseDto": {
-        "type": "object",
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/InviteResponseDto"
-            }
-          },
-          "total": {
-            "type": "number",
-            "example": 42,
-            "description": "Total matching invites"
-          },
-          "page": {
-            "type": "number",
-            "example": 1
-          },
-          "limit": {
-            "type": "number",
-            "example": 20
-          }
-        },
-        "required": [
-          "items",
-          "total",
-          "page",
-          "limit"
-        ]
-      },
-      "RevokeInviteResponseDto": {
-        "type": "object",
-        "properties": {
-          "message": {
-            "type": "string",
-            "example": "Invite revoked"
-          }
-        },
-        "required": [
-          "message"
-        ]
-      },
-      "BlockerDto": {
-        "type": "object",
-        "properties": {
-          "code": {
-            "type": "string",
-            "example": "STEP_HAS_PROGRESS"
-          },
-          "message": {
-            "type": "string",
-            "example": "Cannot remove step \"HTML\" — 7 learners affected"
-          },
-          "section": {
-            "type": "string",
-            "example": "steps"
-          },
-          "entityId": {
-            "type": "string",
-            "example": "a3f2c1d4-…"
-          },
-          "entityTitle": {
-            "type": "string",
-            "example": "HTML"
-          },
-          "learnersAffected": {
-            "type": "number",
-            "example": 7
-          }
-        },
-        "required": [
-          "code",
-          "message",
-          "section"
-        ]
-      },
-      "AdvisoryDto": {
-        "type": "object",
-        "properties": {
-          "code": {
-            "type": "string",
-            "example": "SOURCE_DATE_CHECK"
-          },
-          "message": {
-            "type": "string",
-            "example": "The new source is dated 2026. Check before approving."
-          }
-        },
-        "required": [
-          "code",
-          "message"
-        ]
-      },
-      "FieldChangeDto": {
-        "type": "object",
-        "properties": {
-          "field": {
-            "type": "string",
-            "example": "sourceId"
-          },
-          "label": {
-            "type": "string",
-            "example": "Source"
-          },
-          "before": {
-            "description": "Raw value.",
-            "oneOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "number"
-              },
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              {
-                "type": "object",
-                "additionalProperties": true
-              }
-            ],
-            "example": "a3f2c1d4-…"
-          },
-          "after": {
-            "description": "Raw value.",
-            "oneOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "number"
-              },
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              {
-                "type": "object",
-                "additionalProperties": true
-              }
-            ],
-            "example": "b7e2d1a9-…"
-          },
-          "beforeLabel": {
-            "type": "string",
-            "example": "Jobberman salary guide 2025"
-          },
-          "afterLabel": {
-            "type": "string",
-            "example": "Jobberman salary guide 2026"
-          }
-        },
-        "required": [
-          "field",
-          "label",
-          "before",
-          "after"
-        ]
-      },
-      "StepChangeDto": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "example": "a3f2c1d4-…"
-          },
-          "title": {
-            "type": "string",
-            "example": "Introduction to HTML"
-          }
-        },
-        "required": [
-          "id",
-          "title"
-        ]
-      },
-      "MovedStepDto": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "example": "a3f2c1d4-…"
-          },
-          "title": {
-            "type": "string",
-            "example": "Introduction to HTML"
-          },
-          "fromOrder": {
-            "type": "number",
-            "example": 2
-          },
-          "toOrder": {
-            "type": "number",
-            "example": 1
-          }
-        },
-        "required": [
-          "id",
-          "title",
-          "fromOrder",
-          "toOrder"
-        ]
-      },
-      "SectionChangesDto": {
-        "type": "object",
-        "properties": {
-          "section": {
-            "type": "string",
-            "example": "career"
-          },
-          "changed": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/FieldChangeDto"
-            }
-          },
-          "added": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/StepChangeDto"
-            }
-          },
-          "removed": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/StepChangeDto"
-            }
-          },
-          "moved": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/MovedStepDto"
-            }
-          }
-        },
-        "required": [
-          "section",
-          "changed",
-          "added",
-          "removed",
-          "moved"
-        ]
-      },
-      "ReviewerDiffResponseDto": {
-        "type": "object",
-        "properties": {
-          "revisionId": {
-            "type": "string",
-            "example": "a3f2c1d4-…"
-          },
-          "title": {
-            "type": "string",
-            "example": "UX Designer: salary range"
-          },
-          "submittedBy": {
-            "type": "string",
-            "example": "Chidi E."
-          },
-          "submittedAt": {
-            "type": "string",
-            "example": "5 hours ago"
-          },
-          "baseVersion": {
-            "type": "number",
-            "example": 3
-          },
-          "liveVersion": {
-            "type": "number",
-            "example": 4
-          },
-          "stale": {
-            "type": "boolean",
-            "example": false
-          },
-          "blockers": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/BlockerDto"
-            }
-          },
-          "advisories": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/AdvisoryDto"
-            }
-          },
-          "sections": {
-            "description": "Changes grouped by section. Empty sections are omitted.",
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/SectionChangesDto"
-            }
-          }
-        },
-        "required": [
-          "revisionId",
-          "title",
-          "submittedBy",
-          "submittedAt",
-          "baseVersion",
-          "liveVersion",
-          "stale",
-          "blockers",
-          "advisories",
-          "sections"
-        ]
-      },
-      "RebaseRevisionResponseDto": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "example": "a3f2c1d4-0000-0000-0000-000000000000"
-          },
-          "careerId": {
-            "type": "string",
-            "example": "b7e2d1a9-0000-0000-0000-000000000000"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "DRAFT",
-              "IN_REVIEW",
-              "APPROVED",
-              "REJECTED",
-              "PUBLISHED"
-            ],
-            "example": "DRAFT"
-          },
-          "baseVersion": {
-            "type": "number",
-            "example": 4,
-            "description": "The live career version this revision is now anchored to."
-          },
-          "updatedAt": {
-            "format": "date-time",
-            "type": "string",
-            "example": "2026-10-30T12:00:00.000Z"
-          },
-          "liveVersion": {
-            "type": "number",
-            "example": 4,
-            "description": "Current live career version at the time of the call."
-          },
-          "rebased": {
-            "type": "boolean",
-            "example": true,
-            "description": "True if baseVersion was moved. False if the draft was already fresh (no write, no event)."
-          }
-        },
-        "required": [
-          "id",
-          "careerId",
-          "status",
-          "baseVersion",
-          "updatedAt",
-          "liveVersion",
-          "rebased"
-        ]
-      },
       "SnapshotCareerDto": {
         "type": "object",
         "properties": {
@@ -4430,11 +5153,6 @@
             "type": "number",
             "example": 3
           },
-          "created": {
-            "type": "boolean",
-            "example": false,
-            "description": "true when this save opened a new draft revision."
-          },
           "updatedAt": {
             "format": "date-time",
             "type": "string",
@@ -4446,8 +5164,508 @@
           "careerId",
           "status",
           "baseVersion",
-          "created",
           "updatedAt"
+        ]
+      },
+      "BlockerDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "example": "STEP_HAS_PROGRESS"
+          },
+          "message": {
+            "type": "string",
+            "example": "Cannot remove step \"HTML\" — 7 learners affected"
+          },
+          "section": {
+            "type": "string",
+            "example": "steps"
+          },
+          "entityId": {
+            "type": "string",
+            "example": "a3f2c1d4-…"
+          },
+          "entityTitle": {
+            "type": "string",
+            "example": "HTML"
+          },
+          "learnersAffected": {
+            "type": "number",
+            "example": 7
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "section"
+        ]
+      },
+      "AdvisoryDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "example": "SOURCE_DATE_CHECK"
+          },
+          "message": {
+            "type": "string",
+            "example": "The new source is dated 2026. Check before approving."
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ]
+      },
+      "FieldChangeDto": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "example": "sourceId"
+          },
+          "label": {
+            "type": "string",
+            "example": "Source"
+          },
+          "before": {
+            "description": "Raw value.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": true
+              }
+            ],
+            "example": "a3f2c1d4-…"
+          },
+          "after": {
+            "description": "Raw value.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": true
+              }
+            ],
+            "example": "b7e2d1a9-…"
+          },
+          "beforeLabel": {
+            "type": "string",
+            "example": "Jobberman salary guide 2025"
+          },
+          "afterLabel": {
+            "type": "string",
+            "example": "Jobberman salary guide 2026"
+          }
+        },
+        "required": [
+          "field",
+          "label",
+          "before",
+          "after"
+        ]
+      },
+      "StepChangeDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "a3f2c1d4-…"
+          },
+          "title": {
+            "type": "string",
+            "example": "Introduction to HTML"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ]
+      },
+      "MovedStepDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "a3f2c1d4-…"
+          },
+          "title": {
+            "type": "string",
+            "example": "Introduction to HTML"
+          },
+          "fromOrder": {
+            "type": "number",
+            "example": 2
+          },
+          "toOrder": {
+            "type": "number",
+            "example": 1
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "fromOrder",
+          "toOrder"
+        ]
+      },
+      "SectionChangesDto": {
+        "type": "object",
+        "properties": {
+          "section": {
+            "type": "string",
+            "example": "career"
+          },
+          "changed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FieldChangeDto"
+            }
+          },
+          "added": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StepChangeDto"
+            }
+          },
+          "removed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StepChangeDto"
+            }
+          },
+          "moved": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MovedStepDto"
+            }
+          }
+        },
+        "required": [
+          "section",
+          "changed",
+          "added",
+          "removed",
+          "moved"
+        ]
+      },
+      "ReviewerDiffResponseDto": {
+        "type": "object",
+        "properties": {
+          "revisionId": {
+            "type": "string",
+            "example": "a3f2c1d4-…"
+          },
+          "title": {
+            "type": "string",
+            "example": "UX Designer: salary range"
+          },
+          "submittedBy": {
+            "type": "string",
+            "example": "Chidi E."
+          },
+          "submittedAt": {
+            "type": "string",
+            "example": "5 hours ago"
+          },
+          "baseVersion": {
+            "type": "number",
+            "example": 3
+          },
+          "liveVersion": {
+            "type": "number",
+            "example": 4
+          },
+          "stale": {
+            "type": "boolean",
+            "example": false
+          },
+          "blockers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BlockerDto"
+            }
+          },
+          "advisories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdvisoryDto"
+            }
+          },
+          "sections": {
+            "description": "Changes grouped by section. Empty sections are omitted.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SectionChangesDto"
+            }
+          }
+        },
+        "required": [
+          "revisionId",
+          "title",
+          "submittedBy",
+          "submittedAt",
+          "baseVersion",
+          "liveVersion",
+          "stale",
+          "blockers",
+          "advisories",
+          "sections"
+        ]
+      },
+      "RebaseRevisionResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "a3f2c1d4-0000-0000-0000-000000000000"
+          },
+          "careerId": {
+            "type": "string",
+            "example": "b7e2d1a9-0000-0000-0000-000000000000"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "IN_REVIEW",
+              "APPROVED",
+              "REJECTED",
+              "PUBLISHED"
+            ],
+            "example": "DRAFT"
+          },
+          "baseVersion": {
+            "type": "number",
+            "example": 4,
+            "description": "The live career version this revision is now anchored to."
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-10-30T12:00:00.000Z"
+          },
+          "liveVersion": {
+            "type": "number",
+            "example": 4,
+            "description": "Current live career version at the time of the call."
+          },
+          "rebased": {
+            "type": "boolean",
+            "example": true,
+            "description": "True if baseVersion was moved. False if the draft was already fresh (no write, no event)."
+          }
+        },
+        "required": [
+          "id",
+          "careerId",
+          "status",
+          "baseVersion",
+          "updatedAt",
+          "liveVersion",
+          "rebased"
+        ]
+      },
+      "ReviewRevisionDto": {
+        "type": "object",
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "APPROVED",
+              "REJECTED"
+            ],
+            "example": "APPROVED"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 2000,
+            "example": "The salary source is out of date."
+          }
+        },
+        "required": [
+          "decision"
+        ]
+      },
+      "ReviewRevisionResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The review record."
+          },
+          "revisionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "APPROVED",
+              "REJECTED"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          },
+          "revisionStatus": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "IN_REVIEW",
+              "APPROVED",
+              "REJECTED",
+              "PUBLISHED"
+            ],
+            "description": "The revision status after this decision."
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "revisionId",
+          "decision",
+          "note",
+          "revisionStatus",
+          "createdAt"
+        ]
+      },
+      "RecallRevisionResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "0b7e4a1c-3d2f-4e8a-9b6c-5f1a2d3e4c7b"
+          },
+          "careerId": {
+            "type": "string",
+            "example": "9a4c2e1f-7b3d-4c5e-8f6a-1d2b3c4e5f6a"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "IN_REVIEW",
+              "APPROVED",
+              "REJECTED",
+              "PUBLISHED"
+            ],
+            "example": "DRAFT"
+          },
+          "baseVersion": {
+            "type": "number",
+            "example": 3
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-10-30T14:00:00.000Z"
+          }
+        },
+        "required": [
+          "id",
+          "careerId",
+          "status",
+          "baseVersion",
+          "updatedAt"
+        ]
+      },
+      "DeleteRevisionResponseDto": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "example": "Draft revision deleted"
+          }
+        },
+        "required": [
+          "message"
+        ]
+      },
+      "PublishRevisionResponseDto": {
+        "type": "object",
+        "properties": {
+          "revisionId": {
+            "type": "string",
+            "example": "a3f2c1d4-0000-0000-0000-000000000000"
+          },
+          "careerId": {
+            "type": "string",
+            "example": "b7e2d1a9-0000-0000-0000-000000000000"
+          },
+          "revisionStatus": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "IN_REVIEW",
+              "APPROVED",
+              "REJECTED",
+              "PUBLISHED"
+            ],
+            "example": "PUBLISHED"
+          },
+          "careerStatus": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "PUBLISHED",
+              "RETIRED"
+            ],
+            "example": "PUBLISHED"
+          },
+          "newVersion": {
+            "type": "number",
+            "example": 5,
+            "description": "The new live version of the career after publish."
+          },
+          "publishedAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-10-31T12:00:00.000Z"
+          }
+        },
+        "required": [
+          "revisionId",
+          "careerId",
+          "revisionStatus",
+          "careerStatus",
+          "newVersion",
+          "publishedAt"
         ]
       }
     }
