@@ -110,6 +110,9 @@ describe('RevisionsService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    // Clear any leftover mockResolvedValueOnce queues from previous tests.
+    tx.$queryRaw.mockReset();
+    // Re-establish the default $queryRaw response.
     tx.$queryRaw.mockResolvedValue([
       { version: 3, status: CareerStatus.PUBLISHED },
     ]);
@@ -386,7 +389,7 @@ describe('RevisionsService', () => {
 
     it('throws NotFoundException when the career disappeared before lock', async () => {
       tx.contentRevision.findUnique.mockResolvedValue({ careerId: 'career-1' });
-      tx.$queryRaw.mockResolvedValueOnce([]);
+      tx.$queryRaw.mockResolvedValueOnce([]); // first call returns no career
 
       await expect(
         service.saveDraftRevision('revision-1', snapshot, 'editor-1'),
@@ -581,7 +584,6 @@ describe('RevisionsService', () => {
       promise.catch((e: unknown) => e) as Promise<DomainException>;
 
     beforeEach(() => {
-      tx.$queryRaw.mockReset();
       tx.contentRevision.update.mockResolvedValue(savedRevision());
     });
 
@@ -725,7 +727,6 @@ describe('RevisionsService', () => {
       promise.catch((e: unknown) => e) as Promise<DomainException>;
 
     beforeEach(() => {
-      tx.$queryRaw.mockReset();
       tx.review.create.mockImplementation(async (args) => {
         const { data } = args as {
           data: {
