@@ -38,6 +38,11 @@ export interface AnalyticsEventMap {
     careerId: string;
     decision: ReviewDecision;
   };
+  revision_published: {
+    revisionId: string;
+    careerId: string;
+    newVersion: number;
+  };
   career_status_changed: { oldStatus: CareerStatus; newStatus: CareerStatus };
 }
 
