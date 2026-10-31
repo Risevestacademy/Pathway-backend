@@ -31,6 +31,7 @@ import { ReviewRevisionResponseDto } from './dto/review-revision-response.dto';
 import { ReviewRevisionDto } from './dto/review-revision.dto';
 import { RecallRevisionResponseDto } from './dto/recall-revision-response.dto';
 import { DeleteRevisionResponseDto } from './dto/delete-revision-response.dto';
+import { PublishRevisionResponseDto } from './dto/publish-revision-response.dto';
 
 @ApiTags('Admin - Revisions')
 @ApiBearerAuth()
@@ -284,5 +285,58 @@ export class AdminRevisionsController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<DeleteRevisionResponseDto> {
     return this.revisionsService.deleteDraftRevision(revisionId, user.id);
+  }
+
+  @ApiOperation({
+    summary: 'Publish an approved revision to the live career',
+    description: [
+      'Minimum role: PUBLISHER.',
+      '',
+      'Applies an APPROVED revision to the live career in a single transaction. ' +
+        'Nothing changes on any failure path.',
+      '',
+      '**Pre-checks:**',
+      '- `409 REVISION_STALE` — the live career moved since the revision was based. Rebase and re-approve.',
+      '- `409 STEP_HAS_PROGRESS` — a removed step has learners. Details include stepId, stepTitle, learnersAffected.',
+      '- `409 CAREER_RETIRED` — the career is retired and the publisher is not ADMIN. Only an ADMIN may republish a retired career.',
+      '- `409 INVALID_REVISION_STATE` — the revision is not APPROVED.',
+      '',
+      '**Separation of duties:** the publisher may be the same person as the reviewer. ' +
+        'Approve records intent; publish is the mechanical apply. This may be ' +
+        'tightened by the team later.',
+      '',
+      '**On success:** applies the plan (career fields, outlook, resources, skills, ' +
+        'pathway, steps with two-pass reorder, step skills, step resources), bumps ' +
+        '`Career.version`, sets status PUBLISHED with publishedById/At and ' +
+        'reviewedById/At, marks the revision PUBLISHED.',
+    ].join('\n'),
+  })
+  @ApiResponse({
+    status: 200,
+    type: PublishRevisionResponseDto,
+    description: 'Revision published; live career now reflects the snapshot.',
+  })
+  @ApiResponse({ status: 401, description: 'Access token missing or invalid' })
+  @ApiResponse({ status: 403, description: 'The user is below PUBLISHER' })
+  @ApiResponse({
+    status: 404,
+    description: 'Revision (or its career) not found',
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'INVALID_REVISION_STATE, REVISION_STALE, STEP_HAS_PROGRESS or CAREER_RETIRED',
+  })
+  @Post(':revisionId/publish')
+  @HttpCode(HttpStatus.OK)
+  @MinRole(Role.PUBLISHER)
+  async publish(
+    @Param('revisionId', ParseUUIDPipe) revisionId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<PublishRevisionResponseDto> {
+    return this.revisionsService.publishRevision(revisionId, {
+      id: user.id,
+      role: user.role,
+    });
   }
 }
