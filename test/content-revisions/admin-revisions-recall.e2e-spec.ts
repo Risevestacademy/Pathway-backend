@@ -177,13 +177,11 @@ describe('Admin revision recall (e2e)', () => {
     expect(await statusOf(revisionId)).toBe(RevisionStatus.DRAFT);
 
     const saved = await request(app.getHttpServer())
-      .put(`${apiPrefix}/admin/careers/${careerId}/revision`)
+      .put(`${apiPrefix}/admin/revisions/${revisionId}`)
       .set('Authorization', `Bearer ${users.creator.token}`)
       .send(snapshot('Fixed after recall'))
       .expect(200);
-    expect(saved.body).toEqual(
-      expect.objectContaining({ id: revisionId, created: false }),
-    );
+    expect(saved.body).toEqual(expect.objectContaining({ id: revisionId }));
   });
 
   it('keeps past reviews of the revision', async () => {
