@@ -2,145 +2,16 @@ import {
   type CareerSnapshot,
   type CareerSnapshotOutlook,
   type CareerSnapshotStep,
+  type CareerPlan,
+  type BuildPlanInput,
+  type LiveCareerForPlan,
+  type LiveOutlook,
+  type PlanBlocker,
+  type PlanCounts,
+  type PlanOperation,
   isTempId,
 } from './career-snapshot.types';
 import { isRevisionStale } from './revision.rules';
-
-// ─────────────────────────────────────────────────────────────────────
-// Plan types
-// ─────────────────────────────────────────────────────────────────────
-
-export type OperationKind =
-  'create' | 'update' | 'move' | 'delete' | 'link' | 'unlink';
-
-export type PlanSection =
-  | 'career'
-  | 'pathway'
-  | 'steps'
-  | 'stepSkills'
-  | 'stepResources'
-  | 'skills'
-  | 'outlook'
-  | 'resources';
-
-export interface PlanOperation {
-  kind: OperationKind;
-  section: PlanSection;
-  entityId?: string;
-  parentId?: string;
-  field?: string;
-  before?: unknown;
-  after?: unknown;
-  label?: string;
-}
-
-export type BlockerCode =
-  | 'MISSING_CAREER_FIELD'
-  | 'NO_SKILLS'
-  | 'NO_PATHWAY_STEPS'
-  | 'STEP_HAS_PROGRESS';
-
-export interface PlanBlocker {
-  code: BlockerCode;
-  message: string;
-  section: PlanSection;
-  entityId?: string;
-  entityTitle?: string;
-  learnersAffected?: number;
-}
-
-export interface PlanCounts {
-  added: number;
-  changed: number;
-  moved: number;
-  removed: number;
-  blockers: number;
-}
-
-export interface CareerPlan {
-  baseVersion: number;
-  liveVersion: number;
-  stale: boolean;
-  operations: PlanOperation[];
-  blockers: PlanBlocker[];
-  counts: PlanCounts;
-}
-
-export interface BuildPlanInput {
-  liveCareer: LiveCareerForPlan;
-  snapshot: CareerSnapshot;
-  baseVersion: number;
-  stepLearnerCounts?: Record<string, number>;
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// Live-shape input types (subset of Prisma's Career + relations)
-// ─────────────────────────────────────────────────────────────────────
-
-export interface LiveOutlook {
-  id: string;
-  type: string;
-  geography: string;
-  period: string;
-  sourceId: string | null;
-  median: { toString(): string } | null;
-  percentile25: { toString(): string } | null;
-  percentile75: { toString(): string } | null;
-  currency: string | null;
-  payPeriod: string | null;
-  grossOrNet: string | null;
-  experienceLevel: string | null;
-  baseYear: number | null;
-  baseValue: number | null;
-  projectedYear: number | null;
-  projectedValue: number | null;
-  growthPercent: { toString(): string } | null;
-  demandLevel: string | null;
-}
-
-export interface LiveStep {
-  id: string;
-  order: number;
-  title: string;
-  description: string | null;
-  learningObjective: string;
-  prerequisites: string | null;
-  expectedActivity: string;
-  skills: { skillId: string }[];
-  resources: { resourceId: string }[];
-}
-
-export interface LiveCareerForPlan {
-  id: string;
-  version: number;
-  title: string;
-  slug: string;
-  description: string;
-  roleSummary: string | null;
-  fieldId: string | null;
-  targetLevels: string[];
-  exampleActivities: string[];
-  typicalEducationNote: string | null;
-  certificationsNote: string | null;
-  skills: { skillId: string; importance: string }[];
-  outlook: LiveOutlook[];
-  pathway: { id: string; title: string; description: string | null } | null;
-  steps: LiveStep[];
-  resources: LiveResource[];
-}
-
-export interface LiveResource {
-  id: string;
-  title: string;
-  description: string | null;
-  url: string;
-  type: string;
-  provider: string;
-  costStatus: string;
-  certificationCost: { toString(): string } | null;
-  curationRationale: string;
-  lastCheckedDate: Date;
-}
 
 // ─────────────────────────────────────────────────────────────────────
 // Career field comparison

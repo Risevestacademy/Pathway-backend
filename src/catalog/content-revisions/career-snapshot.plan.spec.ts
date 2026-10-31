@@ -1,8 +1,8 @@
 import {
-  buildPlan,
   type BuildPlanInput,
   type LiveCareerForPlan,
-} from './career-snapshot.plan';
+} from './career-snapshot.types';
+import { buildPlan } from './career-snapshot.plan';
 import {
   CAREER_SNAPSHOT_SCHEMA_VERSION,
   type CareerSnapshot,
