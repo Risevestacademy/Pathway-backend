@@ -979,4 +979,183 @@ describe('RevisionsService', () => {
       ).rejects.toThrow(new NotFoundException('Revision not found'));
     });
   });
+
+  describe('publishRevision', () => {
+    const actor = { id: 'publisher-1', role: Role.PUBLISHER };
+
+    // A snapshot that matches a live career with one skill and one step so
+    // the publish blockers (NO_SKILLS / NO_PATHWAY_STEPS) do not fire.
+    const publishableSnapshot: CareerSnapshot = {
+      ...snapshot,
+      career: {
+        ...snapshot.career,
+        roleSummary: 'Keeps delivery pipelines running smoothly.',
+        typicalEducationNote:
+          'Bachelor\u2019s in Computer Science or equivalent.',
+        certificationsNote: 'AWS DevOps Engineer Professional is a plus.',
+      },
+      skills: [{ skillId: 'skill-1', importance: 'REQUIRED' }],
+      steps: [
+        {
+          stepId: 'step-1',
+          title: 'Learn CI',
+          description: 'Set up pipelines.',
+          order: 1,
+          skillIds: ['skill-1'],
+          resourceIds: [],
+        },
+      ],
+    };
+
+    const liveCareerForPublish = {
+      id: 'career-1',
+      version: 3,
+      title: 'DevOps Engineer',
+      slug: 'devops-engineer',
+      description: 'Automates delivery.',
+      roleSummary: 'Keeps delivery pipelines running smoothly.',
+      fieldId: null,
+      targetLevels: [],
+      exampleActivities: [],
+      typicalEducationNote:
+        'Bachelor\u2019s in Computer Science or equivalent.',
+      certificationsNote: 'AWS DevOps Engineer Professional is a plus.',
+      skills: [{ skillId: 'skill-1', importance: 'REQUIRED' }],
+      outlook: [],
+      pathway: null,
+      steps: [
+        {
+          id: 'step-1',
+          title: 'Learn CI',
+          description: 'Set up pipelines.',
+          order: 1,
+          skills: [{ skillId: 'skill-1' }],
+          resources: [],
+        },
+      ],
+    };
+    // Expand the shared tx fake with the publish-specific delegates.
+    beforeEach(() => {
+      Object.assign(tx, {
+        career: {
+          findUnique: jest.fn(),
+          update: jest.fn(),
+        },
+        review: { findFirst: jest.fn() },
+        resource: {
+          create: jest.fn(),
+          update: jest.fn(),
+          delete: jest.fn(),
+          findMany: jest.fn().mockResolvedValue([]),
+          count: jest.fn().mockResolvedValue(0),
+        },
+        pathway: {
+          create: jest.fn(),
+          update: jest.fn(),
+          delete: jest.fn(),
+          findUnique: jest.fn(),
+        },
+        pathwayStep: {
+          updateMany: jest.fn(),
+          update: jest.fn(),
+          create: jest.fn(),
+          delete: jest.fn(),
+        },
+        pathwayStepSkill: { create: jest.fn(), delete: jest.fn() },
+        pathwayStepResource: { create: jest.fn(), delete: jest.fn() },
+        careerSkill: {
+          create: jest.fn(),
+          update: jest.fn(),
+          delete: jest.fn(),
+        },
+        outlookData: {
+          create: jest.fn(),
+          update: jest.fn(),
+          delete: jest.fn(),
+        },
+        userPathwayStep: { groupBy: jest.fn().mockResolvedValue([]) },
+      });
+    });
+
+    const seedApproved = (
+      overrides: Partial<{
+        status: RevisionStatus;
+        baseVersion: number;
+        snapshot: CareerSnapshot;
+      }> = {},
+    ) => {
+      tx.contentRevision.findUnique.mockResolvedValue({ careerId: 'career-1' });
+      tx.$queryRaw
+        .mockResolvedValueOnce([{ version: 3, status: CareerStatus.PUBLISHED }])
+        .mockResolvedValueOnce([
+          {
+            status: overrides.status ?? RevisionStatus.APPROVED,
+            baseVersion: overrides.baseVersion ?? 3,
+            snapshot: overrides.snapshot ?? publishableSnapshot,
+          },
+        ]);
+    };
+
+    it('rejects a non-APPROVED revision with INVALID_REVISION_STATE', async () => {
+      seedApproved({ status: RevisionStatus.DRAFT });
+
+      await expect(
+        service.publishRevision('revision-1', actor),
+      ).rejects.toMatchObject({ code: 'INVALID_REVISION_STATE' });
+      expect(tx.career.update).not.toHaveBeenCalled();
+      expect(tx.contentRevision.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects a retired career for a non-ADMIN with CAREER_RETIRED', async () => {
+      tx.contentRevision.findUnique.mockResolvedValue({ careerId: 'career-1' });
+      tx.$queryRaw
+        .mockResolvedValueOnce([{ version: 3, status: CareerStatus.RETIRED }])
+        .mockResolvedValueOnce([
+          {
+            status: RevisionStatus.APPROVED,
+            baseVersion: 3,
+            snapshot: publishableSnapshot,
+          },
+        ]);
+
+      await expect(
+        service.publishRevision('revision-1', actor),
+      ).rejects.toMatchObject({ code: 'CAREER_RETIRED' });
+      expect(tx.career.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects a stale revision with REVISION_STALE (no writes)', async () => {
+      seedApproved({ baseVersion: 1 }); // live=3
+      (tx.career.findUnique as jest.Mock).mockResolvedValue(
+        liveCareerForPublish,
+      );
+      (tx.review.findFirst as jest.Mock).mockResolvedValue({
+        id: 'review-1',
+        decision: ReviewDecision.APPROVED,
+      });
+
+      const error = await service
+        .publishRevision('revision-1', actor)
+        .catch((e: unknown) => e);
+
+      expect(error).toMatchObject({
+        code: 'REVISION_STALE',
+        details: { baseVersion: 1, liveVersion: 3 },
+      });
+      expect(tx.career.update).not.toHaveBeenCalled();
+      expect(tx.contentRevision.update).not.toHaveBeenCalled();
+    });
+
+    it('does not emit revision_published when publishing fails', async () => {
+      seedApproved({ baseVersion: 1 }); // stale → fails
+
+      await service.publishRevision('revision-1', actor).catch(() => undefined);
+
+      expect(analytics.capture).not.toHaveBeenCalledWith(
+        'revision_published',
+        expect.anything(),
+        expect.anything(),
+      );
+    });
+  });
 });
