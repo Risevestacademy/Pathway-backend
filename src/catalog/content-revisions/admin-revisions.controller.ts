@@ -9,12 +9,14 @@ import {
   HttpCode,
   Body,
   Delete,
+  Put,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOperation,
   ApiResponse,
   ApiTags,
+  ApiParam,
 } from '@nestjs/swagger';
 import {
   type AuthenticatedUser,
@@ -32,6 +34,8 @@ import { ReviewRevisionDto } from './dto/review-revision.dto';
 import { RecallRevisionResponseDto } from './dto/recall-revision-response.dto';
 import { DeleteRevisionResponseDto } from './dto/delete-revision-response.dto';
 import { PublishRevisionResponseDto } from './dto/publish-revision-response.dto';
+import { SaveDraftRevisionResponseDto } from './dto/save-draft-revision-response.dto';
+import { SaveDraftRevisionDto } from './dto';
 
 @ApiTags('Admin - Revisions')
 @ApiBearerAuth()
@@ -39,6 +43,40 @@ import { PublishRevisionResponseDto } from './dto/publish-revision-response.dto'
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class AdminRevisionsController {
   constructor(private readonly revisionsService: RevisionsService) {}
+
+  @ApiOperation({
+    summary: "Save the career's draft revision",
+    description:
+      'Minimum role: EDITOR. The body is the full proposed snapshot and replaces the stored one; it is not a patch. Updates the open DRAFT revision, or creates one with baseVersion set to the live career version. A career has at most one open (DRAFT or IN_REVIEW) revision. A revision in review is never edited: recall it first.',
+  })
+  @ApiParam({ name: 'revisionId', format: 'uuid' })
+  @ApiResponse({ status: 200, type: SaveDraftRevisionResponseDto })
+  @ApiResponse({
+    status: 400,
+    description:
+      'revisionId is not a UUID (BAD_REQUEST), the body failed validation (VALIDATION_ERROR), or the snapshot is inconsistent (BAD_REQUEST, code INVALID_SNAPSHOT, details.problems)',
+  })
+  @ApiResponse({ status: 401, description: 'Access token missing or invalid' })
+  @ApiResponse({ status: 403, description: 'The user is below EDITOR' })
+  @ApiResponse({ status: 404, description: 'Career not found' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'The open revision is in review (CONFLICT, code REVISION_IN_REVIEW, details.revisionId), or the career is retired (CONFLICT, code CAREER_RETIRED)',
+  })
+  @Put(':revisionId')
+  @MinRole(Role.EDITOR)
+  async saveDraftRevision(
+    @Param('revisionId', ParseUUIDPipe) revisionId: string,
+    @Body() snapshot: SaveDraftRevisionDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<SaveDraftRevisionResponseDto> {
+    return this.revisionsService.saveDraftRevision(
+      revisionId,
+      snapshot,
+      user.id,
+    );
+  }
 
   @ApiOperation({
     summary: 'Preview the diff for a revision',

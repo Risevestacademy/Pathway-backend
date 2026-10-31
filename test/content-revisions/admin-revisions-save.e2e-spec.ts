@@ -25,7 +25,6 @@ type SaveBody = {
   careerId: string;
   status: RevisionStatus;
   baseVersion: number;
-  created: boolean;
 };
 
 type ErrorBody = {
@@ -43,6 +42,7 @@ describe('Admin career revision save (e2e)', () => {
   const userIds = {} as Record<Role, string>;
   const tokens = {} as Record<Role, string>;
   const careerIds: Record<string, string> = {};
+  const revisionIds: Record<string, string> = {};
   let fieldId: string;
   let skillId: string;
   let resourceId: string;
@@ -116,14 +116,13 @@ describe('Admin career revision save (e2e)', () => {
       },
     ],
   });
-
   const save = (
-    careerId: string,
+    revisionId: string,
     payload: unknown,
     token: string | null = tokens[Role.EDITOR],
   ) => {
     const req = request(app.getHttpServer())
-      .put(`${apiPrefix}/admin/careers/${careerId}/revision`)
+      .put(`${apiPrefix}/admin/revisions/${revisionId}`)
       .send(payload as object);
     return token ? req.set('Authorization', `Bearer ${token}`) : req;
   };
@@ -152,6 +151,18 @@ describe('Admin career revision save (e2e)', () => {
       },
     });
     careerIds[label] = career.id;
+
+    const revision = await prisma.contentRevision.create({
+      data: {
+        careerId: career.id,
+        baseVersion: version,
+        snapshot: makeSnapshot('Original'),
+        status: RevisionStatus.DRAFT,
+        createdById: userIds[Role.EDITOR],
+      },
+    });
+    revisionIds[label] = revision.id;
+
     return career.id;
   };
 
@@ -216,22 +227,11 @@ describe('Admin career revision save (e2e)', () => {
     await makeCareer('in-review', CareerStatus.PUBLISHED);
     await makeCareer('retired', CareerStatus.RETIRED);
     await makeCareer('draft', CareerStatus.DRAFT);
-    await prisma.contentRevision.create({
-      data: {
-        careerId: careerIds['in-review'],
-        baseVersion: 1,
-        snapshot: makeSnapshot('Original'),
-        status: RevisionStatus.IN_REVIEW,
-        createdById: userIds[Role.EDITOR],
-      },
-    });
-    await prisma.contentRevision.create({
-      data: {
-        careerId: careerIds.draft,
-        baseVersion: 1,
-        snapshot: makeSnapshot('First draft'),
-        createdById: userIds[Role.ADMIN],
-      },
+
+    // in-review needs a non-DRAFT seed — flip the DRAFT created by makeCareer.
+    await prisma.contentRevision.update({
+      where: { id: revisionIds['in-review'] },
+      data: { status: RevisionStatus.IN_REVIEW },
     });
   });
 
@@ -249,71 +249,69 @@ describe('Admin career revision save (e2e)', () => {
   describe('saving', () => {
     let firstRevisionId: string;
 
-    it('creates a DRAFT revision at the live version and stores the snapshot exactly', async () => {
+    it('updates the seeded DRAFT revision and stores the snapshot exactly', async () => {
       const sent = makeSnapshot();
+      const revisionId = revisionIds.published;
 
-      const response = await save(careerIds.published, sent).expect(200);
+      const response = await save(revisionId, sent).expect(200);
       const body = response.body as SaveBody;
 
       expect(body).toEqual(
         expect.objectContaining({
+          id: revisionId,
           careerId: careerIds.published,
           status: RevisionStatus.DRAFT,
           baseVersion: 4,
-          created: true,
         }),
       );
-      firstRevisionId = body.id;
+      expect(body).not.toHaveProperty('created');
 
       const stored = await prisma.contentRevision.findUniqueOrThrow({
-        where: { id: body.id },
+        where: { id: revisionId },
       });
       expect(stored.snapshot).toEqual(sent);
       expect(stored.createdById).toBe(userIds[Role.EDITOR]);
     });
 
-    it('updates the same revision on a second save and keeps one open revision', async () => {
+    it('keeps one open revision across two saves', async () => {
       const sent = makeSnapshot('Senior DevOps Engineer');
+      const revisionId = revisionIds.published;
 
-      const response = await save(careerIds.published, sent).expect(200);
+      const response = await save(revisionId, sent).expect(200);
       const body = response.body as SaveBody;
 
-      expect(body.id).toBe(firstRevisionId);
-      expect(body.created).toBe(false);
+      expect(body.id).toBe(revisionId);
+      expect(body).not.toHaveProperty('created');
+
       const open = await openRevisions(careerIds.published);
       expect(open).toHaveLength(1);
       expect(open[0].snapshot).toEqual(sent);
     });
 
-    it('updates the draft revision created with a draft career, keeping its base and creator', async () => {
-      const response = await save(careerIds.draft, makeSnapshot()).expect(200);
-      const body = response.body as SaveBody;
-
-      expect(body.created).toBe(false);
-      const open = await openRevisions(careerIds.draft);
-      expect(open).toHaveLength(1);
-      expect(open[0].createdById).toBe(userIds[Role.ADMIN]);
-      expect(open[0].baseVersion).toBe(1);
-    });
-
-    it('creates exactly one revision from two concurrent first saves', async () => {
+    it('two concurrent saves to the same draft both succeed, one row', async () => {
+      const revisionId = revisionIds.race;
       const responses = await Promise.all([
-        save(careerIds.race, makeSnapshot('Race A')),
-        save(careerIds.race, makeSnapshot('Race B')),
+        save(revisionId, makeSnapshot('Race A')),
+        save(revisionId, makeSnapshot('Race B')),
       ]);
 
       expect(responses.map((r) => r.status)).toEqual([200, 200]);
-      expect(responses.map((r) => (r.body as SaveBody).created).sort()).toEqual(
-        [false, true],
-      );
-      const open = await openRevisions(careerIds.race);
+
+      const open = await prisma.contentRevision.findMany({
+        where: {
+          id: revisionId,
+          status: { in: [RevisionStatus.DRAFT, RevisionStatus.IN_REVIEW] },
+        },
+      });
       expect(open).toHaveLength(1);
-      expect(open[0].baseVersion).toBe(2);
+      const title = (open[0].snapshot as unknown as CareerSnapshot).career
+        .title;
+      expect(['Race A', 'Race B']).toContain(title);
     });
 
     it('allows an ADMIN', async () => {
       await save(
-        careerIds.published,
+        revisionIds.published,
         makeSnapshot(),
         tokens[Role.ADMIN],
       ).expect(200);
@@ -323,7 +321,7 @@ describe('Admin career revision save (e2e)', () => {
   describe('rejections', () => {
     it('returns 409 REVISION_IN_REVIEW and leaves the revision unchanged', async () => {
       const response = await save(
-        careerIds['in-review'],
+        revisionIds['in-review'],
         makeSnapshot('Changed'),
       ).expect(409);
 
@@ -342,34 +340,38 @@ describe('Admin career revision save (e2e)', () => {
     });
 
     it('returns 409 CAREER_RETIRED for a retired career', async () => {
-      const response = await save(careerIds.retired, makeSnapshot()).expect(
+      const response = await save(revisionIds.retired, makeSnapshot()).expect(
         409,
       );
 
       expect((response.body as ErrorBody).code).toBe('CAREER_RETIRED');
-      expect(await openRevisions(careerIds.retired)).toHaveLength(0);
+      const open = await openRevisions(careerIds.retired);
+      expect(open).toHaveLength(1); // seeded DRAFT still there
+      expect(open[0].status).toBe(RevisionStatus.DRAFT); // unchanged
     });
 
-    it('returns 404 for an unknown career', async () => {
+    it('returns 404 for an unknown revision', async () => {
       await save('00000000-0000-4000-8000-000000000000', makeSnapshot()).expect(
         404,
       );
     });
 
-    it('returns 400 BAD_REQUEST for a careerId that is not a UUID', async () => {
+    it('returns 400 BAD_REQUEST for a revisionId that is not a UUID', async () => {
       const response = await save('not-a-uuid', makeSnapshot()).expect(400);
 
       expect((response.body as ErrorBody).error).toBe('BAD_REQUEST');
     });
 
     it('returns 403 for a USER', async () => {
-      await save(careerIds.published, makeSnapshot(), tokens[Role.USER]).expect(
-        403,
-      );
+      await save(
+        revisionIds.published,
+        makeSnapshot(),
+        tokens[Role.USER],
+      ).expect(403);
     });
 
     it('returns 401 without an access token', async () => {
-      await save(careerIds.published, makeSnapshot(), null).expect(401);
+      await save(revisionIds.published, makeSnapshot(), null).expect(401);
     });
   });
 
@@ -409,7 +411,7 @@ describe('Admin career revision save (e2e)', () => {
       const payload = makeSnapshot();
       mutate(payload);
 
-      const response = await save(careerIds.published, payload).expect(400);
+      const response = await save(revisionIds.published, payload).expect(400);
       const body = response.body as ErrorBody;
 
       expect(body.error).toBe('VALIDATION_ERROR');
@@ -422,14 +424,14 @@ describe('Admin career revision save (e2e)', () => {
       payload.steps = [];
       payload.career.fieldId = null;
 
-      await save(careerIds.published, payload).expect(200);
+      await save(revisionIds.published, payload).expect(200);
     });
 
     it('returns 400 INVALID_SNAPSHOT for duplicate step orders', async () => {
       const payload = makeSnapshot();
       payload.steps.push({ ...payload.steps[0], id: 'new-2' });
 
-      const response = await save(careerIds.published, payload).expect(400);
+      const response = await save(revisionIds.published, payload).expect(400);
 
       expect(response.body).toEqual(
         expect.objectContaining({
@@ -439,18 +441,5 @@ describe('Admin career revision save (e2e)', () => {
         }),
       );
     });
-  });
-
-  it('the database refuses a second open revision for one career', async () => {
-    await expect(
-      prisma.contentRevision.create({
-        data: {
-          careerId: careerIds.published,
-          baseVersion: 4,
-          snapshot: makeSnapshot(),
-          createdById: userIds[Role.EDITOR],
-        },
-      }),
-    ).rejects.toMatchObject({ code: 'P2002' });
   });
 });

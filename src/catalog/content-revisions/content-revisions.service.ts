@@ -194,14 +194,14 @@ export class RevisionsService {
 
   // Save Draft Revision
   async saveDraftRevision(
-    careerId: string,
+    revisionId: string,
     snapshot: CareerSnapshot,
     actorUserId: string,
   ): Promise<SaveDraftRevisionResponseDto> {
     const problems = findSnapshotProblems(snapshot);
     if (problems.length > 0) {
       this.logger.warn(
-        { careerId, actorUserId, reason: 'INVALID_SNAPSHOT' },
+        { revisionId, actorUserId, reason: 'INVALID_SNAPSHOT' },
         'Draft revision rejected',
       );
       throw new DomainException(
@@ -213,75 +213,83 @@ export class RevisionsService {
     }
 
     const result = await this.prisma.$transaction(async (tx) => {
+      // Peek to learn careerId (no lock), then lock career-first (same order as
+      // rebase/publish/review), then lock the revision and re-read what we need.
+      const peek = await tx.contentRevision.findUnique({
+        where: { id: revisionId },
+        select: { careerId: true },
+      });
+      if (!peek) return { failure: 'REVISION_NOT_FOUND' as const };
+
       const [career] = await tx.$queryRaw<
         { version: number; status: CareerStatus }[]
-      >`SELECT "version", "status"::text AS "status" FROM "Career" WHERE "id" = ${careerId} FOR UPDATE`;
+      >`SELECT "version", "status"::text AS "status" FROM "Career"
+       WHERE "id" = ${peek.careerId} FOR UPDATE`;
       if (!career) return { failure: 'CAREER_NOT_FOUND' as const };
 
       if (career.status === CareerStatus.RETIRED)
         return { failure: 'CAREER_RETIRED' as const };
 
-      const open = await tx.contentRevision.findFirst({
-        where: { careerId, status: { in: OPEN_STATUSES } },
-        select: { id: true, status: true },
-      });
+      const [revision] = await tx.$queryRaw<
+        {
+          status: RevisionStatus;
+          baseVersion: number;
+          createdById: string;
+        }[]
+      >`SELECT "status"::text AS "status", "baseVersion", "createdById"
+       FROM "ContentRevision" WHERE "id" = ${revisionId} FOR UPDATE`;
+      if (!revision) return { failure: 'REVISION_NOT_FOUND' as const };
 
-      if (open?.status === RevisionStatus.IN_REVIEW)
-        return { failure: 'REVISION_IN_REVIEW' as const, revisionId: open.id };
+      if (revision.status === RevisionStatus.IN_REVIEW)
+        return { failure: 'REVISION_IN_REVIEW' as const };
+
+      if (revision.status !== RevisionStatus.DRAFT)
+        return { failure: 'INVALID_REVISION_STATE' as const };
 
       const data = structuredClone(snapshot);
-      if (open) {
-        const revision = await tx.contentRevision.update({
-          where: { id: open.id },
-          data: { snapshot: data },
-          select: REVISION_SELECT,
-        });
-        return { revision, created: false };
-      }
-
-      const revision = await tx.contentRevision.create({
-        data: {
-          careerId,
-          baseVersion: career.version,
-          snapshot: data,
-          createdById: actorUserId,
-        },
+      const updated = await tx.contentRevision.update({
+        where: { id: revisionId },
+        data: { snapshot: data },
         select: REVISION_SELECT,
       });
-      return { revision, created: true };
+
+      return { revision: updated };
     });
 
     if ('failure' in result) {
       this.logger.warn(
-        { careerId, actorUserId, reason: result.failure },
+        { revisionId, actorUserId, reason: result.failure },
         'Draft revision rejected',
       );
 
+      if (result.failure === 'REVISION_NOT_FOUND')
+        throw new NotFoundException('Revision not found');
       if (result.failure === 'CAREER_NOT_FOUND')
         throw new NotFoundException('Career not found');
-
       if (result.failure === 'CAREER_RETIRED')
         throw new DomainException(
           HttpStatus.CONFLICT,
           'CAREER_RETIRED',
           'A retired career cannot take a new revision',
         );
-
+      if (result.failure === 'REVISION_IN_REVIEW')
+        throw new DomainException(
+          HttpStatus.CONFLICT,
+          'REVISION_IN_REVIEW',
+          'The revision is in review; recall it before saving',
+          { revisionId },
+        );
       throw new DomainException(
         HttpStatus.CONFLICT,
-        'REVISION_IN_REVIEW',
-        'The open revision is in review; recall it before saving',
-        { revisionId: result.revisionId },
+        'INVALID_REVISION_STATE',
+        'Only a draft revision can be saved',
       );
     }
 
-    const { revision, created } = result;
-    this.logger.log(
-      { revisionId: revision.id, careerId, actorUserId, created },
-      created ? 'Draft revision created' : 'Draft revision updated',
-    );
+    const { revision } = result;
+    this.logger.log({ revisionId, actorUserId }, 'Draft revision updated');
 
-    return { ...revision, created };
+    return revision as SaveDraftRevisionResponseDto;
   }
 
   // Rebase Revision

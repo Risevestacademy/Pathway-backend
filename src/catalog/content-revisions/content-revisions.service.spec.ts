@@ -110,6 +110,9 @@ describe('RevisionsService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    // Clear any leftover mockResolvedValueOnce queues from previous tests.
+    tx.$queryRaw.mockReset();
+    // Re-establish the default $queryRaw response.
     tx.$queryRaw.mockResolvedValue([
       { version: 3, status: CareerStatus.PUBLISHED },
     ]);
@@ -261,82 +264,65 @@ describe('RevisionsService', () => {
   });
 
   describe('saveDraftRevision', () => {
-    it('locks the career row before reading the open revision', async () => {
-      await service.saveDraftRevision('career-1', snapshot, 'editor-1');
+    const draftRevisionRow = (
+      overrides: Partial<{
+        status: RevisionStatus;
+        baseVersion: number;
+        createdById: string;
+      }> = {},
+    ) => ({
+      status: overrides.status ?? RevisionStatus.DRAFT,
+      baseVersion: overrides.baseVersion ?? 3,
+      createdById: overrides.createdById ?? 'editor-1',
+    });
 
-      const [strings, careerId] = tx.$queryRaw.mock.calls[0] as [
-        TemplateStringsArray,
-        string,
+    const setRows = (
+      row: ReturnType<typeof draftRevisionRow> | null,
+      careerStatus: CareerStatus = CareerStatus.PUBLISHED,
+    ) => {
+      tx.contentRevision.findUnique.mockResolvedValue(
+        row ? { careerId: 'career-1' } : null,
+      );
+      tx.$queryRaw
+        .mockResolvedValueOnce([{ version: 3, status: careerStatus }])
+        .mockResolvedValueOnce(row ? [row] : []);
+    };
+
+    it('locks the career row, then the revision row, and updates the snapshot', async () => {
+      setRows(draftRevisionRow());
+      tx.contentRevision.update.mockResolvedValue(savedRevision());
+
+      await service.saveDraftRevision('revision-1', snapshot, 'editor-1');
+
+      const [careerLock, revisionLock] = tx.$queryRaw.mock.calls as [
+        [TemplateStringsArray, string],
+        [TemplateStringsArray, string],
       ];
-      expect(strings.join('?')).toContain('FOR UPDATE');
-      expect(careerId).toBe('career-1');
-      expect(tx.contentRevision.findFirst).toHaveBeenCalledWith({
-        where: {
-          careerId: 'career-1',
-          status: { in: [RevisionStatus.DRAFT, RevisionStatus.IN_REVIEW] },
-        },
-        select: { id: true, status: true },
-      });
-    });
-
-    it('creates a draft at the live version when none is open', async () => {
-      const result = await service.saveDraftRevision(
-        'career-1',
-        snapshot,
-        'editor-1',
-      );
-
-      expect(tx.contentRevision.create).toHaveBeenCalledWith({
-        data: {
-          careerId: 'career-1',
-          baseVersion: 3,
-          snapshot,
-          createdById: 'editor-1',
-        },
-        select,
-      });
-      expect(tx.contentRevision.update).not.toHaveBeenCalled();
-      expect(result).toEqual({ ...savedRevision(), created: true });
-      expect(logSpy).toHaveBeenCalledWith(
-        {
-          revisionId: 'revision-1',
-          careerId: 'career-1',
-          actorUserId: 'editor-1',
-          created: true,
-        },
-        'Draft revision created',
-      );
-    });
-
-    it('replaces the snapshot of the open draft', async () => {
-      tx.contentRevision.findFirst.mockResolvedValue({
-        id: 'revision-1',
-        status: RevisionStatus.DRAFT,
-      });
-
-      const result = await service.saveDraftRevision(
-        'career-1',
-        snapshot,
-        'editor-1',
-      );
+      expect(careerLock[0].join('?')).toContain('"Career"');
+      expect(careerLock[0].join('?')).toContain('FOR UPDATE');
+      expect(careerLock[1]).toBe('career-1');
+      expect(revisionLock[0].join('?')).toContain('"ContentRevision"');
+      expect(revisionLock[0].join('?')).toContain('FOR UPDATE');
+      expect(revisionLock[1]).toBe('revision-1');
 
       expect(tx.contentRevision.update).toHaveBeenCalledWith({
         where: { id: 'revision-1' },
         data: { snapshot },
         select,
       });
-      expect(tx.contentRevision.create).not.toHaveBeenCalled();
-      expect(result.created).toBe(false);
       expect(logSpy).toHaveBeenCalledWith(
-        expect.objectContaining({ created: false }),
+        { revisionId: 'revision-1', actorUserId: 'editor-1' },
         'Draft revision updated',
       );
     });
 
     it('stores a plain copy of the snapshot', async () => {
-      await service.saveDraftRevision('career-1', snapshot, 'editor-1');
+      setRows(draftRevisionRow());
+      tx.contentRevision.update.mockResolvedValue(savedRevision());
 
-      const [[args]] = tx.contentRevision.create.mock.calls as [
+      await service.saveDraftRevision('revision-1', snapshot, 'editor-1');
+
+      const [[args]] = tx.contentRevision.update.mock.calls as [
         [{ data: { snapshot: CareerSnapshot } }],
       ];
       expect(args.data.snapshot).toEqual(snapshot);
@@ -344,13 +330,10 @@ describe('RevisionsService', () => {
     });
 
     it('rejects with REVISION_IN_REVIEW and writes nothing', async () => {
-      tx.contentRevision.findFirst.mockResolvedValue({
-        id: 'revision-1',
-        status: RevisionStatus.IN_REVIEW,
-      });
+      setRows(draftRevisionRow({ status: RevisionStatus.IN_REVIEW }));
 
       const error = await service
-        .saveDraftRevision('career-1', snapshot, 'editor-1')
+        .saveDraftRevision('revision-1', snapshot, 'editor-1')
         .catch((e: unknown) => e);
 
       expect(error).toBeInstanceOf(DomainException);
@@ -360,10 +343,9 @@ describe('RevisionsService', () => {
       });
       expect((error as DomainException).getStatus()).toBe(409);
       expect(tx.contentRevision.update).not.toHaveBeenCalled();
-      expect(tx.contentRevision.create).not.toHaveBeenCalled();
       expect(warnSpy).toHaveBeenCalledWith(
         {
-          careerId: 'career-1',
+          revisionId: 'revision-1',
           actorUserId: 'editor-1',
           reason: 'REVISION_IN_REVIEW',
         },
@@ -371,33 +353,54 @@ describe('RevisionsService', () => {
       );
     });
 
-    it('rejects a retired career with CAREER_RETIRED', async () => {
-      tx.$queryRaw.mockResolvedValue([
-        { version: 2, status: CareerStatus.RETIRED },
-      ]);
+    it.each([
+      RevisionStatus.APPROVED,
+      RevisionStatus.REJECTED,
+      RevisionStatus.PUBLISHED,
+    ])('rejects a %s revision with INVALID_REVISION_STATE', async (status) => {
+      setRows(draftRevisionRow({ status }));
 
-      await expect(
-        service.saveDraftRevision('career-1', snapshot, 'editor-1'),
-      ).rejects.toMatchObject({ code: 'CAREER_RETIRED' });
-      expect(tx.contentRevision.findFirst).not.toHaveBeenCalled();
+      const error = await service
+        .saveDraftRevision('revision-1', snapshot, 'editor-1')
+        .catch((e: unknown) => e);
+
+      expect(error).toMatchObject({ code: 'INVALID_REVISION_STATE' });
+      expect((error as DomainException).getStatus()).toBe(409);
+      expect(tx.contentRevision.update).not.toHaveBeenCalled();
     });
 
-    it('throws NotFoundException for an unknown career', async () => {
-      tx.$queryRaw.mockResolvedValue([]);
+    it('rejects a retired career with CAREER_RETIRED', async () => {
+      setRows(draftRevisionRow(), CareerStatus.RETIRED);
+
+      await expect(
+        service.saveDraftRevision('revision-1', snapshot, 'editor-1'),
+      ).rejects.toMatchObject({ code: 'CAREER_RETIRED' });
+      expect(tx.contentRevision.update).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException for an unknown revision', async () => {
+      setRows(null);
 
       await expect(
         service.saveDraftRevision('missing', snapshot, 'editor-1'),
+      ).rejects.toThrow(new NotFoundException('Revision not found'));
+      expect(tx.$queryRaw).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException when the career disappeared before lock', async () => {
+      tx.contentRevision.findUnique.mockResolvedValue({ careerId: 'career-1' });
+      tx.$queryRaw.mockResolvedValueOnce([]); // first call returns no career
+
+      await expect(
+        service.saveDraftRevision('revision-1', snapshot, 'editor-1'),
       ).rejects.toThrow(new NotFoundException('Career not found'));
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.objectContaining({ reason: 'CAREER_NOT_FOUND' }),
-        'Draft revision rejected',
-      );
+      expect(tx.contentRevision.update).not.toHaveBeenCalled();
     });
 
     it('rejects an inconsistent snapshot before opening a transaction', async () => {
       const error = await service
         .saveDraftRevision(
-          'career-1',
+          'revision-1',
           {
             ...snapshot,
             skills: [
@@ -581,7 +584,6 @@ describe('RevisionsService', () => {
       promise.catch((e: unknown) => e) as Promise<DomainException>;
 
     beforeEach(() => {
-      tx.$queryRaw.mockReset();
       tx.contentRevision.update.mockResolvedValue(savedRevision());
     });
 
@@ -725,7 +727,6 @@ describe('RevisionsService', () => {
       promise.catch((e: unknown) => e) as Promise<DomainException>;
 
     beforeEach(() => {
-      tx.$queryRaw.mockReset();
       tx.review.create.mockImplementation(async (args) => {
         const { data } = args as {
           data: {
