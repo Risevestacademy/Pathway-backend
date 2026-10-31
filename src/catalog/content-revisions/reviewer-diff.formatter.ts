@@ -1,11 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma';
 import type {
-  CareerPlan,
-  PlanOperation,
+  CareerSnapshot,
   PlanSection,
-} from './career-snapshot.plan';
-import type { CareerSnapshot } from './career-snapshot.types';
+  PlanOperation,
+  CareerPlan,
+} from './career-snapshot.types';
 import {
   type AdvisoryDto,
   type FieldChangeDto,

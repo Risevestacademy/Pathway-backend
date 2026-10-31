@@ -14,9 +14,12 @@ import {
 import { ROLE_RANK } from '../../common';
 import { PrismaService } from '../../prisma';
 import { DomainException } from '../../common';
-import { buildPlan, type LiveCareerForPlan } from './career-snapshot.plan';
+import { buildPlan } from './career-snapshot.plan';
 import { findSnapshotProblems } from './career-snapshot.consistency';
-import type { CareerSnapshot } from './career-snapshot.types';
+import type {
+  CareerSnapshot,
+  LiveCareerForPlan,
+} from './career-snapshot.types';
 import { ReviewerDiffFormatter } from './reviewer-diff.formatter';
 import type { ReviewerDiffResponseDto } from './dto/reviewer-diff-response.dto';
 import type { SaveDraftRevisionResponseDto } from './dto/save-draft-revision-response.dto';
@@ -182,6 +185,7 @@ export class RevisionsService {
     });
   }
 
+  // Save Draft Revision
   async saveDraftRevision(
     careerId: string,
     snapshot: CareerSnapshot,
@@ -273,6 +277,7 @@ export class RevisionsService {
     return { ...revision, created };
   }
 
+  // Rebase Revision
   async rebaseRevision(
     revisionId: string,
     actorUserId: string,
@@ -388,6 +393,7 @@ export class RevisionsService {
     return { ...revision, liveVersion, rebased };
   }
 
+  // Recall Revision to DRAFT
   async recallRevision(
     revisionId: string,
     actor: { id: string; role: Role },
@@ -469,6 +475,7 @@ export class RevisionsService {
     );
   }
 
+  // Review Revision
   async reviewRevision(
     revisionId: string,
     reviewer: { id: string; role: Role },
@@ -608,6 +615,7 @@ export class RevisionsService {
     };
   }
 
+  // Delete Draft Revision
   async deleteDraftRevision(
     revisionId: string,
     actorUserId: string,
