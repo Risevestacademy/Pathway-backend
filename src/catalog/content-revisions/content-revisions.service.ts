@@ -26,6 +26,7 @@ import type {
 } from './career-snapshot.types';
 import { ReviewerDiffFormatter } from './reviewer-diff.formatter';
 import type { ReviewerDiffResponseDto } from './dto/reviewer-diff-response.dto';
+import type { SubmitRevisionResponseDto } from './dto/submit-revision-response.dto';
 import type { SaveDraftRevisionResponseDto } from './dto/save-draft-revision-response.dto';
 import { AnalyticsService } from '../../analytics';
 import type { RebaseRevisionResponseDto } from './dto/rebase-revision-response.dto';
@@ -293,6 +294,113 @@ export class RevisionsService {
   }
 
   // Rebase Revision
+  async submitRevision(
+    revisionId: string,
+    actor: { id: string; role: Role },
+  ): Promise<SubmitRevisionResponseDto> {
+    const result = await this.prisma.$transaction(async (tx) => {
+      const peek = await tx.contentRevision.findUnique({
+        where: { id: revisionId },
+        select: { careerId: true },
+      });
+      if (!peek) return { failure: 'REVISION_NOT_FOUND' as const };
+
+      const [career] = await tx.$queryRaw<{ status: CareerStatus }[]>`
+        SELECT "status"::text AS "status" FROM "Career"
+        WHERE "id" = ${peek.careerId} FOR UPDATE`;
+      if (!career) return { failure: 'CAREER_NOT_FOUND' as const };
+
+      const [revision] = await tx.$queryRaw<
+        { status: RevisionStatus; baseVersion: number; snapshot: unknown }[]
+      >`SELECT "status"::text AS "status", "baseVersion", "snapshot"
+        FROM "ContentRevision" WHERE "id" = ${revisionId} FOR UPDATE`;
+      if (!revision) return { failure: 'REVISION_NOT_FOUND' as const };
+
+      if (revision.status !== RevisionStatus.DRAFT)
+        return { failure: 'INVALID_REVISION_STATE' as const };
+
+      if (career.status === CareerStatus.RETIRED && actor.role !== Role.ADMIN)
+        return { failure: 'CAREER_RETIRED' as const };
+
+      const live = await this.loadLiveCareerForPlan(tx, peek.careerId);
+      if (!live) return { failure: 'CAREER_NOT_FOUND' as const };
+
+      const plan = buildPlan({
+        liveCareer: live,
+        snapshot: revision.snapshot as CareerSnapshot,
+        baseVersion: revision.baseVersion,
+        stepLearnerCounts: await this.loadStepLearnerCountsTx(
+          tx,
+          live.steps.map((s) => s.id),
+        ),
+      });
+      if (plan.blockers.length > 0)
+        return {
+          failure: 'REVISION_NOT_READY' as const,
+          blockers: plan.blockers,
+        };
+
+      const updated = await tx.contentRevision.update({
+        where: { id: revisionId },
+        data: { status: RevisionStatus.IN_REVIEW },
+        select: REVISION_SELECT,
+      });
+      return { revision: updated };
+    });
+
+    if ('failure' in result) {
+      this.logger.warn(
+        {
+          revisionId,
+          actorUserId: actor.id,
+          reason: result.failure,
+          ...(result.failure === 'REVISION_NOT_READY' && {
+            blockerCodes: result.blockers.map((blocker) => blocker.code),
+          }),
+        },
+        'Revision submit rejected',
+      );
+
+      if (result.failure === 'REVISION_NOT_FOUND')
+        throw new NotFoundException('Revision not found');
+      if (result.failure === 'CAREER_NOT_FOUND')
+        throw new NotFoundException('Career not found');
+      if (result.failure === 'CAREER_RETIRED')
+        throw new DomainException(
+          HttpStatus.CONFLICT,
+          'CAREER_RETIRED',
+          'A retired career cannot take a revision',
+        );
+      if (result.failure === 'REVISION_NOT_READY')
+        throw new DomainException(
+          HttpStatus.BAD_REQUEST,
+          'REVISION_NOT_READY',
+          'The revision is not ready for review',
+          { blockers: result.blockers },
+        );
+      throw new DomainException(
+        HttpStatus.CONFLICT,
+        'INVALID_REVISION_STATE',
+        'Only a draft revision can be submitted',
+      );
+    }
+
+    const { revision } = result;
+
+    this.logger.log(
+      { revisionId, careerId: revision.careerId, actorUserId: actor.id },
+      'Revision submitted',
+    );
+
+    this.analytics.capture('revision_submitted', actor.id, {
+      revisionId,
+      careerId: revision.careerId,
+      baseVersion: revision.baseVersion,
+    });
+
+    return revision;
+  }
+
   async rebaseRevision(
     revisionId: string,
     actorUserId: string,

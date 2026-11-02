@@ -28,6 +28,11 @@ export interface AnalyticsEventMap {
   staff_invite_revoked: { role: Role };
   staff_invite_accepted: { role: Role };
   career_deleted: { careerId: string };
+  revision_submitted: {
+    revisionId: string;
+    careerId: string;
+    baseVersion: number;
+  };
   revision_rebased: {
     revisionId: string;
     careerId: string;
