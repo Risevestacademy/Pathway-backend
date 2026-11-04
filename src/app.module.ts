@@ -21,6 +21,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
 import { FeedbackModule } from './feedback';
 import { TeamsModule } from './teams';
 import { RevisionsModule } from './catalog/content-revisions/content-revisions.module';
+import { OpportunitiesModule } from './opportunities/opportunities.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { RevisionsModule } from './catalog/content-revisions/content-revisions.m
     FeedbackModule,
     TeamsModule,
     RevisionsModule,
+    OpportunitiesModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
