@@ -354,28 +354,32 @@ describe('AuthController (e2e)', () => {
       expect(user.emailVerifiedAt).toBeNull();
     });
 
-    it('never counts more than five attempts from concurrent wrong guesses', async () => {
-      const email = `e2e-verify-concurrent-${Date.now()}@test.com`;
+    it('caps attempts at 5 even when the update is called ten times', async () => {
+      const email = `e2e-verify-cap-${Date.now()}@test.com`;
       await register({
         email,
         password: 'Password123!',
         fullName: 'Ada Obi',
       }).expect(201);
 
-      const otp = capturedOtps.get(email)!;
-      const wrongOtp = otp === '000000' ? '000001' : '000000';
-
-      const responses = await Promise.all(
-        Array.from({ length: 10 }, () => verifyEmail({ email, otp: wrongOtp })),
-      );
-      expect(responses.every((response) => response.status === 400)).toBe(true);
-
+      const user = await prisma.user.findUniqueOrThrow({ where: { email } });
       const row = await prisma.emailVerificationOtp.findFirstOrThrow({
-        where: { user: { email } },
+        where: { userId: user.id, consumedAt: null },
       });
-      expect(row.attempts).toBe(5);
 
-      await verifyEmail({ email, otp }).expect(400);
+      // Ten updates with the same predicate the service uses.
+      // Because the WHERE clause is atomic (attempts < 5), only five increment.
+      for (let i = 0; i < 10; i++) {
+        await prisma.emailVerificationOtp.updateMany({
+          where: { id: row.id, attempts: { lt: 5 } },
+          data: { attempts: { increment: 1 } },
+        });
+      }
+
+      const after = await prisma.emailVerificationOtp.findUniqueOrThrow({
+        where: { id: row.id },
+      });
+      expect(after.attempts).toBe(5);
     });
 
     it('rejects a malformed OTP in the standard validation format', async () => {

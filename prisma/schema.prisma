@@ -146,6 +146,21 @@ enum ReviewDecision {
   REJECTED
 }
 
+enum OpportunityType {
+  INTERNSHIP
+  JOB
+  FELLOWSHIP
+  HACKATHON
+  SCHOLARSHIP
+  PROGRAMME
+}
+
+enum OpportunityVerification {
+  DRAFT
+  VERIFIED
+  WITHDRAWN
+}
+
 model User {
   id              String    @id @default(uuid())
   email           String    @unique
@@ -171,6 +186,9 @@ model User {
   staffInvites          StaffInvite[]
   publishedCareers      Career[]               @relation("CareerPublishedBy")
   reviewedCareers       Career[]               @relation("CareerReviewedBy")
+
+  verifiedOpportunities Opportunity[]
+  savedOpportunities    UserSavedOpportunity[]
 }
 
 model UserProfile {
@@ -261,6 +279,7 @@ model Skill {
   resourceSkills    ResourceSkill[]
   questions         AssessmentQuestion[]
   userSkills        UserSkill[]
+  opportunities     OpportunitySkill[]
 }
 
 model Field {
@@ -295,14 +314,15 @@ model Career {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  publishedBy  User?             @relation("CareerPublishedBy", fields: [publishedById], references: [id], onDelete: SetNull)
-  reviewedBy   User?             @relation("CareerReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
-  skills       CareerSkill[]
-  outlook      OutlookData[]
-  pathway      Pathway?
-  userPathways UserPathway[]
-  feedback     ContentFeedback[]
-  revisions    ContentRevision[]
+  publishedBy   User?               @relation("CareerPublishedBy", fields: [publishedById], references: [id], onDelete: SetNull)
+  reviewedBy    User?               @relation("CareerReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  skills        CareerSkill[]
+  outlook       OutlookData[]
+  pathway       Pathway?
+  userPathways  UserPathway[]
+  feedback      ContentFeedback[]
+  revisions     ContentRevision[]
+  opportunities OpportunityCareer[]
 
   @@index([fieldId])
   @@index([publishedById])
@@ -631,4 +651,71 @@ model StaffInvite {
 
   @@index([email])
   @@index([invitedById])
+}
+
+model Opportunity {
+  id               String                  @id @default(uuid())
+  title            String
+  type             OpportunityType
+  organisation     String
+  isPrivateOrg     Boolean                 @default(false)
+  location         String
+  description      String
+  responsibilities String[]                @default([])
+  audience         String[]                @default([])
+  pay              String?
+  duration         String?
+  startDate        DateTime?
+  applyUrl         String
+  deadline         DateTime?
+  deadlineUnknown  Boolean                 @default(false)
+  verification     OpportunityVerification @default(DRAFT)
+  verifiedById     String?
+  verifiedAt       DateTime?
+  lastCheckedAt    DateTime?
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  verifiedBy User?                  @relation(fields: [verifiedById], references: [id], onDelete: SetNull)
+  careers    OpportunityCareer[]
+  skills     OpportunitySkill[]
+  saves      UserSavedOpportunity[]
+
+  @@index([verification, deadline])
+  @@index([type])
+  @@index([verifiedById])
+}
+
+model OpportunityCareer {
+  opportunityId String
+  careerId      String
+
+  opportunity Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  career      Career      @relation(fields: [careerId], references: [id], onDelete: Cascade)
+
+  @@id([opportunityId, careerId])
+  @@index([careerId])
+}
+
+model OpportunitySkill {
+  opportunityId String
+  skillId       String
+
+  opportunity Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  skill       Skill       @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([opportunityId, skillId])
+  @@index([skillId])
+}
+
+model UserSavedOpportunity {
+  userId        String
+  opportunityId String
+  savedAt       DateTime @default(now())
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  opportunity Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+
+  @@id([userId, opportunityId])
+  @@index([opportunityId])
 }
