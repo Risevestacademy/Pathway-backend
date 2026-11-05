@@ -34,8 +34,10 @@ describe('AuthController (e2e)', () => {
     'createdAt',
     'email',
     'emailVerified',
+    'firstName',
     'fullName',
     'id',
+    'lastName',
     'role',
   ];
 
@@ -147,7 +149,11 @@ describe('AuthController (e2e)', () => {
       const profile = await prisma.userProfile.findUnique({
         where: { userId: user.id },
       });
-      expect(profile?.fullName).toBe('Ada Obi');
+      expect(profile).toMatchObject({
+        fullName: 'Ada Obi',
+        firstName: 'Ada',
+        lastName: 'Obi',
+      });
     });
 
     it('normalizes the email to lowercase', async () => {
@@ -194,8 +200,18 @@ describe('AuthController (e2e)', () => {
       );
     });
 
+    it('rejects a body with no name at all, reporting firstName and lastName', async () => {
+      const response = await register({
+        email: `e2e-invalid-name-${Date.now()}@test.com`,
+        password: 'Password123!',
+      }).expect(400);
+
+      expect(response.body.error).toBe('VALIDATION_ERROR');
+      expect(response.body.fields).toHaveProperty('firstName');
+      expect(response.body.fields).toHaveProperty('lastName');
+    });
+
     it.each([
-      ['missing', {}],
       ['blank', { fullName: '   ' }],
       ['over 100 characters', { fullName: 'a'.repeat(101) }],
       ['not a string', { fullName: 42 }],
