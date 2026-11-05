@@ -4,16 +4,16 @@ import { INestApplication } from '@nestjs/common';
 import { createHash } from 'crypto';
 import request from 'supertest';
 
-import { AppModule } from '../src/app.module';
-import { apiPrefix as resolveApiPrefix, configureApp } from '../src/common';
-import { EnvironmentVariables } from '../src/config';
-import { NotificationService } from '../src/notifications';
-import { PrismaService } from '../src/prisma';
+import { AppModule } from '../../src/app.module';
+import { apiPrefix as resolveApiPrefix, configureApp } from '../../src/common';
+import { EnvironmentVariables } from '../../src/config';
+import { NotificationService } from '../../src/notifications';
+import { PrismaService } from '../../src/prisma';
 import {
   notificationMock,
   registerAndVerify,
   wireNotificationMock,
-} from './utils/auth';
+} from '../utils/auth';
 
 describe('Password reset OTP confirm (e2e)', () => {
   let app: INestApplication;

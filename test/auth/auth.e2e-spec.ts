@@ -4,13 +4,13 @@ import { INestApplication, UnauthorizedException } from '@nestjs/common';
 import request from 'supertest';
 import { createHash } from 'crypto';
 
-import { AppModule } from '../src/app.module';
-import { apiPrefix as resolveApiPrefix, configureApp } from '../src/common';
-import { EnvironmentVariables } from '../src/config';
-import { PrismaService } from '../src/prisma';
-import { AuthService } from '../src/auth/auth.service';
-import { NotificationService } from '../src/notifications';
-import { AuthProvider } from '../src/generated/prisma/enums';
+import { AppModule } from '../../src/app.module';
+import { apiPrefix as resolveApiPrefix, configureApp } from '../../src/common';
+import { EnvironmentVariables } from '../../src/config';
+import { PrismaService } from '../../src/prisma';
+import { AuthService } from '../../src/auth/auth.service';
+import { NotificationService } from '../../src/notifications';
+import { AuthProvider } from '../../src/generated/prisma/enums';
 
 const sha256 = (v: string) => createHash('sha256').update(v).digest('hex');
 

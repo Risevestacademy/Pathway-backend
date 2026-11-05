@@ -4,18 +4,18 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { createHash, randomBytes } from 'crypto';
 
-import { AppModule } from '../src/app.module';
-import { apiPrefix as resolveApiPrefix, configureApp } from '../src/common';
-import { EnvironmentVariables } from '../src/config';
-import { NotificationService } from '../src/notifications';
-import { PrismaService } from '../src/prisma';
-import { Role } from '../src/generated/prisma/client';
+import { AppModule } from '../../src/app.module';
+import { apiPrefix as resolveApiPrefix, configureApp } from '../../src/common';
+import { EnvironmentVariables } from '../../src/config';
+import { NotificationService } from '../../src/notifications';
+import { PrismaService } from '../../src/prisma';
+import { Role } from '../../src/generated/prisma/client';
 import {
   notificationMock,
   registerAndVerify,
   type RegisteredUser,
   wireNotificationMock,
-} from './utils/auth';
+} from '../utils/auth';
 
 type AcceptBody = {
   accessToken: string;
