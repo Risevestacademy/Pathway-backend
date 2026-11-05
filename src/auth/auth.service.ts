@@ -6,6 +6,7 @@ import {
   NotFoundException,
   UnauthorizedException,
   Logger,
+  ForbiddenException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -30,6 +31,7 @@ import { RequestPasswordResetOtpDto } from './dto/request-password-reset-otp.dto
 import { ConfirmPasswordResetOtpDto } from './dto/confirm-password-reset-otp.dto';
 import { TeamsService, type InviteClaimFailure } from '../teams';
 import { DomainException } from '../common';
+import { joinNames, splitFullName } from '../users/utils/names';
 
 type PrismaTransactionClient = Pick<PrismaService, 'refreshToken'>;
 
@@ -135,10 +137,16 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(dto.password, 12);
 
+    const split = splitFullName(dto.fullName);
+    const firstName = dto.firstName ?? split.firstName;
+    const lastName = dto.lastName ?? split.lastName;
+
     const createdUser = await this.usersService.create({
       email: dto.email,
       passwordHash,
-      fullName: dto.fullName,
+      firstName,
+      lastName,
+      fullName: dto.fullName ?? joinNames(firstName, lastName) ?? undefined,
     });
 
     const otp = this.generateOtp();
@@ -169,8 +177,8 @@ export class AuthService {
     return { message: 'Verification code sent', email: createdUser.email };
   }
 
-  // Login a user
-  async login(dto: LoginDto): Promise<AuthResult> {
+  // Shared credential check for /auth/login and /auth/admin/login
+  private async authenticate(dto: LoginDto) {
     const user = await this.usersService.findByEmail(dto.email);
 
     const passwordHash = user?.passwordHash || this.DUMMY_HASH;
@@ -191,9 +199,41 @@ export class AuthService {
       throw new UnauthorizedException('Email not verified');
     }
 
+    return user;
+  }
+
+  // Login a user
+  async login(dto: LoginDto): Promise<AuthResult> {
+    const user = await this.authenticate(dto);
+
     const tokens = await this.issueTokens(user);
 
     this.logger.log({ userId: user.id }, 'Login succeeded');
+    this.analytics.capture('user_logged_in', user.id, { method: 'password' });
+
+    return {
+      user: this.usersService.toUserResponse(user),
+      tokens,
+    };
+  }
+
+  async adminLogin(dto: LoginDto): Promise<AuthResult> {
+    const user = await this.authenticate(dto);
+
+    if (user.role === Role.USER) {
+      this.logger.warn(
+        { userId: user.id, reason: 'INSUFFICIENT_ROLE' },
+        'Admin login denied',
+      );
+      throw new ForbiddenException('Admin access required');
+    }
+
+    const tokens = await this.issueTokens(user);
+
+    this.logger.log(
+      { userId: user.id, role: user.role },
+      'Admin login succeeded',
+    );
     this.analytics.capture('user_logged_in', user.id, { method: 'password' });
 
     return {
@@ -468,6 +508,7 @@ export class AuthService {
               profile: {
                 create: {
                   fullName: googleProfile.fullName,
+                  ...splitFullName(googleProfile.fullName),
                 },
               },
               identities: {

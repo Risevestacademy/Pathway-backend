@@ -135,6 +135,43 @@ export class AuthController {
     return this.deliverTokens(response, platform, tokens, user);
   }
 
+  // Login to the admin area
+  @ApiOperation({
+    summary: 'Login to the admin area',
+    description:
+      'Same credentials and response as /auth/login, but only staff roles (EDITOR and above) are allowed in. Role changes apply at the next login.',
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Staff user logged in. Sets a refresh token cookie for web clients.',
+    type: AuthResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Unsupported X-Client-Platform value',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Invalid credentials, or the email has not been verified.',
+  })
+  @ApiResponse({ status: 403, description: 'The account has the USER role.' })
+  @ApiHeader(CLIENT_PLATFORM_API_HEADER)
+  @AuthThrottle()
+  @Post('admin/login')
+  @HttpCode(200)
+  async adminLogin(
+    @Body() dto: LoginDto,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const platform = resolveClientPlatform(request);
+
+    const { user, tokens } = await this.authService.adminLogin(dto);
+
+    return this.deliverTokens(response, platform, tokens, user);
+  }
+
   // Sign in with Google and issue authentication tokens
   @ApiOperation({ summary: 'Sign in with Google' })
   @ApiResponse({

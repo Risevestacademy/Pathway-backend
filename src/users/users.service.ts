@@ -7,9 +7,10 @@ import { Prisma, Role, User } from '../generated/prisma/client';
 import { PrismaService } from '../prisma';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { joinNames, splitFullName } from './utils/names';
 
 const profileSelect = {
-  profile: { select: { fullName: true } },
+  profile: { select: { fullName: true, firstName: true, lastName: true } },
 } satisfies Prisma.UserSelect;
 
 const publicUserSelect = {
@@ -34,6 +35,8 @@ export interface UserResponse {
   id: string;
   email: string;
   role: Role;
+  firstName: string | null;
+  lastName: string | null;
   fullName: string | null;
   emailVerified: boolean;
   createdAt: Date;
@@ -65,10 +68,18 @@ export class UsersService {
     });
   }
 
-  async create({ fullName, ...dto }: CreateUserDto): Promise<PublicUser> {
+  async create({
+    firstName,
+    lastName,
+    fullName,
+    ...dto
+  }: CreateUserDto): Promise<PublicUser> {
     try {
       return await this.prisma.user.create({
-        data: { ...dto, profile: { create: { fullName } } },
+        data: {
+          ...dto,
+          profile: { create: { firstName, lastName, fullName } },
+        },
         select: publicUserSelect,
       });
     } catch (error) {
@@ -85,10 +96,15 @@ export class UsersService {
 
   async updateProfile(id: string, dto: UpdateUserDto): Promise<UserResponse> {
     try {
+      const { firstName, lastName } = splitFullName(dto.fullName);
       await this.prisma.userProfile.upsert({
         where: { userId: id },
-        create: { userId: id, fullName: dto.fullName },
-        update: { fullName: dto.fullName },
+        create: { userId: id, fullName: dto.fullName, firstName, lastName },
+        update: {
+          fullName: dto.fullName,
+          firstName: firstName ?? null,
+          lastName: lastName ?? null,
+        },
       });
     } catch (error) {
       if (
@@ -108,13 +124,25 @@ export class UsersService {
     user: Pick<
       User,
       'id' | 'email' | 'role' | 'emailVerifiedAt' | 'createdAt'
-    > & { profile: { fullName: string | null } | null },
+    > & {
+      profile: {
+        fullName: string | null;
+        firstName: string | null;
+        lastName: string | null;
+      } | null;
+    },
   ): UserResponse {
+    const profile = user.profile;
     return {
       id: user.id,
       email: user.email,
       role: user.role,
-      fullName: user.profile?.fullName ?? null,
+      firstName: profile?.firstName ?? null,
+      lastName: profile?.lastName ?? null,
+      fullName:
+        joinNames(profile?.firstName, profile?.lastName) ??
+        profile?.fullName ??
+        null,
       emailVerified: user.emailVerifiedAt !== null,
       createdAt: user.createdAt,
     };
