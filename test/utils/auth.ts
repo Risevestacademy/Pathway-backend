@@ -65,18 +65,20 @@ export const registerAndVerify = async (
   options: {
     email?: string;
     password?: string;
-    fullName?: string;
+    firstName?: string;
+    lastName?: string;
     platform?: 'web' | 'mobile';
   } = {},
 ): Promise<RegisteredUser> => {
   const email = options.email ?? `e2e-${Date.now()}@test.com`;
   const password = options.password ?? 'Password123!';
-  const fullName = options.fullName ?? 'Ada Obi';
+  const firstName = options.firstName ?? 'Ada';
+  const lastName = options.lastName ?? 'Obi';
   const platform = options.platform ?? 'web';
 
   await request(app.getHttpServer())
     .post(`${apiPrefix}/auth/register`)
-    .send({ email, password, fullName })
+    .send({ email, password, firstName, lastName })
     .expect(201);
 
   const otp = await waitForOtp(email);
