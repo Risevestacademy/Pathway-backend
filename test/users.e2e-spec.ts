@@ -84,14 +84,25 @@ describe('Users (e2e)', () => {
       'createdAt',
       'email',
       'emailVerified',
+      'firstName',
       'fullName',
       'id',
+      'lastName',
       'role',
     ]);
-    expect(response.body).toMatchObject({ id: userId, fullName: 'Ada Obi' });
+    expect(response.body).toMatchObject({
+      id: userId,
+      firstName: 'Ada',
+      lastName: 'Obi',
+      fullName: 'Ada Obi',
+    });
 
     const profile = await prisma.userProfile.findUnique({ where: { userId } });
-    expect(profile?.fullName).toBe('Ada Obi');
+    expect(profile).toMatchObject({
+      fullName: 'Ada Obi',
+      firstName: 'Ada',
+      lastName: 'Obi',
+    });
   });
 
   it('handles concurrent updates for a user without a profile', async () => {
@@ -116,7 +127,11 @@ describe('Users (e2e)', () => {
       .send({ fullName: '  Grace Hopper  ' })
       .expect(200);
 
-    expect(response.body.fullName).toBe('Grace Hopper');
+    expect(response.body).toMatchObject({
+      firstName: 'Grace',
+      lastName: 'Hopper',
+      fullName: 'Grace Hopper',
+    });
 
     const me = await request(app.getHttpServer())
       .get(`${apiPrefix}/auth/me`)

@@ -1,4 +1,8 @@
-import { BadRequestException, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { jest } from '@jest/globals';
 import { ConfigService } from '@nestjs/config';
@@ -10,6 +14,7 @@ import type { AuthenticatedUser } from '../common';
 import type { UserResponse } from '../users';
 
 type LoginRequest = Parameters<AuthController['login']>[1];
+type AdminLoginRequest = Parameters<AuthController['adminLogin']>[1];
 type RefreshRequest = Parameters<AuthController['refresh']>[0];
 type LogoutRequest = Parameters<AuthController['logout']>[0];
 type GoogleRequest = Parameters<AuthController['google']>[1];
@@ -30,6 +35,8 @@ describe('AuthController', () => {
     id: '123e4567-e89b-12d3-a456-426614174000',
     email: 'dev@example.com',
     role: 'USER',
+    firstName: 'Ada',
+    lastName: 'Obi',
     fullName: 'Ada Obi',
     emailVerified: true,
     createdAt: new Date('2026-10-01T09:00:00.000Z'),
@@ -38,6 +45,7 @@ describe('AuthController', () => {
   const mockAuthService = {
     register: jest.fn<() => Promise<{ message: string; email: string }>>(),
     login: jest.fn<() => Promise<AuthResult>>(),
+    adminLogin: jest.fn<() => Promise<AuthResult>>(),
     verifyEmail: jest.fn<() => Promise<AuthResult>>(),
     resendVerificationEmail: jest.fn<() => Promise<void>>(),
     googleLogin: jest.fn<() => Promise<AuthResult>>(),
@@ -203,6 +211,104 @@ describe('AuthController', () => {
         controller.login(
           loginDto,
           requestWith() as unknown as LoginRequest,
+          mockResponse as unknown as Response,
+        ),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe('adminLogin', () => {
+    const loginDto: LoginDto = {
+      email: 'staff@example.com',
+      password: 'Password123!',
+    };
+    const staff: UserResponse = { ...mockUser, role: 'EDITOR' };
+
+    beforeEach(() => {
+      mockAuthService.adminLogin.mockResolvedValue({
+        user: staff,
+        tokens: { accessToken: 'access', refreshToken: 'refresh' },
+      });
+    });
+
+    it('delegates to AuthService.adminLogin, not login', async () => {
+      await controller.adminLogin(
+        loginDto,
+        requestWith() as unknown as AdminLoginRequest,
+        mockResponse as unknown as Response,
+      );
+
+      expect(mockAuthService.adminLogin).toHaveBeenCalledWith(loginDto);
+      expect(mockAuthService.login).not.toHaveBeenCalled();
+    });
+
+    it('sets the refresh cookie on the auth path and returns the user for web', async () => {
+      const result = await controller.adminLogin(
+        loginDto,
+        requestWith() as unknown as AdminLoginRequest,
+        mockResponse as unknown as Response,
+      );
+
+      expect(mockResponse.cookie).toHaveBeenCalledWith(
+        'refreshToken',
+        'refresh',
+        expect.objectContaining({ httpOnly: true, path: cookiePath }),
+      );
+      expect(result).toEqual({ accessToken: 'access', user: staff });
+    });
+
+    it('returns both tokens in the body for mobile, without a cookie', async () => {
+      const result = await controller.adminLogin(
+        loginDto,
+        requestWith('mobile') as unknown as AdminLoginRequest,
+        mockResponse as unknown as Response,
+      );
+
+      expect(mockResponse.cookie).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        accessToken: 'access',
+        refreshToken: 'refresh',
+        user: staff,
+      });
+    });
+
+    it('rejects an unsupported platform before authenticating', async () => {
+      await expect(
+        controller.adminLogin(
+          loginDto,
+          requestWith('desktop') as unknown as AdminLoginRequest,
+          mockResponse as unknown as Response,
+        ),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(mockAuthService.adminLogin).not.toHaveBeenCalled();
+    });
+
+    it('propagates the 403 for a USER account and sets no cookie', async () => {
+      mockAuthService.adminLogin.mockRejectedValue(
+        new ForbiddenException('Admin access required'),
+      );
+
+      await expect(
+        controller.adminLogin(
+          loginDto,
+          requestWith() as unknown as AdminLoginRequest,
+          mockResponse as unknown as Response,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+
+      expect(mockResponse.cookie).not.toHaveBeenCalled();
+    });
+
+    it('propagates a credential failure from AuthService', async () => {
+      mockAuthService.adminLogin.mockRejectedValue(
+        new UnauthorizedException('Invalid credentials'),
+      );
+
+      await expect(
+        controller.adminLogin(
+          loginDto,
+          requestWith() as unknown as AdminLoginRequest,
           mockResponse as unknown as Response,
         ),
       ).rejects.toThrow(UnauthorizedException);
@@ -627,6 +733,8 @@ describe('AuthController', () => {
         id: 'user-id',
         email: 'dev@example.com',
         role: 'USER',
+        firstName: 'Ada',
+        lastName: 'Obi',
         fullName: 'Ada Obi',
         emailVerified: true,
         createdAt: new Date('2026-10-01T09:00:00.000Z'),

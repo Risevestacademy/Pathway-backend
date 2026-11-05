@@ -19,7 +19,7 @@ describe('UsersService', () => {
     emailVerifiedAt: null,
     createdAt: new Date('2026-09-18T10:00:00.000Z'),
     updatedAt: new Date('2026-09-18T10:00:00.000Z'),
-    profile: { fullName: 'Ada Obi' },
+    profile: { fullName: 'Ada Obi', firstName: 'Ada', lastName: 'Obi' },
   };
 
   beforeEach(async () => {
@@ -70,7 +70,7 @@ describe('UsersService', () => {
       expect(select).not.toHaveProperty('passwordHash');
     });
 
-    it('selects the verification timestamp and profile name', async () => {
+    it('selects the verification timestamp and profile names', async () => {
       findUnique.mockResolvedValue(publicUser);
 
       await service.findById('user-1');
@@ -78,7 +78,9 @@ describe('UsersService', () => {
       const { select } = (findUnique.mock.calls[0] as [{ select: object }])[0];
       expect(select).toMatchObject({
         emailVerifiedAt: true,
-        profile: { select: { fullName: true } },
+        profile: {
+          select: { fullName: true, firstName: true, lastName: true },
+        },
       });
     });
 
@@ -101,7 +103,11 @@ describe('UsersService', () => {
       );
       expect(findUnique).toHaveBeenCalledWith({
         where: { email: 'dev@example.com' },
-        include: { profile: { select: { fullName: true } } },
+        include: {
+          profile: {
+            select: { fullName: true, firstName: true, lastName: true },
+          },
+        },
       });
     });
 
@@ -118,6 +124,8 @@ describe('UsersService', () => {
     const newUser = {
       email: 'dev@example.com',
       passwordHash: 'hashed',
+      firstName: 'Ada',
+      lastName: 'Obi',
       fullName: 'Ada Obi',
     };
 
@@ -131,11 +139,43 @@ describe('UsersService', () => {
           data: {
             email: 'dev@example.com',
             passwordHash: 'hashed',
-            profile: { create: { fullName: 'Ada Obi' } },
+            profile: {
+              create: {
+                firstName: 'Ada',
+                lastName: 'Obi',
+                fullName: 'Ada Obi',
+              },
+            },
           },
         }),
       );
       expect(result).not.toHaveProperty('passwordHash');
+    });
+
+    it('still creates the profile when only a legacy fullName is given', async () => {
+      create.mockResolvedValue(publicUser);
+
+      await service.create({
+        email: 'dev@example.com',
+        passwordHash: 'hashed',
+        fullName: 'Ada Obi',
+      });
+
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: {
+            email: 'dev@example.com',
+            passwordHash: 'hashed',
+            profile: {
+              create: {
+                firstName: undefined,
+                lastName: undefined,
+                fullName: 'Ada Obi',
+              },
+            },
+          },
+        }),
+      );
     });
 
     it('throws ConflictException when the email is already taken', async () => {
@@ -170,8 +210,13 @@ describe('UsersService', () => {
 
       expect(upsertProfile).toHaveBeenCalledWith({
         where: { userId: 'user-1' },
-        create: { userId: 'user-1', fullName: 'Ada Obi' },
-        update: { fullName: 'Ada Obi' },
+        create: {
+          userId: 'user-1',
+          fullName: 'Ada Obi',
+          firstName: 'Ada',
+          lastName: 'Obi',
+        },
+        update: { fullName: 'Ada Obi', firstName: 'Ada', lastName: 'Obi' },
       });
       expect(findUnique).toHaveBeenCalledWith(
         expect.objectContaining({ where: { id: 'user-1' } }),
@@ -180,10 +225,46 @@ describe('UsersService', () => {
         id: 'user-1',
         email: 'dev@example.com',
         role: Role.USER,
+        firstName: 'Ada',
+        lastName: 'Obi',
         fullName: 'Ada Obi',
         emailVerified: false,
         createdAt: publicUser.createdAt,
       });
+    });
+
+    it('splits the new name so the derived fullName follows the update', async () => {
+      upsertProfile.mockResolvedValue({});
+      findUnique.mockResolvedValue(publicUser);
+
+      await service.updateProfile('user-1', { fullName: 'Ada Lovelace Obi' });
+
+      expect(upsertProfile).toHaveBeenCalledWith(
+        expect.objectContaining({
+          update: {
+            fullName: 'Ada Lovelace Obi',
+            firstName: 'Ada',
+            lastName: 'Lovelace Obi',
+          },
+        }),
+      );
+    });
+
+    it('clears lastName when the new name is a single word', async () => {
+      upsertProfile.mockResolvedValue({});
+      findUnique.mockResolvedValue(publicUser);
+
+      await service.updateProfile('user-1', { fullName: 'Madonna' });
+
+      expect(upsertProfile).toHaveBeenCalledWith(
+        expect.objectContaining({
+          update: {
+            fullName: 'Madonna',
+            firstName: 'Madonna',
+            lastName: null,
+          },
+        }),
+      );
     });
 
     it('throws NotFoundException when the user no longer exists', async () => {
@@ -225,10 +306,43 @@ describe('UsersService', () => {
         id: 'user-1',
         email: 'dev@example.com',
         role: Role.USER,
+        firstName: 'Ada',
+        lastName: 'Obi',
         fullName: 'Ada Obi',
         emailVerified: false,
         createdAt: publicUser.createdAt,
       });
+    });
+
+    it('derives fullName from firstName and lastName', () => {
+      const result = service.toUserResponse({
+        ...publicUser,
+        profile: { fullName: 'Old Name', firstName: 'Ada', lastName: 'Obi' },
+      });
+
+      expect(result.fullName).toBe('Ada Obi');
+    });
+
+    it('falls back to the stored fullName for a legacy profile without names', () => {
+      const result = service.toUserResponse({
+        ...publicUser,
+        profile: { fullName: 'Ada Obi', firstName: null, lastName: null },
+      });
+
+      expect(result).toMatchObject({
+        firstName: null,
+        lastName: null,
+        fullName: 'Ada Obi',
+      });
+    });
+
+    it('uses a lone firstName as the fullName', () => {
+      const result = service.toUserResponse({
+        ...publicUser,
+        profile: { fullName: null, firstName: 'Madonna', lastName: null },
+      });
+
+      expect(result.fullName).toBe('Madonna');
     });
 
     it('reports a user with a verification timestamp as verified', () => {
@@ -240,10 +354,14 @@ describe('UsersService', () => {
       expect(result.emailVerified).toBe(true);
     });
 
-    it('returns a null fullName when the user has no profile', () => {
+    it('returns null names when the user has no profile', () => {
       const result = service.toUserResponse({ ...publicUser, profile: null });
 
-      expect(result.fullName).toBeNull();
+      expect(result).toMatchObject({
+        firstName: null,
+        lastName: null,
+        fullName: null,
+      });
     });
 
     it('never exposes credentials or raw timestamps', () => {
@@ -256,8 +374,10 @@ describe('UsersService', () => {
         'createdAt',
         'email',
         'emailVerified',
+        'firstName',
         'fullName',
         'id',
+        'lastName',
         'role',
       ]);
     });
