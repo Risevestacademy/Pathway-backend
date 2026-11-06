@@ -80,7 +80,11 @@ export class RevisionsService {
         snapshot: true,
         createdAt: true,
         createdById: true,
-        createdBy: { select: { profile: { select: { fullName: true } } } },
+        createdBy: {
+          select: {
+            profile: { select: { firstName: true, lastName: true } },
+          },
+        },
       },
     });
 
@@ -188,7 +192,13 @@ export class RevisionsService {
 
     return this.formatter.format(revisionId, plan, snapshot, {
       title: `${liveCareer.title} (Revision)`,
-      authorName: revision.createdBy.profile?.fullName ?? 'Unknown',
+      authorName:
+        [
+          revision.createdBy.profile?.firstName,
+          revision.createdBy.profile?.lastName,
+        ]
+          .filter((part): part is string => Boolean(part))
+          .join(' ') || 'Unknown',
       createdAt: revision.createdAt,
     });
   }

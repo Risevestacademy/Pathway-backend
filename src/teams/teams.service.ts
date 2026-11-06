@@ -245,17 +245,29 @@ export class TeamsService {
           expiresAt: true,
           acceptedAt: true,
           revokedAt: true,
-          invitedBy: { select: { profile: { select: { fullName: true } } } },
+          invitedBy: {
+            select: {
+              profile: { select: { firstName: true, lastName: true } },
+            },
+          },
         },
       }),
       this.prisma.staffInvite.count({ where }),
     ]);
 
-    const items = invites.map(({ invitedBy, ...invite }) => ({
-      ...invite,
-      status: this.statusOf(invite, now),
-      invitedByName: invitedBy.profile?.fullName ?? null,
-    }));
+    const items = invites.map(({ invitedBy, ...invite }) => {
+      const profile = invitedBy.profile;
+      const invitedByName =
+        [profile?.firstName, profile?.lastName]
+          .filter((part): part is string => Boolean(part))
+          .join(' ') || null;
+
+      return {
+        ...invite,
+        status: this.statusOf(invite, now),
+        invitedByName,
+      };
+    });
 
     return { items, total, page, limit };
   }

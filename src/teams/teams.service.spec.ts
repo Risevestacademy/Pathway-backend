@@ -84,7 +84,7 @@ describe('TeamsService', () => {
     expiresAt: later,
     acceptedAt: null,
     revokedAt: null,
-    invitedBy: { profile: { fullName: 'Ada Lovelace' } },
+    invitedBy: { profile: { firstName: 'Ada', lastName: 'Lovelace' } },
     ...overrides,
   });
 
@@ -132,7 +132,7 @@ describe('TeamsService', () => {
         acceptedAt: null,
         revokedAt: null,
         createdAt: now,
-        invitedBy: { profile: { fullName: 'Ada Lovelace' } },
+        invitedBy: { profile: { firstName: 'Ada', lastName: 'Lovelace' } },
       };
     });
     mockPrismaService.staffInvite.deleteMany.mockResolvedValue({ count: 0 });

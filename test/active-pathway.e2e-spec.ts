@@ -136,6 +136,8 @@ describe('Active pathway (e2e)', () => {
 
     user = await registerUser({
       email: `e2e-active-pathway-${Date.now()}@test.com`,
+      firstName: 'Ada',
+      lastName: 'Obi',
     });
   });
 

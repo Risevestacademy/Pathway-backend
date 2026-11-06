@@ -327,7 +327,8 @@ describe('AuthService', () => {
     const dto = {
       email: 'test@test.com',
       password: 'password123',
-      fullName: 'Ada Obi',
+      firstName: 'Ada',
+      lastName: 'Obi',
     };
 
     const createdUser = {
@@ -362,69 +363,8 @@ describe('AuthService', () => {
         passwordHash: expect.any(String),
         firstName: 'Ada',
         lastName: 'Obi',
-        fullName: 'Ada Obi',
       });
       expect(mockPrismaService.refreshToken.create).not.toHaveBeenCalled();
-    });
-
-    it('stores firstName and lastName and builds fullName when only the names are sent', async () => {
-      mockUsersService.findByEmail.mockResolvedValue(null);
-      mockUsersService.create.mockResolvedValue(createdUser);
-
-      await service.register({
-        email: 'test@test.com',
-        password: 'password123',
-        firstName: 'Ada',
-        lastName: 'Obi',
-      });
-
-      expect(mockUsersService.create).toHaveBeenCalledWith({
-        email: 'test@test.com',
-        passwordHash: expect.any(String),
-        firstName: 'Ada',
-        lastName: 'Obi',
-        fullName: 'Ada Obi',
-      });
-    });
-
-    it('splits a legacy fullName on the first space, keeping the rest as lastName', async () => {
-      mockUsersService.findByEmail.mockResolvedValue(null);
-      mockUsersService.create.mockResolvedValue(createdUser);
-
-      await service.register({
-        email: 'test@test.com',
-        password: 'password123',
-        fullName: 'Ada Lovelace Obi',
-      });
-
-      expect(mockUsersService.create).toHaveBeenCalledWith({
-        email: 'test@test.com',
-        passwordHash: expect.any(String),
-        firstName: 'Ada',
-        lastName: 'Lovelace Obi',
-        fullName: 'Ada Lovelace Obi',
-      });
-    });
-
-    it('lets explicit names win over the split of a legacy fullName', async () => {
-      mockUsersService.findByEmail.mockResolvedValue(null);
-      mockUsersService.create.mockResolvedValue(createdUser);
-
-      await service.register({
-        email: 'test@test.com',
-        password: 'password123',
-        firstName: 'Adaeze',
-        lastName: 'Obi',
-        fullName: 'Ada Obi',
-      });
-
-      expect(mockUsersService.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          firstName: 'Adaeze',
-          lastName: 'Obi',
-          fullName: 'Ada Obi',
-        }),
-      );
     });
 
     it('consumes any existing OTPs, then stores a single hashed six-digit OTP', async () => {
@@ -1819,7 +1759,6 @@ describe('AuthService', () => {
           emailVerifiedAt: expect.any(Date),
           profile: {
             create: {
-              fullName: 'Ada Obi',
               firstName: 'Ada',
               lastName: 'Obi',
             },
