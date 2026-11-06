@@ -2240,6 +2240,186 @@
           "Admin - Revisions"
         ]
       }
+    },
+    "/opportunities": {
+      "get": {
+        "description": "Public. Only visible listings appear: VERIFIED, with a future deadline or an unknown (rolling) one. Draft, withdrawn and closed listings are never returned. Sorted by deadline, soonest first, with rolling listings last. \"See more like this\" and \"See similar roles\" use careerId with excludeId. An empty result is [].",
+        "operationId": "OpportunitiesController_listOpportunities",
+        "parameters": [
+          {
+            "name": "type",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": "INTERNSHIP",
+              "type": "string",
+              "enum": [
+                "INTERNSHIP",
+                "JOB",
+                "FELLOWSHIP",
+                "HACKATHON",
+                "SCHOLARSHIP",
+                "PROGRAMME"
+              ]
+            }
+          },
+          {
+            "name": "careerId",
+            "required": false,
+            "in": "query",
+            "description": "Only listings linked to this career.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "excludeId",
+            "required": false,
+            "in": "query",
+            "description": "Leaves this listing out. Used with careerId for \"See similar roles\".",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "description": "Matches the title or organisation, ignoring case.",
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 10000,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Values above 50 are capped to 50.",
+            "schema": {
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OpportunityListItemDto"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "type is not an OpportunityType, careerId or excludeId is not a UUID, or another query value is invalid (VALIDATION_ERROR)"
+          }
+        },
+        "summary": "List visible opportunities",
+        "tags": [
+          "Opportunities"
+        ]
+      }
+    },
+    "/opportunities/{id}/save": {
+      "put": {
+        "operationId": "OpportunitiesController_saveOpportunity",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Opportunity UUID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SaveOpportunityResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed opportunity id"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "404": {
+            "description": "Opportunity does not exist or is not visible"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Save an opportunity for the signed-in user",
+        "tags": [
+          "Opportunities"
+        ]
+      },
+      "delete": {
+        "operationId": "OpportunitiesController_unsaveOpportunity",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Opportunity UUID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The opportunity is not saved"
+          },
+          "400": {
+            "description": "Malformed opportunity id"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Remove an opportunity from the user's saves",
+        "tags": [
+          "Opportunities"
+        ]
+      }
     }
   },
   "info": {
@@ -5831,6 +6011,87 @@
           "careerStatus",
           "newVersion",
           "publishedAt"
+        ]
+      },
+      "OpportunityListItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "3f6c1e2a-8b4d-4c7e-9a1f-2d5b6c7e8f90"
+          },
+          "title": {
+            "type": "string",
+            "example": "Backend Engineering Intern"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "INTERNSHIP",
+              "JOB",
+              "FELLOWSHIP",
+              "HACKATHON",
+              "SCHOLARSHIP",
+              "PROGRAMME"
+            ],
+            "example": "INTERNSHIP"
+          },
+          "organisation": {
+            "type": "string",
+            "example": "Northwind Labs"
+          },
+          "location": {
+            "type": "string",
+            "example": "Lagos, Nigeria"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "OPEN",
+              "CLOSING_SOON",
+              "CLOSED",
+              "ROLLING"
+            ],
+            "example": "CLOSING_SOON",
+            "description": "CLOSING_SOON when the deadline is within 7 days; ROLLING when the deadline is unknown."
+          },
+          "deadline": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true,
+            "example": "2026-11-20T23:59:00.000Z"
+          },
+          "summary": {
+            "type": "string",
+            "example": "Join the payments team for a 12-week internship building…",
+            "description": "The description, cut to 160 characters at a word boundary with \"…\"."
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "type",
+          "organisation",
+          "location",
+          "status",
+          "deadline",
+          "summary"
+        ]
+      },
+      "SaveOpportunityResponseDto": {
+        "type": "object",
+        "properties": {
+          "opportunityId": {
+            "type": "string"
+          },
+          "savedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "opportunityId",
+          "savedAt"
         ]
       }
     }
