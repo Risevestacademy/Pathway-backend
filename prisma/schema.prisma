@@ -189,6 +189,10 @@ model User {
 
   verifiedOpportunities Opportunity[]
   savedOpportunities    UserSavedOpportunity[]
+
+  userTasks               UserTask[]
+  userTaskChecklistItems  UserTaskChecklistItem[]
+  userResourceCompletions UserResourceCompletion[]
 }
 
 model UserProfile {
@@ -197,6 +201,12 @@ model UserProfile {
   fullName  String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  firstName            String?
+  lastName             String?
+  avatarUrl            String? // Cloudinary URL
+  learningGoals        String[] @default([])
+  weeklyTimeCommitment String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -384,13 +394,29 @@ model Pathway {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  career Career        @relation(fields: [careerId], references: [id], onDelete: Cascade)
+  career Career         @relation(fields: [careerId], references: [id], onDelete: Cascade)
   steps  PathwayStep[]
+  stages PathwayStage[]
+}
+
+model PathwayStage {
+  id        String   @id @default(uuid())
+  pathwayId String
+  title     String
+  order     Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  pathway Pathway       @relation(fields: [pathwayId], references: [id], onDelete: Cascade)
+  steps   PathwayStep[]
+
+  @@unique([pathwayId, order])
 }
 
 model PathwayStep {
   id                String   @id @default(uuid())
   pathwayId         String
+  stageId           String?
   title             String
   description       String?
   learningObjective String
@@ -401,13 +427,60 @@ model PathwayStep {
   updatedAt         DateTime @updatedAt
 
   pathway      Pathway               @relation(fields: [pathwayId], references: [id], onDelete: Cascade)
+  stage        PathwayStage?         @relation(fields: [stageId], references: [id], onDelete: SetNull)
   skills       PathwayStepSkill[]
   resources    PathwayStepResource[]
   progress     UserPathwayStep[]
   assessments  Assessment[]
   userPathways UserPathway[]
+  tasks        PathwayStepTask[]
 
   @@unique([pathwayId, order])
+  @@index([stageId])
+}
+
+model PathwayStepTask {
+  id             String   @id @default(uuid())
+  stepId         String
+  title          String
+  goal           String
+  estimatedWeeks Int?
+  order          Int
+  whatToMake     String[] @default([])
+  hints          String[] @default([])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  step           PathwayStep                @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  checklistItems PathwayTaskChecklistItem[]
+  resources      PathwayTaskResource[]
+  completions    UserTask[]
+
+  @@unique([stepId, order])
+}
+
+model PathwayTaskChecklistItem {
+  id     String @id @default(uuid())
+  taskId String
+  text   String
+  order  Int
+
+  task       PathwayStepTask         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userChecks UserTaskChecklistItem[]
+
+  @@unique([taskId, order])
+}
+
+model PathwayTaskResource {
+  taskId     String
+  resourceId String
+  order      Int
+
+  task     PathwayStepTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  resource Resource        @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, resourceId])
+  @@index([resourceId])
 }
 
 model PathwayStepSkill {
@@ -433,11 +506,15 @@ model Resource {
   curationRationale String
   lastCheckedDate   DateTime
   status            ResourceStatus     @default(ACTIVE)
+  estimatedWeeks    Int?
+  badgeImageUrl     String?
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 
   pathwaySteps PathwayStepResource[]
   skills       ResourceSkill[]
+  taskLinks    PathwayTaskResource[]
+  completions  UserResourceCompletion[]
 }
 
 model PathwayStepResource {
@@ -492,6 +569,46 @@ model UserPathwayStep {
 
   @@unique([userId, pathwayStepId])
   @@index([userId])
+}
+
+model UserTask {
+  id          String    @id @default(uuid())
+  userId      String
+  taskId      String
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  user User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task PathwayStepTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, taskId])
+  @@index([taskId])
+}
+
+model UserTaskChecklistItem {
+  id              String   @id @default(uuid())
+  userId          String
+  checklistItemId String
+  checkedAt       DateTime
+
+  user User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  item PathwayTaskChecklistItem @relation(fields: [checklistItemId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, checklistItemId])
+  @@index([checklistItemId])
+}
+
+model UserResourceCompletion {
+  id          String   @id @default(uuid())
+  userId      String
+  resourceId  String
+  completedAt DateTime
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resource Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, resourceId])
+  @@index([resourceId])
 }
 
 model UserSkill {

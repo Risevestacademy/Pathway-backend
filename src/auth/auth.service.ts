@@ -6,6 +6,7 @@ import {
   NotFoundException,
   UnauthorizedException,
   Logger,
+  ForbiddenException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -138,7 +139,8 @@ export class AuthService {
     const createdUser = await this.usersService.create({
       email: dto.email,
       passwordHash,
-      fullName: dto.fullName,
+      firstName: dto.firstName,
+      lastName: dto.lastName,
     });
 
     const otp = this.generateOtp();
@@ -169,8 +171,8 @@ export class AuthService {
     return { message: 'Verification code sent', email: createdUser.email };
   }
 
-  // Login a user
-  async login(dto: LoginDto): Promise<AuthResult> {
+  // Shared credential check for /auth/login and /auth/admin/login
+  private async authenticate(dto: LoginDto) {
     const user = await this.usersService.findByEmail(dto.email);
 
     const passwordHash = user?.passwordHash || this.DUMMY_HASH;
@@ -191,9 +193,41 @@ export class AuthService {
       throw new UnauthorizedException('Email not verified');
     }
 
+    return user;
+  }
+
+  // Login a user
+  async login(dto: LoginDto): Promise<AuthResult> {
+    const user = await this.authenticate(dto);
+
     const tokens = await this.issueTokens(user);
 
     this.logger.log({ userId: user.id }, 'Login succeeded');
+    this.analytics.capture('user_logged_in', user.id, { method: 'password' });
+
+    return {
+      user: this.usersService.toUserResponse(user),
+      tokens,
+    };
+  }
+
+  async adminLogin(dto: LoginDto): Promise<AuthResult> {
+    const user = await this.authenticate(dto);
+
+    if (user.role === Role.USER) {
+      this.logger.warn(
+        { userId: user.id, reason: 'INSUFFICIENT_ROLE' },
+        'Admin login denied',
+      );
+      throw new ForbiddenException('Admin access required');
+    }
+
+    const tokens = await this.issueTokens(user);
+
+    this.logger.log(
+      { userId: user.id, role: user.role },
+      'Admin login succeeded',
+    );
     this.analytics.capture('user_logged_in', user.id, { method: 'password' });
 
     return {
@@ -371,11 +405,23 @@ export class AuthService {
   }
 
   // google login/signup
+  // google login/signup
   async googleLogin(idToken: string): Promise<AuthResult> {
     const googleProfile = await this.googleOAuthService.verifyIdToken(idToken);
 
     const email = googleProfile.email.trim().toLowerCase();
     const now = new Date();
+
+    // Google only gives us one string. Derive first/last inline — no util,
+    // no fullName write. Empty/whitespace names are rejected outright rather
+    // than silently producing a nameless profile.
+    const trimmedName = googleProfile.fullName?.trim() ?? '';
+    if (!trimmedName) {
+      throw new BadRequestException('Google account has no name');
+    }
+    const [firstToken, ...restTokens] = trimmedName.split(/\s+/);
+    const firstName = firstToken;
+    const lastName = restTokens.length > 0 ? restTokens.join(' ') : null;
 
     let isNewUser = false;
     let result: AuthResult;
@@ -467,7 +513,8 @@ export class AuthService {
               emailVerifiedAt: now,
               profile: {
                 create: {
-                  fullName: googleProfile.fullName,
+                  firstName,
+                  lastName,
                 },
               },
               identities: {

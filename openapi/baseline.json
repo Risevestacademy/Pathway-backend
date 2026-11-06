@@ -183,6 +183,62 @@
         ]
       }
     },
+    "/auth/admin/login": {
+      "post": {
+        "description": "Same credentials and response as /auth/login, but only staff roles (EDITOR and above) are allowed in. Role changes apply at the next login.",
+        "operationId": "AuthController_adminLogin",
+        "parameters": [
+          {
+            "name": "X-Client-Platform",
+            "in": "header",
+            "description": "'mobile' carries the refresh token in the request body; 'web' or an absent header carries it in the HttpOnly cookie. Any other value is rejected with 400.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "web",
+                "mobile"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Staff user logged in. Sets a refresh token cookie for web clients.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unsupported X-Client-Platform value"
+          },
+          "401": {
+            "description": "Invalid credentials, or the email has not been verified."
+          },
+          "403": {
+            "description": "The account has the USER role."
+          }
+        },
+        "summary": "Login to the admin area",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
     "/auth/google": {
       "post": {
         "operationId": "AuthController_google",
@@ -1921,6 +1977,58 @@
         ]
       }
     },
+    "/admin/revisions/{revisionId}/submit": {
+      "post": {
+        "description": "Minimum role: EDITOR.\n\nMoves a DRAFT revision to IN_REVIEW, where it is frozen until a reviewer decides or the editor recalls it.\n\n**Readiness:** the plan for the revision must have no blockers. Otherwise 400 `REVISION_NOT_READY` with the `blockers` list, and the revision stays DRAFT. A stale revision can still be submitted.\n\n**Not a draft:** 409 `INVALID_REVISION_STATE`.\n\n**Retired career:** 409 `CAREER_RETIRED`, unless the user is an ADMIN.",
+        "operationId": "AdminRevisionsController_submit",
+        "parameters": [
+          {
+            "name": "revisionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmitRevisionResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "id is not a UUID, or REVISION_NOT_READY (the plan has blockers)"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "403": {
+            "description": "The user is below EDITOR"
+          },
+          "404": {
+            "description": "Revision (or its career) not found"
+          },
+          "409": {
+            "description": "INVALID_REVISION_STATE (not a draft) or CAREER_RETIRED (career is retired and the user is not an ADMIN)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Submit a draft revision for review",
+        "tags": [
+          "Admin - Revisions"
+        ]
+      }
+    },
     "/admin/revisions/{revisionId}/rebase": {
       "post": {
         "description": "Minimum role: EDITOR. Creator only — ADMIN does not bypass.\n\nRebase re-anchors a DRAFT revision onto the current live career version. It does NOT merge: the editor's snapshot is preserved as-is, and only `baseVersion` is moved forward. The editor then re-checks their draft against the new live state before submitting.\n\n**Fresh draft (baseVersion === live version):** returns 200 with `rebased: false`. No write, no event.\n\n**Stale draft:** writes the new `baseVersion`, returns 200 with `rebased: true`, emits `revision_rebased`.\n\n**IN_REVIEW:** 409 `INVALID_REVISION_STATE`. Recall first (ticket 12), then rebase.\n\n**Not the creator:** 403 `NOT_REVISION_CREATOR`.",
@@ -2155,16 +2263,19 @@
       "UpdateUserDto": {
         "type": "object",
         "properties": {
-          "fullName": {
+          "firstName": {
             "type": "string",
-            "example": "Ada Obi",
-            "description": "Full name, trimmed. 1 to 100 characters.",
-            "minLength": 1,
-            "maxLength": 100
+            "example": "Ada",
+            "description": "First name, 1 to 100 characters."
+          },
+          "lastName": {
+            "type": "string",
+            "example": "Obi",
+            "description": "Last name, 1 to 100 characters."
           }
         },
         "required": [
-          "fullName"
+          "firstName"
         ]
       },
       "UserResponseDto": {
@@ -2181,6 +2292,16 @@
           "role": {
             "type": "string",
             "example": "USER"
+          },
+          "firstName": {
+            "type": "string",
+            "nullable": true,
+            "example": "Ada"
+          },
+          "lastName": {
+            "type": "string",
+            "nullable": true,
+            "example": "Obi"
           },
           "fullName": {
             "type": "string",
@@ -2200,6 +2321,8 @@
           "id",
           "email",
           "role",
+          "firstName",
+          "lastName",
           "fullName",
           "emailVerified",
           "createdAt"
@@ -2208,27 +2331,28 @@
       "RegisterDto": {
         "type": "object",
         "properties": {
-          "fullName": {
+          "firstName": {
             "type": "string",
-            "example": "Ada Obi",
-            "description": "Full name, trimmed. 1 to 100 characters.",
-            "minLength": 1,
-            "maxLength": 100
+            "example": "Ada",
+            "description": "First name, 1 to 100 characters."
+          },
+          "lastName": {
+            "type": "string",
+            "example": "Obi",
+            "description": "Last name, 1 to 100 characters."
           },
           "email": {
             "type": "string",
-            "example": "user@example.com",
-            "description": "User email address."
+            "example": "user@example.com"
           },
           "password": {
             "type": "string",
             "example": "Password123!",
-            "description": "Account password. Must be at least 8 characters.",
             "minLength": 8
           }
         },
         "required": [
-          "fullName",
+          "firstName",
           "email",
           "password"
         ]
@@ -5441,6 +5565,47 @@
           "blockers",
           "advisories",
           "sections"
+        ]
+      },
+      "SubmitRevisionResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "a3f2c1d4-0000-0000-0000-000000000000"
+          },
+          "careerId": {
+            "type": "string",
+            "example": "b7e2d1a9-0000-0000-0000-000000000000"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "IN_REVIEW",
+              "APPROVED",
+              "REJECTED",
+              "PUBLISHED"
+            ],
+            "example": "IN_REVIEW"
+          },
+          "baseVersion": {
+            "type": "number",
+            "example": 3,
+            "description": "The live career version this revision was based on."
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-10-30T12:00:00.000Z"
+          }
+        },
+        "required": [
+          "id",
+          "careerId",
+          "status",
+          "baseVersion",
+          "updatedAt"
         ]
       },
       "RebaseRevisionResponseDto": {

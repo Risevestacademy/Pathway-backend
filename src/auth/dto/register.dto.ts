@@ -1,35 +1,43 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsEmail, IsString, Length, MinLength } from 'class-validator';
+import {
+  IsEmail,
+  IsOptional,
+  IsString,
+  Length,
+  MinLength,
+} from 'class-validator';
 import { NormalizeEmail } from '../decorators/normalize-email.decorator';
+
+const trim = ({ value }: { value: unknown }) =>
+  typeof value === 'string' ? value.trim() : value;
 
 export class RegisterDto {
   @ApiProperty({
-    example: 'Ada Obi',
-    description: 'Full name, trimmed. 1 to 100 characters.',
-    minLength: 1,
-    maxLength: 100,
+    example: 'Ada',
+    description: 'First name, 1 to 100 characters.',
   })
-  @Transform(({ value }: { value: unknown }) =>
-    typeof value === 'string' ? value.trim() : value,
-  )
+  @Transform(trim)
   @IsString()
   @Length(1, 100)
-  fullName: string;
+  firstName: string;
 
-  @ApiProperty({
-    example: 'user@example.com',
-    description: 'User email address.',
+  @ApiPropertyOptional({
+    example: 'Obi',
+    description: 'Last name, 1 to 100 characters.',
   })
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @Length(1, 100)
+  lastName?: string;
+
+  @ApiProperty({ example: 'user@example.com' })
   @NormalizeEmail()
   @IsEmail()
   email: string;
 
-  @ApiProperty({
-    example: 'Password123!',
-    description: 'Account password. Must be at least 8 characters.',
-    minLength: 8,
-  })
+  @ApiProperty({ example: 'Password123!', minLength: 8 })
   @IsString()
   @MinLength(8)
   password: string;

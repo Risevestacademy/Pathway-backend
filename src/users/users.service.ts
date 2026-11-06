@@ -9,7 +9,7 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 
 const profileSelect = {
-  profile: { select: { fullName: true } },
+  profile: { select: { firstName: true, lastName: true } },
 } satisfies Prisma.UserSelect;
 
 const publicUserSelect = {
@@ -34,12 +34,24 @@ export interface UserResponse {
   id: string;
   email: string;
   role: Role;
+  firstName: string | null;
+  lastName: string | null;
   fullName: string | null;
   emailVerified: boolean;
   createdAt: Date;
 }
 
 type UserClient = Pick<PrismaService, 'user'>;
+
+const joinNames = (
+  firstName?: string | null,
+  lastName?: string | null,
+): string | null => {
+  const parts = [firstName, lastName].filter(
+    (part): part is string => typeof part === 'string' && part.length > 0,
+  );
+  return parts.length > 0 ? parts.join(' ') : null;
+};
 
 @Injectable()
 export class UsersService {
@@ -65,10 +77,17 @@ export class UsersService {
     });
   }
 
-  async create({ fullName, ...dto }: CreateUserDto): Promise<PublicUser> {
+  async create({
+    firstName,
+    lastName,
+    ...dto
+  }: CreateUserDto): Promise<PublicUser> {
     try {
       return await this.prisma.user.create({
-        data: { ...dto, profile: { create: { fullName } } },
+        data: {
+          ...dto,
+          profile: { create: { firstName, lastName } },
+        },
         select: publicUserSelect,
       });
     } catch (error) {
@@ -84,11 +103,19 @@ export class UsersService {
   }
 
   async updateProfile(id: string, dto: UpdateUserDto): Promise<UserResponse> {
+    const firstName = dto.firstName?.trim() || null;
+    const lastName = dto.lastName?.trim() || null;
+
+    if (!firstName) {
+      // Guard: firstName is required on the write path.
+      throw new ConflictException('firstName is required');
+    }
+
     try {
       await this.prisma.userProfile.upsert({
         where: { userId: id },
-        create: { userId: id, fullName: dto.fullName },
-        update: { fullName: dto.fullName },
+        create: { userId: id, firstName, lastName },
+        update: { firstName, lastName },
       });
     } catch (error) {
       if (
@@ -108,13 +135,21 @@ export class UsersService {
     user: Pick<
       User,
       'id' | 'email' | 'role' | 'emailVerifiedAt' | 'createdAt'
-    > & { profile: { fullName: string | null } | null },
+    > & {
+      profile: {
+        firstName: string | null;
+        lastName: string | null;
+      } | null;
+    },
   ): UserResponse {
+    const profile = user.profile;
     return {
       id: user.id,
       email: user.email,
       role: user.role,
-      fullName: user.profile?.fullName ?? null,
+      firstName: profile?.firstName ?? null,
+      lastName: profile?.lastName ?? null,
+      fullName: joinNames(profile?.firstName, profile?.lastName),
       emailVerified: user.emailVerifiedAt !== null,
       createdAt: user.createdAt,
     };

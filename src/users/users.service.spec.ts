@@ -19,7 +19,7 @@ describe('UsersService', () => {
     emailVerifiedAt: null,
     createdAt: new Date('2026-09-18T10:00:00.000Z'),
     updatedAt: new Date('2026-09-18T10:00:00.000Z'),
-    profile: { fullName: 'Ada Obi' },
+    profile: { firstName: 'Ada', lastName: 'Obi' },
   };
 
   beforeEach(async () => {
@@ -47,15 +47,12 @@ describe('UsersService', () => {
   describe('findById', () => {
     it('returns the user when one exists', async () => {
       findUnique.mockResolvedValue(publicUser);
-
       await expect(service.findById('user-1')).resolves.toEqual(publicUser);
     });
 
     it('queries by id', async () => {
       findUnique.mockResolvedValue(publicUser);
-
       await service.findById('user-1');
-
       expect(findUnique).toHaveBeenCalledWith(
         expect.objectContaining({ where: { id: 'user-1' } }),
       );
@@ -63,28 +60,25 @@ describe('UsersService', () => {
 
     it('never selects passwordHash', async () => {
       findUnique.mockResolvedValue(publicUser);
-
       await service.findById('user-1');
-
       const { select } = (findUnique.mock.calls[0] as [{ select: object }])[0];
       expect(select).not.toHaveProperty('passwordHash');
     });
 
-    it('selects the verification timestamp and profile name', async () => {
+    it('selects the verification timestamp and profile names', async () => {
       findUnique.mockResolvedValue(publicUser);
-
       await service.findById('user-1');
-
       const { select } = (findUnique.mock.calls[0] as [{ select: object }])[0];
       expect(select).toMatchObject({
         emailVerifiedAt: true,
-        profile: { select: { fullName: true } },
+        profile: {
+          select: { firstName: true, lastName: true },
+        },
       });
     });
 
     it('throws NotFoundException when the user is missing', async () => {
       findUnique.mockResolvedValue(null);
-
       await expect(service.findById('missing')).rejects.toThrow(
         NotFoundException,
       );
@@ -101,13 +95,24 @@ describe('UsersService', () => {
       );
       expect(findUnique).toHaveBeenCalledWith({
         where: { email: 'dev@example.com' },
-        include: { profile: { select: { fullName: true } } },
+        include: {
+          profile: {
+            select: { firstName: true, lastName: true },
+          },
+        },
       });
+    });
+
+    it('lowercases the email before querying', async () => {
+      findUnique.mockResolvedValue(null);
+      await service.findByEmail('Dev@Example.COM');
+      expect(findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { email: 'dev@example.com' } }),
+      );
     });
 
     it('returns null when no user matches', async () => {
       findUnique.mockResolvedValue(null);
-
       await expect(
         service.findByEmail('nobody@example.com'),
       ).resolves.toBeNull();
@@ -118,7 +123,8 @@ describe('UsersService', () => {
     const newUser = {
       email: 'dev@example.com',
       passwordHash: 'hashed',
-      fullName: 'Ada Obi',
+      firstName: 'Ada',
+      lastName: 'Obi',
     };
 
     it('persists the user with its profile in one nested write and returns it without passwordHash', async () => {
@@ -131,7 +137,7 @@ describe('UsersService', () => {
           data: {
             email: 'dev@example.com',
             passwordHash: 'hashed',
-            profile: { create: { fullName: 'Ada Obi' } },
+            profile: { create: { firstName: 'Ada', lastName: 'Obi' } },
           },
         }),
       );
@@ -160,18 +166,18 @@ describe('UsersService', () => {
   });
 
   describe('updateProfile', () => {
+    const dto = { firstName: 'Ada', lastName: 'Obi' };
+
     it('upserts the profile by user id and returns the shared user shape', async () => {
       upsertProfile.mockResolvedValue({});
       findUnique.mockResolvedValue(publicUser);
 
-      const result = await service.updateProfile('user-1', {
-        fullName: 'Ada Obi',
-      });
+      const result = await service.updateProfile('user-1', dto);
 
       expect(upsertProfile).toHaveBeenCalledWith({
         where: { userId: 'user-1' },
-        create: { userId: 'user-1', fullName: 'Ada Obi' },
-        update: { fullName: 'Ada Obi' },
+        create: { userId: 'user-1', firstName: 'Ada', lastName: 'Obi' },
+        update: { firstName: 'Ada', lastName: 'Obi' },
       });
       expect(findUnique).toHaveBeenCalledWith(
         expect.objectContaining({ where: { id: 'user-1' } }),
@@ -180,10 +186,36 @@ describe('UsersService', () => {
         id: 'user-1',
         email: 'dev@example.com',
         role: Role.USER,
+        firstName: 'Ada',
+        lastName: 'Obi',
         fullName: 'Ada Obi',
         emailVerified: false,
         createdAt: publicUser.createdAt,
       });
+    });
+
+    it('trims whitespace and nulls out an empty lastName', async () => {
+      upsertProfile.mockResolvedValue({});
+      findUnique.mockResolvedValue(publicUser);
+
+      await service.updateProfile('user-1', {
+        firstName: '  Ada  ',
+        lastName: '   ',
+      });
+
+      expect(upsertProfile).toHaveBeenCalledWith(
+        expect.objectContaining({
+          update: { firstName: 'Ada', lastName: null },
+        }),
+      );
+    });
+
+    it('throws ConflictException when firstName is missing', async () => {
+      await expect(
+        service.updateProfile('user-1', { lastName: 'Obi' }),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(upsertProfile).not.toHaveBeenCalled();
+      expect(findUnique).not.toHaveBeenCalled();
     });
 
     it('throws NotFoundException when the user no longer exists', async () => {
@@ -195,7 +227,7 @@ describe('UsersService', () => {
       );
 
       await expect(
-        service.updateProfile('missing', { fullName: 'Ada Obi' }),
+        service.updateProfile('missing', dto),
       ).rejects.toBeInstanceOf(NotFoundException);
       expect(findUnique).not.toHaveBeenCalled();
     });
@@ -204,18 +236,16 @@ describe('UsersService', () => {
       upsertProfile.mockResolvedValue({});
       findUnique.mockResolvedValue(null);
 
-      await expect(
-        service.updateProfile('user-1', { fullName: 'Ada Obi' }),
-      ).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.updateProfile('user-1', dto)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
 
     it('propagates other database errors', async () => {
       const failure = new Error('connection lost');
       upsertProfile.mockRejectedValue(failure);
 
-      await expect(
-        service.updateProfile('user-1', { fullName: 'Ada Obi' }),
-      ).rejects.toBe(failure);
+      await expect(service.updateProfile('user-1', dto)).rejects.toBe(failure);
     });
   });
 
@@ -225,10 +255,36 @@ describe('UsersService', () => {
         id: 'user-1',
         email: 'dev@example.com',
         role: Role.USER,
+        firstName: 'Ada',
+        lastName: 'Obi',
         fullName: 'Ada Obi',
         emailVerified: false,
         createdAt: publicUser.createdAt,
       });
+    });
+
+    it('derives fullName from firstName and lastName', () => {
+      const result = service.toUserResponse({
+        ...publicUser,
+        profile: { firstName: 'Ada', lastName: 'Obi' },
+      });
+      expect(result.fullName).toBe('Ada Obi');
+    });
+
+    it('uses a lone firstName as the fullName', () => {
+      const result = service.toUserResponse({
+        ...publicUser,
+        profile: { firstName: 'Madonna', lastName: null },
+      });
+      expect(result.fullName).toBe('Madonna');
+    });
+
+    it('returns a null fullName when both names are missing', () => {
+      const result = service.toUserResponse({
+        ...publicUser,
+        profile: { firstName: null, lastName: null },
+      });
+      expect(result.fullName).toBeNull();
     });
 
     it('reports a user with a verification timestamp as verified', () => {
@@ -236,14 +292,16 @@ describe('UsersService', () => {
         ...publicUser,
         emailVerifiedAt: new Date('2026-09-19T10:00:00.000Z'),
       });
-
       expect(result.emailVerified).toBe(true);
     });
 
-    it('returns a null fullName when the user has no profile', () => {
+    it('returns null names when the user has no profile', () => {
       const result = service.toUserResponse({ ...publicUser, profile: null });
-
-      expect(result.fullName).toBeNull();
+      expect(result).toMatchObject({
+        firstName: null,
+        lastName: null,
+        fullName: null,
+      });
     });
 
     it('never exposes credentials or raw timestamps', () => {
@@ -256,8 +314,10 @@ describe('UsersService', () => {
         'createdAt',
         'email',
         'emailVerified',
+        'firstName',
         'fullName',
         'id',
+        'lastName',
         'role',
       ]);
     });

@@ -10,6 +10,12 @@ export class UserResponseDto {
   @ApiProperty({ example: 'USER' })
   role: string;
 
+  @ApiProperty({ type: String, nullable: true, example: 'Ada' })
+  firstName: string | null;
+
+  @ApiProperty({ type: String, nullable: true, example: 'Obi' })
+  lastName: string | null;
+
   @ApiProperty({ type: String, nullable: true, example: 'Ada Obi' })
   fullName: string | null;
 

@@ -7,6 +7,7 @@ import { UsersService } from '../users';
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Logger,
   NotFoundException,
   UnauthorizedException,
@@ -166,7 +167,7 @@ describe('AuthService', () => {
       emailVerifiedAt: createdAt,
       createdAt,
       updatedAt: createdAt,
-      profile: { fullName: 'Ada Obi' },
+      profile: { fullName: 'Ada Obi', firstName: 'Ada', lastName: 'Obi' },
     };
     let logSpy: jest.SpiedFunction<Logger['log']>;
     let warnSpy: jest.SpiedFunction<Logger['warn']>;
@@ -223,6 +224,8 @@ describe('AuthService', () => {
           id: 'user-1',
           email: 'ada@example.com',
           role: Role.EDITOR,
+          firstName: 'Ada',
+          lastName: 'Obi',
           fullName: 'Ada Obi',
           emailVerified: true,
           createdAt,
@@ -324,7 +327,8 @@ describe('AuthService', () => {
     const dto = {
       email: 'test@test.com',
       password: 'password123',
-      fullName: 'Ada Obi',
+      firstName: 'Ada',
+      lastName: 'Obi',
     };
 
     const createdUser = {
@@ -334,7 +338,7 @@ describe('AuthService', () => {
       emailVerifiedAt: null,
       createdAt,
       updatedAt: createdAt,
-      profile: { fullName: 'Ada Obi' },
+      profile: { fullName: 'Ada Obi', firstName: 'Ada', lastName: 'Obi' },
     };
 
     it('throws ConflictException if the email exists', async () => {
@@ -357,7 +361,8 @@ describe('AuthService', () => {
       expect(mockUsersService.create).toHaveBeenCalledWith({
         email: 'test@test.com',
         passwordHash: expect.any(String),
-        fullName: 'Ada Obi',
+        firstName: 'Ada',
+        lastName: 'Obi',
       });
       expect(mockPrismaService.refreshToken.create).not.toHaveBeenCalled();
     });
@@ -503,6 +508,8 @@ describe('AuthService', () => {
           id: mockUser.id,
           email: mockUser.email,
           role: mockUser.role,
+          firstName: null,
+          lastName: null,
           fullName: null,
           emailVerified: true,
           createdAt,
@@ -513,6 +520,152 @@ describe('AuthService', () => {
         },
       });
       expect(mockPrismaService.refreshToken.create).toHaveBeenCalled();
+    });
+  });
+
+  describe('adminLogin', () => {
+    const password = 'password123';
+    let passwordHash: string;
+    let warnSpy: jest.SpiedFunction<Logger['warn']>;
+    let logSpy: jest.SpiedFunction<Logger['log']>;
+
+    const staffRecord = (
+      role: Role,
+      emailVerifiedAt: Date | null = createdAt,
+    ) => ({
+      id: 'staff-1',
+      email: 'staff@test.com',
+      passwordHash,
+      role,
+      emailVerifiedAt,
+      createdAt,
+      updatedAt: createdAt,
+      profile: { fullName: 'Ada Obi', firstName: 'Ada', lastName: 'Obi' },
+    });
+
+    beforeAll(async () => {
+      passwordHash = await bcrypt.hash(password, 10);
+    });
+
+    beforeEach(() => {
+      warnSpy = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+      logSpy = jest
+        .spyOn(Logger.prototype, 'log')
+        .mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      warnSpy.mockRestore();
+      logSpy.mockRestore();
+    });
+
+    it.each([Role.EDITOR, Role.REVIEWER, Role.PUBLISHER, Role.ADMIN])(
+      'returns the user and tokens for a verified %s',
+      async (role) => {
+        mockUsersService.findByEmail.mockResolvedValue(staffRecord(role));
+
+        const result = await service.adminLogin({
+          email: 'staff@test.com',
+          password,
+        });
+
+        expect(result).toEqual({
+          user: {
+            id: 'staff-1',
+            email: 'staff@test.com',
+            role,
+            firstName: 'Ada',
+            lastName: 'Obi',
+            fullName: 'Ada Obi',
+            emailVerified: true,
+            createdAt,
+          },
+          tokens: { accessToken: 'mock-token', refreshToken: 'mock-token' },
+        });
+        expect(mockJwtService.signAsync).toHaveBeenCalledWith(
+          { sub: 'staff-1', email: 'staff@test.com', role },
+          expect.anything(),
+        );
+        expect(mockPrismaService.refreshToken.create).toHaveBeenCalled();
+      },
+    );
+
+    it('throws ForbiddenException for a USER with the right password and issues nothing', async () => {
+      mockUsersService.findByEmail.mockResolvedValue(staffRecord(Role.USER));
+
+      await expect(
+        service.adminLogin({ email: 'staff@test.com', password }),
+      ).rejects.toThrow(ForbiddenException);
+
+      expect(mockJwtService.signAsync).not.toHaveBeenCalled();
+      expect(mockPrismaService.refreshToken.create).not.toHaveBeenCalled();
+      expect(mockAnalyticsService.capture).not.toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledWith(
+        { userId: 'staff-1', reason: 'INSUFFICIENT_ROLE' },
+        'Admin login denied',
+      );
+    });
+
+    it('throws UnauthorizedException, not Forbidden, for a USER with a wrong password', async () => {
+      mockUsersService.findByEmail.mockResolvedValue(staffRecord(Role.USER));
+
+      await expect(
+        service.adminLogin({ email: 'staff@test.com', password: 'wrong-pass' }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('throws UnauthorizedException for an unknown email', async () => {
+      mockUsersService.findByEmail.mockResolvedValue(null);
+
+      await expect(
+        service.adminLogin({ email: 'nobody@test.com', password }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('throws "Email not verified" for an unverified staff account', async () => {
+      mockUsersService.findByEmail.mockResolvedValue(
+        staffRecord(Role.ADMIN, null),
+      );
+
+      await expect(
+        service.adminLogin({ email: 'staff@test.com', password }),
+      ).rejects.toThrow('Email not verified');
+
+      expect(mockPrismaService.refreshToken.create).not.toHaveBeenCalled();
+    });
+
+    it('logs and emits user_logged_in after a successful admin login', async () => {
+      mockUsersService.findByEmail.mockResolvedValue(staffRecord(Role.EDITOR));
+
+      await service.adminLogin({ email: 'staff@test.com', password });
+
+      expect(logSpy).toHaveBeenCalledWith(
+        { userId: 'staff-1', role: Role.EDITOR },
+        'Admin login succeeded',
+      );
+      expect(mockAnalyticsService.capture).toHaveBeenCalledWith(
+        'user_logged_in',
+        'staff-1',
+        { method: 'password' },
+      );
+    });
+
+    it('never logs the email or the password', async () => {
+      mockUsersService.findByEmail.mockResolvedValue(staffRecord(Role.USER));
+      await service
+        .adminLogin({ email: 'staff@test.com', password })
+        .catch(() => undefined);
+      mockUsersService.findByEmail.mockResolvedValue(staffRecord(Role.ADMIN));
+      await service.adminLogin({ email: 'staff@test.com', password });
+
+      const logged = JSON.stringify([
+        ...logSpy.mock.calls,
+        ...warnSpy.mock.calls,
+      ]);
+      expect(logged).not.toContain('staff@test.com');
+      expect(logged).not.toContain(password);
     });
   });
 
@@ -527,7 +680,7 @@ describe('AuthService', () => {
       emailVerifiedAt: null,
       createdAt,
       updatedAt: createdAt,
-      profile: { fullName: 'Ada Obi' },
+      profile: { fullName: 'Ada Obi', firstName: 'Ada', lastName: 'Obi' },
     };
 
     const otpRow = {
@@ -585,6 +738,8 @@ describe('AuthService', () => {
           id: 'user-1',
           email: 'test@test.com',
           role: Role.USER,
+          firstName: 'Ada',
+          lastName: 'Obi',
           fullName: 'Ada Obi',
           emailVerified: true,
           createdAt,
@@ -808,13 +963,15 @@ describe('AuthService', () => {
         emailVerifiedAt: null,
         createdAt,
         updatedAt: createdAt,
-        profile: { fullName: 'Ada Obi' },
+        profile: { fullName: 'Ada Obi', firstName: 'Ada', lastName: 'Obi' },
       });
 
       await expect(service.findCurrentUser('user-1')).resolves.toEqual({
         id: 'user-1',
         email: 'test@test.com',
         role: Role.ADMIN,
+        firstName: 'Ada',
+        lastName: 'Obi',
         fullName: 'Ada Obi',
         emailVerified: false,
         createdAt,
@@ -1498,7 +1655,7 @@ describe('AuthService', () => {
           emailVerifiedAt: createdAt,
           createdAt,
           updatedAt: createdAt,
-          profile: { fullName: 'Ada Obi' },
+          profile: { fullName: 'Ada Obi', firstName: 'Ada', lastName: 'Obi' },
         },
       };
 
@@ -1511,6 +1668,8 @@ describe('AuthService', () => {
           id: 'user-1',
           email: 'test@test.com',
           role: Role.USER,
+          firstName: 'Ada',
+          lastName: 'Obi',
           fullName: 'Ada Obi',
           emailVerified: true,
           createdAt,
@@ -1535,7 +1694,7 @@ describe('AuthService', () => {
         ...existingUnverifiedUser,
         passwordHash: null,
         emailVerifiedAt: new Date(),
-        profile: { fullName: 'Ada Obi' },
+        profile: { fullName: 'Ada Obi', firstName: 'Ada', lastName: 'Obi' },
       };
 
       mockPrismaService.authIdentity.findUnique.mockResolvedValue(null);
@@ -1580,7 +1739,7 @@ describe('AuthService', () => {
         emailVerifiedAt: createdAt,
         createdAt,
         updatedAt: createdAt,
-        profile: { fullName: 'Ada Obi' },
+        profile: { fullName: 'Ada Obi', firstName: 'Ada', lastName: 'Obi' },
       };
 
       mockPrismaService.authIdentity.findUnique.mockResolvedValue(null);
@@ -1600,7 +1759,8 @@ describe('AuthService', () => {
           emailVerifiedAt: expect.any(Date),
           profile: {
             create: {
-              fullName: 'Ada Obi',
+              firstName: 'Ada',
+              lastName: 'Obi',
             },
           },
           identities: {
@@ -1802,7 +1962,7 @@ describe('AuthService', () => {
         emailVerifiedAt: null,
         createdAt,
         updatedAt: createdAt,
-        profile: { fullName: 'Ada Obi' },
+        profile: { fullName: 'Ada Obi', firstName: 'Ada', lastName: 'Obi' },
       });
       mockPrismaService.emailVerificationOtp.updateMany.mockResolvedValue({
         count: 0,
@@ -1942,7 +2102,7 @@ describe('AuthService', () => {
       emailVerifiedAt: createdAt,
       createdAt,
       updatedAt: createdAt,
-      profile: { fullName: 'Ada Obi' },
+      profile: { fullName: 'Ada Obi', firstName: 'Ada', lastName: 'Obi' },
     };
 
     afterEach(() => {
