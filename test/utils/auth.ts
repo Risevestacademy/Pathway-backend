@@ -98,6 +98,12 @@ export const registerAndVerify = async (
     email,
     accessToken: verify.body.accessToken,
     refreshToken: verify.body.refreshToken,
-    cookies: verify.headers['set-cookie'],
+    cookies: getSetCookies(verify.headers),
   };
+};
+
+export const getSetCookies = (headers: Record<string, unknown>): string[] => {
+  const raw = headers['set-cookie'];
+  if (!raw) return [];
+  return Array.isArray(raw) ? (raw as string[]) : [raw as string];
 };

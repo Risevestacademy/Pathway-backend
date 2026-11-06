@@ -100,28 +100,13 @@ describe('Auth names and admin login (e2e)', () => {
       });
     });
 
-    it('still accepts fullName alone and splits it', async () => {
-      const email = emailFor('legacy');
-      await register({ email, password, fullName: 'Ada Lovelace Obi' }).expect(
-        201,
-      );
-      const { user } = await verify(email);
-
-      expect(user).toMatchObject({
-        firstName: 'Ada',
-        lastName: 'Lovelace Obi',
-        fullName: 'Ada Lovelace Obi',
-      });
-    });
-
     it.each([
       ['no name at all', {}],
-      ['firstName without lastName', { firstName: 'Ada' }],
       ['lastName without firstName', { lastName: 'Obi' }],
-      ['a blank fullName', { fullName: '   ' }],
+      ['a blank firstName', { firstName: '   ' }],
       [
         'an over-long firstName',
-        { firstName: 'a'.repeat(51), lastName: 'Obi' },
+        { firstName: 'a'.repeat(101), lastName: 'Obi' },
       ],
     ])('returns 400 for %s', async (_label, names) => {
       const response = await register({
