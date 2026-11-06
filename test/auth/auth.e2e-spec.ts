@@ -913,7 +913,7 @@ describe('AuthController (e2e)', () => {
       const regResponse = await request(app.getHttpServer())
         .post(`${apiPrefix}/auth/register`)
         .set('X-Client-Platform', 'mobile')
-        .send({ ...mobileUser, fullName: 'Mobile User' })
+        .send({ ...mobileUser, firstName: 'Mobile', lastName: 'User' })
         .expect(201);
 
       expect(regResponse.body.accessToken).toBeUndefined();

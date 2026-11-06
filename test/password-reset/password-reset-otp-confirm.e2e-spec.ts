@@ -136,7 +136,7 @@ describe('Password reset OTP confirm (e2e)', () => {
     const email = `e2e-reset-otp-confirm-flow-${Date.now()}@test.com`;
     await request(app.getHttpServer())
       .post(`${apiPrefix}/auth/register`)
-      .send({ email, password: oldPassword, fullName: 'Ada Obi' })
+      .send({ email, password: oldPassword, firstName: 'Ada', lastName: 'Obi' })
       .expect(201);
 
     const user = await prisma.user.findUniqueOrThrow({ where: { email } });

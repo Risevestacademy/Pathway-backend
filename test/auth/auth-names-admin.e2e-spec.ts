@@ -166,7 +166,7 @@ describe('Auth names and admin login (e2e)', () => {
       const response = await request(app.getHttpServer())
         .patch(`${apiPrefix}/users/me`)
         .set('Authorization', `Bearer ${accessToken}`)
-        .send({ fullName: 'Grace Hopper' })
+        .send({ firstName: 'Grace', lastName: 'Hopper' })
         .expect(200);
 
       expect(response.body).toMatchObject({
