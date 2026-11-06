@@ -21,7 +21,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
 import { FeedbackModule } from './feedback';
 import { TeamsModule } from './teams';
 import { RevisionsModule } from './catalog/content-revisions/content-revisions.module';
-import { OpportunitiesModule } from './opportunities/opportunities.module';
+import { OpportunitiesModule } from './opportunities';
 
 @Module({
   imports: [

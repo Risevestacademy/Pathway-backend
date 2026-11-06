@@ -1,8 +1,18 @@
 import { jest } from '@jest/globals';
 import { Logger, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import {
+  OpportunityType,
+  OpportunityVerification,
+} from '../generated/prisma/client';
 import { PrismaService } from '../prisma';
+import type { GetOpportunitiesQueryDto } from './dto/get-opportunities-query.dto';
 import { OpportunitiesService } from './opportunities.service';
+import {
+  buildOpportunityListWhere,
+  OPPORTUNITY_LIST_ORDER_BY,
+  OPPORTUNITY_LIST_SELECT,
+} from './opportunity-list';
 
 type OpportunityState = {
   verification: 'DRAFT' | 'VERIFIED' | 'WITHDRAWN';
@@ -22,10 +32,23 @@ describe('OpportunitiesService', () => {
   const userId = 'user-1';
   const opportunityId = 'opportunity-1';
 
+  const listRow = {
+    id: 'opp-1',
+    title: 'Intern',
+    type: OpportunityType.INTERNSHIP,
+    organisation: 'Org',
+    location: 'Remote',
+    description: 'Short.',
+    verification: OpportunityVerification.VERIFIED,
+    deadline: later,
+    deadlineUnknown: false,
+  };
+
   const mockPrismaService = {
     opportunity: {
       findUnique:
         jest.fn<(args: unknown) => Promise<OpportunityState | null>>(),
+      findMany: jest.fn<(args: unknown) => Promise<unknown[]>>(),
     },
     userSavedOpportunity: {
       createMany: jest.fn<(args: unknown) => Promise<{ count: number }>>(),
@@ -58,6 +81,7 @@ describe('OpportunitiesService', () => {
     mockPrismaService.userSavedOpportunity.findUniqueOrThrow.mockResolvedValue({
       savedAt,
     });
+    mockPrismaService.opportunity.findMany.mockResolvedValue([listRow]);
   });
 
   afterEach(() => {
@@ -67,6 +91,48 @@ describe('OpportunitiesService', () => {
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  describe('listOpportunities', () => {
+    const query: GetOpportunitiesQueryDto = {
+      type: OpportunityType.INTERNSHIP,
+      careerId: 'career-1',
+      page: 3,
+      limit: 10,
+    };
+
+    it('queries visible listings with the filters, order and page', async () => {
+      await service.listOpportunities(query);
+
+      expect(mockPrismaService.opportunity.findMany).toHaveBeenCalledWith({
+        where: buildOpportunityListWhere(query, now),
+        orderBy: OPPORTUNITY_LIST_ORDER_BY,
+        skip: 20,
+        take: 10,
+        select: OPPORTUNITY_LIST_SELECT,
+      });
+    });
+
+    it('maps each row to a list item', async () => {
+      await expect(service.listOpportunities(query)).resolves.toEqual([
+        {
+          id: 'opp-1',
+          title: 'Intern',
+          type: OpportunityType.INTERNSHIP,
+          organisation: 'Org',
+          location: 'Remote',
+          status: 'OPEN',
+          deadline: listRow.deadline,
+          summary: 'Short.',
+        },
+      ]);
+    });
+
+    it('returns an empty array when nothing matches', async () => {
+      mockPrismaService.opportunity.findMany.mockResolvedValue([]);
+
+      await expect(service.listOpportunities(query)).resolves.toEqual([]);
+    });
   });
 
   describe('saveOpportunity', () => {
