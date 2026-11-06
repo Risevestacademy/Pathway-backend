@@ -1,18 +1,27 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsString, Length } from 'class-validator';
+import { IsOptional, IsString, Length } from 'class-validator';
+
+const trim = ({ value }: { value: unknown }) =>
+  typeof value === 'string' ? value.trim() : value;
 
 export class UpdateUserDto {
   @ApiProperty({
-    example: 'Ada Obi',
-    description: 'Full name, trimmed. 1 to 100 characters.',
-    minLength: 1,
-    maxLength: 100,
+    example: 'Ada',
+    description: 'First name, 1 to 100 characters.',
   })
-  @Transform(({ value }: { value: unknown }) =>
-    typeof value === 'string' ? value.trim() : value,
-  )
+  @Transform(trim)
   @IsString()
   @Length(1, 100)
-  fullName: string;
+  firstName: string;
+
+  @ApiPropertyOptional({
+    example: 'Obi',
+    description: 'Last name, 1 to 100 characters.',
+  })
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @Length(1, 100)
+  lastName?: string;
 }

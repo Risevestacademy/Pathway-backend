@@ -3,14 +3,15 @@ import { ConfigService } from '@nestjs/config';
 import { INestApplication, UnauthorizedException } from '@nestjs/common';
 import request from 'supertest';
 import { createHash } from 'crypto';
+import { getSetCookies } from '../utils/auth';
 
-import { AppModule } from '../src/app.module';
-import { apiPrefix as resolveApiPrefix, configureApp } from '../src/common';
-import { EnvironmentVariables } from '../src/config';
-import { PrismaService } from '../src/prisma';
-import { AuthService } from '../src/auth/auth.service';
-import { NotificationService } from '../src/notifications';
-import { AuthProvider } from '../src/generated/prisma/enums';
+import { AppModule } from '../../src/app.module';
+import { apiPrefix as resolveApiPrefix, configureApp } from '../../src/common';
+import { EnvironmentVariables } from '../../src/config';
+import { PrismaService } from '../../src/prisma';
+import { AuthService } from '../../src/auth/auth.service';
+import { NotificationService } from '../../src/notifications';
+import { AuthProvider } from '../../src/generated/prisma/enums';
 
 const sha256 = (v: string) => createHash('sha256').update(v).digest('hex');
 
@@ -49,6 +50,18 @@ describe('AuthController (e2e)', () => {
   const register = (body: Record<string, unknown>) =>
     request(app.getHttpServer()).post(`${apiPrefix}/auth/register`).send(body);
 
+  const registerAndVerify = async (
+    email: string,
+    password: string,
+    firstName = 'Ada',
+    lastName = 'Obi',
+  ) => {
+    await register({ email, password, firstName, lastName }).expect(201);
+    const otp = capturedOtps.get(email);
+    if (!otp) throw new Error(`No OTP captured for ${email}`);
+    return verifyEmail({ email, otp }).expect(200);
+  };
+
   const verifyEmail = (body: { email: string; otp: string }) =>
     request(app.getHttpServer())
       .post(`${apiPrefix}/auth/verify-email`)
@@ -56,19 +69,6 @@ describe('AuthController (e2e)', () => {
 
   const login = (body: { email: string; password: string }) =>
     request(app.getHttpServer()).post(`${apiPrefix}/auth/login`).send(body);
-
-  const registerAndVerify = async (
-    email: string,
-    password: string,
-    fullName = 'Ada Obi',
-  ) => {
-    await register({ email, password, fullName }).expect(201);
-
-    const otp = capturedOtps.get(email);
-    if (!otp) throw new Error(`No OTP captured for ${email}`);
-
-    return verifyEmail({ email, otp }).expect(200);
-  };
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -131,7 +131,8 @@ describe('AuthController (e2e)', () => {
       const response = await register({
         email,
         password: 'Password123!',
-        fullName: '  Ada Obi  ',
+        firstName: 'Ada',
+        lastName: 'Obi',
       }).expect(201);
 
       expect(response.body).toEqual({
@@ -150,17 +151,20 @@ describe('AuthController (e2e)', () => {
         where: { userId: user.id },
       });
       expect(profile).toMatchObject({
-        fullName: 'Ada Obi',
         firstName: 'Ada',
         lastName: 'Obi',
       });
+      expect(profile?.fullName ?? null).toBeNull();
     });
 
     it('normalizes the email to lowercase', async () => {
       const email = `E2E-CASE-${Date.now()}@TEST.COM`;
-      await register({ email, password: 'Password123!', fullName: 'A' }).expect(
-        201,
-      );
+      await register({
+        email,
+        password: 'Password123!',
+        firstName: 'A',
+        lastName: 'B',
+      }).expect(201);
 
       const user = await prisma.user.findUniqueOrThrow({
         where: { email: email.toLowerCase() },
@@ -170,12 +174,18 @@ describe('AuthController (e2e)', () => {
 
     it('rejects a duplicate email', async () => {
       const email = `e2e-dup-${Date.now()}@test.com`;
-      await register({ email, password: 'Password123!', fullName: 'A' }).expect(
-        201,
-      );
-      await register({ email, password: 'Password123!', fullName: 'B' }).expect(
-        409,
-      );
+      await register({
+        email,
+        password: 'Password123!',
+        firstName: 'A',
+        lastName: 'B',
+      }).expect(201);
+      await register({
+        email,
+        password: 'Password123!',
+        firstName: 'C',
+        lastName: 'D',
+      }).expect(409);
     });
 
     it('rejects registering an email that already exists as a Google account', async () => {
@@ -195,12 +205,15 @@ describe('AuthController (e2e)', () => {
         },
       });
 
-      await register({ email, password: 'Password123!', fullName: 'A' }).expect(
-        409,
-      );
+      await register({
+        email,
+        password: 'Password123!',
+        firstName: 'A',
+        lastName: 'B',
+      }).expect(409);
     });
 
-    it('rejects a body with no name at all, reporting firstName and lastName', async () => {
+    it('rejects a body with no name at all, reporting firstName', async () => {
       const response = await register({
         email: `e2e-invalid-name-${Date.now()}@test.com`,
         password: 'Password123!',
@@ -208,15 +221,14 @@ describe('AuthController (e2e)', () => {
 
       expect(response.body.error).toBe('VALIDATION_ERROR');
       expect(response.body.fields).toHaveProperty('firstName');
-      expect(response.body.fields).toHaveProperty('lastName');
     });
 
     it.each([
-      ['blank', { fullName: '   ' }],
-      ['over 100 characters', { fullName: 'a'.repeat(101) }],
-      ['not a string', { fullName: 42 }],
+      ['blank', { firstName: '   ' }],
+      ['over 100 characters', { firstName: 'a'.repeat(101) }],
+      ['not a string', { firstName: 42 }],
     ])(
-      'rejects a %s fullName in the standard validation format',
+      'rejects a %s firstName in the standard validation format',
       async (_label, body) => {
         const response = await register({
           email: `e2e-invalid-name-${Date.now()}@test.com`,
@@ -225,7 +237,7 @@ describe('AuthController (e2e)', () => {
         }).expect(400);
 
         expect(response.body.error).toBe('VALIDATION_ERROR');
-        expect(response.body.fields).toHaveProperty('fullName');
+        expect(response.body.fields).toHaveProperty('firstName');
       },
     );
   });
@@ -239,7 +251,8 @@ describe('AuthController (e2e)', () => {
       await register({
         email,
         password: 'Password123!',
-        fullName: 'Ada Obi',
+        firstName: 'Ada',
+        lastName: 'Obi',
       }).expect(201);
 
       const otp = capturedOtps.get(email)!;
@@ -250,7 +263,7 @@ describe('AuthController (e2e)', () => {
       expect(response.body.user.email).toBe(email);
       expect(response.body.user.emailVerified).toBe(true);
 
-      const cookies = response.headers['set-cookie'];
+      const cookies = getSetCookies(response.headers);
       expect(cookies).toBeDefined();
       expect(
         cookies.find((c: string) => c.startsWith('refreshToken=')),
@@ -265,7 +278,8 @@ describe('AuthController (e2e)', () => {
       await register({
         email,
         password: 'Password123!',
-        fullName: 'Ada Obi',
+        firstName: 'Ada',
+        lastName: 'Obi',
       }).expect(201);
 
       const otp = capturedOtps.get(email)!;
@@ -285,7 +299,8 @@ describe('AuthController (e2e)', () => {
       await register({
         email,
         password: 'Password123!',
-        fullName: 'Ada Obi',
+        firstName: 'Ada',
+        lastName: 'Obi',
       }).expect(201);
 
       const realOtp = capturedOtps.get(email)!;
@@ -299,7 +314,8 @@ describe('AuthController (e2e)', () => {
       await register({
         email,
         password: 'Password123!',
-        fullName: 'Ada Obi',
+        firstName: 'Ada',
+        lastName: 'Obi',
       }).expect(201);
 
       const otp = capturedOtps.get(email)!;
@@ -312,7 +328,8 @@ describe('AuthController (e2e)', () => {
       await register({
         email,
         password: 'Password123!',
-        fullName: 'Ada Obi',
+        firstName: 'Ada',
+        lastName: 'Obi',
       }).expect(201);
 
       const otp = capturedOtps.get(email)!;
@@ -349,7 +366,8 @@ describe('AuthController (e2e)', () => {
       await register({
         email,
         password: 'Password123!',
-        fullName: 'Ada Obi',
+        firstName: 'Ada',
+        lastName: 'Obi',
       }).expect(201);
 
       const otp = capturedOtps.get(email)!;
@@ -375,7 +393,8 @@ describe('AuthController (e2e)', () => {
       await register({
         email,
         password: 'Password123!',
-        fullName: 'Ada Obi',
+        firstName: 'Ada',
+        lastName: 'Obi',
       }).expect(201);
 
       const otp = capturedOtps.get(email)!;
@@ -414,7 +433,8 @@ describe('AuthController (e2e)', () => {
       await register({
         email,
         password: 'Password123!',
-        fullName: 'Ada Obi',
+        firstName: 'Ada',
+        lastName: 'Obi',
       }).expect(201);
 
       const firstOtp = capturedOtps.get(email)!;
@@ -477,7 +497,8 @@ describe('AuthController (e2e)', () => {
       await register({
         email,
         password: 'Password123!',
-        fullName: 'Ada Obi',
+        firstName: 'Ada',
+        lastName: 'Obi',
       }).expect(201);
 
       const response = await login({
@@ -582,8 +603,9 @@ describe('AuthController (e2e)', () => {
       // Register but DO NOT verify — password reset should auto-verify.
       await register({
         email,
-        password: oldPassword,
-        fullName: 'Ada Obi',
+        password: 'Password123!',
+        firstName: 'Ada',
+        lastName: 'Obi',
       }).expect(201);
 
       // Issue a refresh token by logging in via a reset-free path? No —
@@ -777,10 +799,12 @@ describe('AuthController (e2e)', () => {
       expect(response.body.accessToken).toBeDefined();
       expect(response.body.refreshToken).toBeUndefined();
 
-      const cookies = response.headers['set-cookie'];
-      const refreshCookie = cookies.find((c: string) =>
-        c.startsWith('refreshToken='),
-      );
+      const cookies = getSetCookies(response.headers);
+      const refreshCookie = cookies.find((c) => c.startsWith('refreshToken='));
+
+      expect(refreshCookie).toBeDefined();
+      if (!refreshCookie) throw new Error('unreachable');
+
       refreshToken = refreshCookie.split(';')[0].replace('refreshToken=', '');
 
       expect(refreshToken).not.toBe(oldRefreshToken);
@@ -913,7 +937,7 @@ describe('AuthController (e2e)', () => {
       const regResponse = await request(app.getHttpServer())
         .post(`${apiPrefix}/auth/register`)
         .set('X-Client-Platform', 'mobile')
-        .send({ ...mobileUser, fullName: 'Mobile User' })
+        .send({ ...mobileUser, firstName: 'Mobile', lastName: 'User' })
         .expect(201);
 
       expect(regResponse.body.accessToken).toBeUndefined();

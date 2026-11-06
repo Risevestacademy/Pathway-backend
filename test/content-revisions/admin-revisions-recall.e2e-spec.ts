@@ -106,7 +106,9 @@ describe('Admin revision recall (e2e)', () => {
       .useValue(notificationMock)
       .compile();
 
-    app = moduleFixture.createNestApplication();
+    app = moduleFixture.createNestApplication({
+      logger: ['error', 'warn', 'log'],
+    });
     configureApp(app);
     apiPrefix = `/${resolveApiPrefix(
       app.get<ConfigService<EnvironmentVariables, true>>(ConfigService),

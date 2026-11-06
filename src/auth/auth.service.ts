@@ -31,7 +31,6 @@ import { RequestPasswordResetOtpDto } from './dto/request-password-reset-otp.dto
 import { ConfirmPasswordResetOtpDto } from './dto/confirm-password-reset-otp.dto';
 import { TeamsService, type InviteClaimFailure } from '../teams';
 import { DomainException } from '../common';
-import { joinNames, splitFullName } from '../users/utils/names';
 
 type PrismaTransactionClient = Pick<PrismaService, 'refreshToken'>;
 
@@ -137,16 +136,11 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(dto.password, 12);
 
-    const split = splitFullName(dto.fullName);
-    const firstName = dto.firstName ?? split.firstName;
-    const lastName = dto.lastName ?? split.lastName;
-
     const createdUser = await this.usersService.create({
       email: dto.email,
       passwordHash,
-      firstName,
-      lastName,
-      fullName: dto.fullName ?? joinNames(firstName, lastName) ?? undefined,
+      firstName: dto.firstName,
+      lastName: dto.lastName,
     });
 
     const otp = this.generateOtp();
@@ -411,11 +405,23 @@ export class AuthService {
   }
 
   // google login/signup
+  // google login/signup
   async googleLogin(idToken: string): Promise<AuthResult> {
     const googleProfile = await this.googleOAuthService.verifyIdToken(idToken);
 
     const email = googleProfile.email.trim().toLowerCase();
     const now = new Date();
+
+    // Google only gives us one string. Derive first/last inline — no util,
+    // no fullName write. Empty/whitespace names are rejected outright rather
+    // than silently producing a nameless profile.
+    const trimmedName = googleProfile.fullName?.trim() ?? '';
+    if (!trimmedName) {
+      throw new BadRequestException('Google account has no name');
+    }
+    const [firstToken, ...restTokens] = trimmedName.split(/\s+/);
+    const firstName = firstToken;
+    const lastName = restTokens.length > 0 ? restTokens.join(' ') : null;
 
     let isNewUser = false;
     let result: AuthResult;
@@ -507,8 +513,8 @@ export class AuthService {
               emailVerifiedAt: now,
               profile: {
                 create: {
-                  fullName: googleProfile.fullName,
-                  ...splitFullName(googleProfile.fullName),
+                  firstName,
+                  lastName,
                 },
               },
               identities: {
