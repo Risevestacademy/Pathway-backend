@@ -35,6 +35,12 @@ describe('CareersService', () => {
     field: {
       findUnique: jest.fn<(args: unknown) => Promise<{ id: string } | null>>(),
     },
+    userCareer: {
+      createMany: jest.fn<(args: unknown) => Promise<{ count: number }>>(),
+      findUnique:
+        jest.fn<(args: unknown) => Promise<{ savedAt: Date } | null>>(),
+      deleteMany: jest.fn<(args: unknown) => Promise<{ count: number }>>(),
+    },
   };
 
   const mockAnalyticsService = {
@@ -879,6 +885,129 @@ describe('CareersService', () => {
         where: { id: 'c1' },
         select: adminCareerDetailSelect,
       });
+    });
+  });
+
+  describe('saveCareer', () => {
+    let logSpy: jest.SpiedFunction<Logger['log']>;
+    let warnSpy: jest.SpiedFunction<Logger['warn']>;
+
+    const userId = 'user-1';
+    const careerId = 'career-1';
+    const savedAt = new Date('2026-11-09T10:00:00.000Z');
+
+    beforeEach(() => {
+      logSpy = jest
+        .spyOn(Logger.prototype, 'log')
+        .mockImplementation(() => undefined);
+      warnSpy = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      logSpy.mockRestore();
+      warnSpy.mockRestore();
+    });
+
+    it('should insert the save, log it and return savedAt', async () => {
+      mockPrismaService.career.findUnique.mockResolvedValue({
+        status: CareerStatus.PUBLISHED,
+      });
+      mockPrismaService.userCareer.createMany.mockResolvedValue({ count: 1 });
+      mockPrismaService.userCareer.findUnique.mockResolvedValue({ savedAt });
+
+      const result = await service.saveCareer(userId, careerId);
+
+      expect(mockPrismaService.userCareer.createMany).toHaveBeenCalledWith({
+        data: [{ userId, careerId }],
+        skipDuplicates: true,
+      });
+      expect(result).toEqual({ careerId, savedAt });
+      expect(logSpy).toHaveBeenCalledWith({ userId, careerId }, 'Career saved');
+    });
+
+    it('should return the existing savedAt without logging on a repeat save', async () => {
+      mockPrismaService.career.findUnique.mockResolvedValue({
+        status: CareerStatus.PUBLISHED,
+      });
+      mockPrismaService.userCareer.createMany.mockResolvedValue({ count: 0 });
+      mockPrismaService.userCareer.findUnique.mockResolvedValue({ savedAt });
+
+      const result = await service.saveCareer(userId, careerId);
+
+      expect(result).toEqual({ careerId, savedAt });
+      expect(logSpy).not.toHaveBeenCalled();
+    });
+
+    it('should return an existing save for a career retired after saving', async () => {
+      mockPrismaService.career.findUnique.mockResolvedValue({
+        status: CareerStatus.RETIRED,
+      });
+      mockPrismaService.userCareer.findUnique.mockResolvedValue({ savedAt });
+
+      const result = await service.saveCareer(userId, careerId);
+
+      expect(mockPrismaService.userCareer.createMany).not.toHaveBeenCalled();
+      expect(result).toEqual({ careerId, savedAt });
+    });
+
+    it.each<[string, { status: CareerStatus } | null, string]>([
+      ['unknown', null, 'CAREER_NOT_FOUND'],
+      ['draft', { status: CareerStatus.DRAFT }, 'CAREER_NOT_PUBLISHED'],
+      ['retired', { status: CareerStatus.RETIRED }, 'CAREER_NOT_PUBLISHED'],
+    ])(
+      'should reject a new save of a %s career with 404',
+      async (_label, career, reason) => {
+        mockPrismaService.career.findUnique.mockResolvedValue(career);
+        mockPrismaService.userCareer.findUnique.mockResolvedValue(null);
+
+        await expect(
+          service.saveCareer(userId, careerId),
+        ).rejects.toBeInstanceOf(NotFoundException);
+
+        expect(mockPrismaService.userCareer.createMany).not.toHaveBeenCalled();
+        expect(warnSpy).toHaveBeenCalledWith(
+          { userId, careerId, reason },
+          'Career save rejected',
+        );
+      },
+    );
+  });
+
+  describe('unsaveCareer', () => {
+    let logSpy: jest.SpiedFunction<Logger['log']>;
+
+    beforeEach(() => {
+      logSpy = jest
+        .spyOn(Logger.prototype, 'log')
+        .mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      logSpy.mockRestore();
+    });
+
+    it("should delete only the user's save and log it", async () => {
+      mockPrismaService.userCareer.deleteMany.mockResolvedValue({ count: 1 });
+
+      await service.unsaveCareer('user-1', 'career-1');
+
+      expect(mockPrismaService.userCareer.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 'user-1', careerId: 'career-1' },
+      });
+      expect(logSpy).toHaveBeenCalledWith(
+        { userId: 'user-1', careerId: 'career-1' },
+        'Career unsaved',
+      );
+    });
+
+    it('should not log when there was no save', async () => {
+      mockPrismaService.userCareer.deleteMany.mockResolvedValue({ count: 0 });
+
+      await service.unsaveCareer('user-1', 'career-1');
+
+      expect(logSpy).not.toHaveBeenCalled();
     });
   });
 });

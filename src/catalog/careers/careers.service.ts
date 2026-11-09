@@ -36,7 +36,8 @@ import {
   AdminCareerListResponseDto,
 } from './dto/admin-career.dto';
 import { RetireCareerResponseDto } from './dto/retire-career-response.dto';
-import { canRetire } from './career-status.rules';
+import { canRetire, canSave } from './career-status.rules';
+import { SaveCareerResponseDto } from './dto/save-career-response.dto';
 
 const decimalToString = (
   value: { toString(): string } | null,
@@ -478,5 +479,57 @@ export class CareersService {
     });
 
     return result.career;
+  }
+
+  async saveCareer(
+    userId: string,
+    careerId: string,
+  ): Promise<SaveCareerResponseDto> {
+    const career = await this.prisma.career.findUnique({
+      where: { id: careerId },
+      select: { status: true },
+    });
+
+    if (career && canSave(career.status)) {
+      const { count } = await this.prisma.userCareer.createMany({
+        data: [{ userId, careerId }],
+        skipDuplicates: true,
+      });
+
+      if (count > 0) {
+        this.logger.log({ userId, careerId }, 'Career saved');
+      }
+    }
+
+    const save = career
+      ? await this.prisma.userCareer.findUnique({
+          where: { userId_careerId: { userId, careerId } },
+          select: { savedAt: true },
+        })
+      : null;
+
+    if (!save) {
+      this.logger.warn(
+        {
+          userId,
+          careerId,
+          reason: career ? 'CAREER_NOT_PUBLISHED' : 'CAREER_NOT_FOUND',
+        },
+        'Career save rejected',
+      );
+      throw new NotFoundException('Career not found');
+    }
+
+    return { careerId, savedAt: save.savedAt };
+  }
+
+  async unsaveCareer(userId: string, careerId: string): Promise<void> {
+    const { count } = await this.prisma.userCareer.deleteMany({
+      where: { userId, careerId },
+    });
+
+    if (count > 0) {
+      this.logger.log({ userId, careerId }, 'Career unsaved');
+    }
   }
 }

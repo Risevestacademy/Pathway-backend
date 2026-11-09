@@ -1,12 +1,29 @@
-import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
 import {
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  ParseUUIDPipe,
+  Put,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
   ApiOperation,
   ApiResponse,
   ApiTags,
   ApiQuery,
   ApiParam,
 } from '@nestjs/swagger';
+import {
+  type AuthenticatedUser,
+  CurrentUser,
+  JwtAuthGuard,
+} from '../../common';
 import { CareersService } from './careers.service';
+import { SaveCareerResponseDto } from './dto/save-career-response.dto';
 import { CareerListItemDto } from './dto/list-careers.dto';
 import { GetCareersQueryDto } from './dto/get-careers-query.dto';
 import { TargetLevel } from '../../generated/prisma/client';
@@ -93,5 +110,44 @@ export class CareersController {
     @Param('careerId', ParseUUIDPipe) careerId: string,
   ): Promise<CareerPathwayResponseDto> {
     return this.pathwaysService.getCareerPathway(careerId);
+  }
+
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Save a career for the signed-in user',
+    description:
+      'Only a PUBLISHED career can be newly saved. Saving is idempotent and never starts or changes a pathway. Re-saving a career that was saved before it was retired returns the existing save.',
+  })
+  @ApiParam({ name: 'id', description: 'Career UUID' })
+  @ApiResponse({ status: 200, type: SaveCareerResponseDto })
+  @ApiResponse({ status: 400, description: 'Malformed career id' })
+  @ApiResponse({ status: 401, description: 'Access token missing or invalid' })
+  @ApiResponse({
+    status: 404,
+    description: 'Career does not exist, or is not PUBLISHED and not saved',
+  })
+  @UseGuards(JwtAuthGuard)
+  @Put(':id/save')
+  async saveCareer(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<SaveCareerResponseDto> {
+    return this.careersService.saveCareer(user.id, id);
+  }
+
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Remove a career from the user's saves" })
+  @ApiParam({ name: 'id', description: 'Career UUID' })
+  @ApiResponse({ status: 204, description: 'The career is not saved' })
+  @ApiResponse({ status: 400, description: 'Malformed career id' })
+  @ApiResponse({ status: 401, description: 'Access token missing or invalid' })
+  @UseGuards(JwtAuthGuard)
+  @Delete(':id/save')
+  @HttpCode(204)
+  async unsaveCareer(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<void> {
+    await this.careersService.unsaveCareer(user.id, id);
   }
 }
