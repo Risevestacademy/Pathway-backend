@@ -38,6 +38,7 @@ import {
 import { RetireCareerResponseDto } from './dto/retire-career-response.dto';
 import { canRetire, canSave } from './career-status.rules';
 import { SaveCareerResponseDto } from './dto/save-career-response.dto';
+import { careerListItemSelect, toCareerListItem } from './career-list-item';
 
 const decimalToString = (
   value: { toString(): string } | null,
@@ -78,23 +79,13 @@ export class CareersService {
 
     const careers = await this.prisma.career.findMany({
       where,
-      select: {
-        id: true,
-        slug: true,
-        title: true,
-        description: true,
-      },
+      select: careerListItemSelect,
       orderBy: {
         title: 'asc',
       },
     });
 
-    return careers.map((career) => ({
-      id: career.id,
-      slug: career.slug,
-      title: career.title,
-      shortDescription: career.description,
-    }));
+    return careers.map(toCareerListItem);
   }
 
   async getPublishedCareerById(id: string): Promise<CareerDetailDto> {
