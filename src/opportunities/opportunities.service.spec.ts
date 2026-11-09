@@ -5,6 +5,7 @@ import {
   OpportunityType,
   OpportunityVerification,
 } from '../generated/prisma/client';
+import { PathwaysService } from '../catalog/pathways';
 import { PrismaService } from '../prisma';
 import type { GetOpportunitiesQueryDto } from './dto/get-opportunities-query.dto';
 import { OpportunitiesService } from './opportunities.service';
@@ -58,6 +59,11 @@ describe('OpportunitiesService', () => {
     },
   };
 
+  const mockPathwaysService = {
+    getActivePathway:
+      jest.fn<(userId: string) => Promise<{ career: { id: string } | null }>>(),
+  };
+
   const visible: OpportunityState = {
     verification: 'VERIFIED',
     deadline: later,
@@ -72,6 +78,7 @@ describe('OpportunitiesService', () => {
       providers: [
         OpportunitiesService,
         { provide: PrismaService, useValue: mockPrismaService },
+        { provide: PathwaysService, useValue: mockPathwaysService },
       ],
     }).compile();
 
@@ -132,6 +139,53 @@ describe('OpportunitiesService', () => {
       mockPrismaService.opportunity.findMany.mockResolvedValue([]);
 
       await expect(service.listOpportunities(query)).resolves.toEqual([]);
+    });
+  });
+
+  describe('listMyOpportunities with scope pathway', () => {
+    it("queries visible listings for the active pathway's career, unpaged", async () => {
+      mockPathwaysService.getActivePathway.mockResolvedValue({
+        career: { id: 'career-1' },
+      });
+
+      await service.listMyOpportunities(userId, 'pathway');
+
+      expect(mockPathwaysService.getActivePathway).toHaveBeenCalledWith(userId);
+      expect(mockPrismaService.opportunity.findMany).toHaveBeenCalledWith({
+        where: buildOpportunityListWhere({ careerId: 'career-1' }, now),
+        orderBy: OPPORTUNITY_LIST_ORDER_BY,
+        select: OPPORTUNITY_LIST_SELECT,
+      });
+    });
+
+    it('maps each row to a list item', async () => {
+      mockPathwaysService.getActivePathway.mockResolvedValue({
+        career: { id: 'career-1' },
+      });
+
+      await expect(
+        service.listMyOpportunities(userId, 'pathway'),
+      ).resolves.toEqual([
+        {
+          id: 'opp-1',
+          title: 'Intern',
+          type: OpportunityType.INTERNSHIP,
+          organisation: 'Org',
+          location: 'Remote',
+          status: 'OPEN',
+          deadline: listRow.deadline,
+          summary: 'Short.',
+        },
+      ]);
+    });
+
+    it('returns an empty array without querying when there is no active pathway', async () => {
+      mockPathwaysService.getActivePathway.mockResolvedValue({ career: null });
+
+      await expect(
+        service.listMyOpportunities(userId, 'pathway'),
+      ).resolves.toEqual([]);
+      expect(mockPrismaService.opportunity.findMany).not.toHaveBeenCalled();
     });
   });
 

@@ -1,11 +1,14 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { PathwaysService } from '../catalog/pathways';
 import { PrismaService } from '../prisma';
+import type { MeOpportunityScope } from './dto/get-me-opportunities-query.dto';
 import { GetOpportunitiesQueryDto } from './dto/get-opportunities-query.dto';
 import { OpportunityListItemDto } from './dto/opportunity-list-item.dto';
 import { SaveOpportunityResponseDto } from './dto/save-opportunity-response.dto';
 import { isVisible } from './opportunities.rules';
 import {
   buildOpportunityListWhere,
+  type OpportunityListFilter,
   OPPORTUNITY_LIST_ORDER_BY,
   OPPORTUNITY_LIST_SELECT,
   toOpportunityListItem,
@@ -15,18 +18,49 @@ import {
 export class OpportunitiesService {
   private readonly logger = new Logger(OpportunitiesService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly pathwaysService: PathwaysService,
+  ) {}
 
   async listOpportunities(
     query: GetOpportunitiesQueryDto,
   ): Promise<OpportunityListItemDto[]> {
+    return this.findListItems(query, {
+      skip: (query.page - 1) * query.limit,
+      take: query.limit,
+    });
+  }
+
+  async listMyOpportunities(
+    userId: string,
+    scope: MeOpportunityScope,
+  ): Promise<OpportunityListItemDto[]> {
+    switch (scope) {
+      case 'pathway':
+        return this.listPathwayOpportunities(userId);
+    }
+  }
+
+  private async listPathwayOpportunities(
+    userId: string,
+  ): Promise<OpportunityListItemDto[]> {
+    const { career } = await this.pathwaysService.getActivePathway(userId);
+    if (!career) return [];
+
+    return this.findListItems({ careerId: career.id });
+  }
+
+  private async findListItems(
+    filter: OpportunityListFilter,
+    page?: { skip: number; take: number },
+  ): Promise<OpportunityListItemDto[]> {
     const now = new Date();
 
     const rows = await this.prisma.opportunity.findMany({
-      where: buildOpportunityListWhere(query, now),
+      where: buildOpportunityListWhere(filter, now),
       orderBy: OPPORTUNITY_LIST_ORDER_BY,
-      skip: (query.page - 1) * query.limit,
-      take: query.limit,
+      ...page,
       select: OPPORTUNITY_LIST_SELECT,
     });
 

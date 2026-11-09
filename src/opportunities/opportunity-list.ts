@@ -9,11 +9,13 @@ import { deriveStatus } from './opportunities.rules';
 export const SUMMARY_MAX_LENGTH = 160;
 
 // Same condition as isVisible, run in the database
+export type OpportunityListFilter = Pick<
+  GetOpportunitiesQueryDto,
+  'type' | 'careerId' | 'excludeId' | 'search'
+>;
+
 export const buildOpportunityListWhere = (
-  query: Pick<
-    GetOpportunitiesQueryDto,
-    'type' | 'careerId' | 'excludeId' | 'search'
-  >,
+  query: OpportunityListFilter,
   now: Date,
 ): Prisma.OpportunityWhereInput => {
   const and: Prisma.OpportunityWhereInput[] = [
