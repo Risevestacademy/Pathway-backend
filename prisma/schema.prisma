@@ -161,14 +161,38 @@ enum OpportunityVerification {
   WITHDRAWN
 }
 
+enum ActivityType {
+  STEP_COMPLETED
+  TASK_COMPLETED
+  QUIZ_PASSED
+}
+
+enum FeedbackTargetType {
+  CAREER
+  PATHWAY
+  PATHWAY_STAGE
+  PATHWAY_STEP
+  RESOURCE
+  TASK
+  OUTLOOK
+  CERTIFICATION
+  OTHER
+}
+
+enum FeedbackResolution {
+  FIXED
+  NOT_AN_ISSUE
+}
+
 model User {
-  id              String    @id @default(uuid())
-  email           String    @unique
-  passwordHash    String?
-  role            Role      @default(USER)
-  emailVerifiedAt DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id               String    @id @default(uuid())
+  email            String    @unique
+  passwordHash     String?
+  role             Role      @default(USER)
+  emailVerifiedAt  DateTime?
+  analyticsEnabled Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   profile               UserProfile?
   identities            AuthIdentity[]
@@ -193,6 +217,10 @@ model User {
   userTasks               UserTask[]
   userTaskChecklistItems  UserTaskChecklistItem[]
   userResourceCompletions UserResourceCompletion[]
+  savedCareers            UserCareer[]
+  badges                  UserBadge[]
+  activityLedger          ActivityLedger[]
+  feedbackNotes           FeedbackNote[]
 }
 
 model UserProfile {
@@ -205,8 +233,12 @@ model UserProfile {
   firstName            String?
   lastName             String?
   avatarUrl            String? // Cloudinary URL
-  learningGoals        String[] @default([])
+  learningGoals        String[]         @default([])
   weeklyTimeCommitment String?
+  educationLevel       EducationLevel?
+  internshipCount      InternshipCount?
+  experienceYears      ExperienceYears?
+  careerInterests      String[]         @default([])
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -309,6 +341,7 @@ model Career {
   exampleActivities    String[] // "Example work activities"
   typicalEducationNote String? // "Degree in computing... or bootcamps/self-study"
   certificationsNote   String? // "Rarely required. Portfolio matters more."
+  imageUrl             String? // Cloudinary URL
 
   fieldId      String
   field        Field         @relation(fields: [fieldId], references: [id])
@@ -333,6 +366,8 @@ model Career {
   feedback      ContentFeedback[]
   revisions     ContentRevision[]
   opportunities OpportunityCareer[]
+  resources     CareerResource[]
+  savedByUsers  UserCareer[]
 
   @@index([fieldId])
   @@index([publishedById])
@@ -511,10 +546,11 @@ model Resource {
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 
-  pathwaySteps PathwayStepResource[]
-  skills       ResourceSkill[]
-  taskLinks    PathwayTaskResource[]
-  completions  UserResourceCompletion[]
+  pathwaySteps    PathwayStepResource[]
+  skills          ResourceSkill[]
+  taskLinks       PathwayTaskResource[]
+  completions     UserResourceCompletion[]
+  careerResources CareerResource[]
 }
 
 model PathwayStepResource {
@@ -689,19 +725,25 @@ model AssessmentResponse {
 }
 
 model ContentFeedback {
-  id          String            @id @default(uuid())
+  id          String              @id @default(uuid())
   category    FeedbackCategory
-  section     FeedbackSection   @default(GENERAL)
+  section     FeedbackSection     @default(GENERAL)
   careerId    String?
   description String
   userEmail   String?
   platform    FeedbackPlatform?
-  status      FeedbackStatus    @default(NEW)
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  status      FeedbackStatus      @default(NEW)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  targetType  FeedbackTargetType? @default(OTHER)
+  targetId    String?
+  resolution  FeedbackResolution?
+
+  notes FeedbackNote[]
 
   career Career? @relation(fields: [careerId], references: [id], onDelete: SetNull)
 
+  @@index([targetType, targetId])
   @@index([careerId])
   @@index([status])
 }
@@ -835,4 +877,77 @@ model UserSavedOpportunity {
 
   @@id([userId, opportunityId])
   @@index([opportunityId])
+}
+
+model UserCareer {
+  userId   String
+  careerId String
+  savedAt  DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  career Career @relation(fields: [careerId], references: [id], onDelete: Cascade)
+
+  @@id([userId, careerId])
+  @@index([careerId])
+}
+
+model CareerResource {
+  careerId   String
+  resourceId String
+
+  career   Career   @relation(fields: [careerId], references: [id], onDelete: Cascade)
+  resource Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@id([careerId, resourceId])
+  @@index([resourceId])
+}
+
+model Badge {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String
+  imageUrl    String? // Cloudinary URL
+  xpThreshold Int
+  createdAt   DateTime @default(now())
+
+  users UserBadge[]
+}
+
+model UserBadge {
+  userId    String
+  badgeId   String
+  awardedAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badge Badge @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+
+  @@id([userId, badgeId])
+}
+
+model ActivityLedger {
+  id          String       @id @default(uuid())
+  userId      String
+  type        ActivityType
+  referenceId String // The stepId, taskId, or quizId
+  xp          Int
+  createdAt   DateTime     @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type, referenceId])
+  @@index([userId, createdAt])
+}
+
+model FeedbackNote {
+  id         String   @id @default(uuid())
+  feedbackId String
+  authorId   String
+  body       String
+  createdAt  DateTime @default(now())
+
+  feedback ContentFeedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  // Assuming you have a User relation for the admin author
+  author   User            @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([feedbackId])
 }
