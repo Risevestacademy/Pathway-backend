@@ -18,6 +18,7 @@ import {
 } from '@nestjs/swagger';
 import { type AuthenticatedUser, CurrentUser, JwtAuthGuard } from '../common';
 import { GetOpportunitiesQueryDto } from './dto/get-opportunities-query.dto';
+import { OpportunityDetailDto } from './dto/opportunity-detail.dto';
 import { OpportunityListItemDto } from './dto/opportunity-list-item.dto';
 import { SaveOpportunityResponseDto } from './dto/save-opportunity-response.dto';
 import { OpportunitiesService } from './opportunities.service';
@@ -43,6 +44,25 @@ export class OpportunitiesController {
     @Query() query: GetOpportunitiesQueryDto,
   ): Promise<OpportunityListItemDto[]> {
     return this.opportunitiesService.listOpportunities(query);
+  }
+
+  @ApiOperation({
+    summary: 'Get one opportunity',
+    description:
+      'Public. Returns a VERIFIED listing with its careers and skills. A listing past its deadline is still returned, with status CLOSED, so the client can show its closed banner. Draft and withdrawn listings return 404, the same as an unknown id.',
+  })
+  @ApiParam({ name: 'id', description: 'Opportunity UUID' })
+  @ApiResponse({ status: 200, type: OpportunityDetailDto })
+  @ApiResponse({ status: 400, description: 'Malformed opportunity id' })
+  @ApiResponse({
+    status: 404,
+    description: 'Opportunity does not exist, or is a draft or withdrawn',
+  })
+  @Get(':id')
+  async getOpportunityById(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<OpportunityDetailDto> {
+    return this.opportunitiesService.getOpportunityById(id);
   }
 
   @ApiBearerAuth()

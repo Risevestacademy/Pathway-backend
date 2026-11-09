@@ -10,6 +10,10 @@ import { PrismaService } from '../prisma';
 import type { GetOpportunitiesQueryDto } from './dto/get-opportunities-query.dto';
 import { OpportunitiesService } from './opportunities.service';
 import {
+  buildOpportunityDetailWhere,
+  OPPORTUNITY_DETAIL_SELECT,
+} from './opportunity-detail';
+import {
   buildOpportunityListWhere,
   OPPORTUNITY_LIST_ORDER_BY,
   OPPORTUNITY_LIST_SELECT,
@@ -45,11 +49,32 @@ describe('OpportunitiesService', () => {
     deadlineUnknown: false,
   };
 
+  const detailRow = {
+    id: 'opp-1',
+    title: 'Intern',
+    type: OpportunityType.INTERNSHIP,
+    organisation: 'Org',
+    location: 'Remote',
+    description: 'Short.',
+    responsibilities: ['Write code'],
+    audience: ['Students'],
+    pay: null,
+    duration: '3 months',
+    startDate: null,
+    applyUrl: 'https://example.com/apply',
+    deadline: later,
+    deadlineUnknown: false,
+    verification: OpportunityVerification.VERIFIED,
+    careers: [{ career: { id: 'career-1', title: 'Software Engineer' } }],
+    skills: [{ skill: { id: 'skill-1', name: 'TypeScript' } }],
+  };
+
   const mockPrismaService = {
     opportunity: {
       findUnique:
         jest.fn<(args: unknown) => Promise<OpportunityState | null>>(),
       findMany: jest.fn<(args: unknown) => Promise<unknown[]>>(),
+      findFirst: jest.fn<(args: unknown) => Promise<unknown>>(),
     },
     userSavedOpportunity: {
       createMany: jest.fn<(args: unknown) => Promise<{ count: number }>>(),
@@ -139,6 +164,63 @@ describe('OpportunitiesService', () => {
       mockPrismaService.opportunity.findMany.mockResolvedValue([]);
 
       await expect(service.listOpportunities(query)).resolves.toEqual([]);
+    });
+  });
+
+  describe('getOpportunityById', () => {
+    it('looks the listing up by id among verified listings only', async () => {
+      mockPrismaService.opportunity.findFirst.mockResolvedValue(detailRow);
+
+      await service.getOpportunityById('opp-1');
+
+      expect(mockPrismaService.opportunity.findFirst).toHaveBeenCalledWith({
+        where: buildOpportunityDetailWhere('opp-1'),
+        select: OPPORTUNITY_DETAIL_SELECT,
+      });
+    });
+
+    it('maps the row to the detail response', async () => {
+      mockPrismaService.opportunity.findFirst.mockResolvedValue(detailRow);
+
+      await expect(service.getOpportunityById('opp-1')).resolves.toEqual({
+        id: 'opp-1',
+        title: 'Intern',
+        type: OpportunityType.INTERNSHIP,
+        organisation: 'Org',
+        location: 'Remote',
+        description: 'Short.',
+        status: 'OPEN',
+        responsibilities: ['Write code'],
+        audience: ['Students'],
+        pay: null,
+        duration: '3 months',
+        startDate: null,
+        applyUrl: 'https://example.com/apply',
+        deadline: later,
+        careers: [{ id: 'career-1', title: 'Software Engineer' }],
+        skills: [{ id: 'skill-1', name: 'TypeScript' }],
+      });
+    });
+
+    it('returns a closed listing with the CLOSED status', async () => {
+      mockPrismaService.opportunity.findFirst.mockResolvedValue({
+        ...detailRow,
+        deadline: minuteAgo,
+      });
+
+      await expect(service.getOpportunityById('opp-1')).resolves.toMatchObject({
+        status: 'CLOSED',
+      });
+    });
+
+    it('throws NotFoundException when no verified listing has the id', async () => {
+      // Draft and withdrawn listings are filtered out by the query, so
+      // Prisma returns null for them, the same as for an unknown id.
+      mockPrismaService.opportunity.findFirst.mockResolvedValue(null);
+
+      await expect(service.getOpportunityById('missing')).rejects.toThrow(
+        new NotFoundException('Opportunity not found'),
+      );
     });
   });
 
