@@ -61,6 +61,9 @@ jobs:
       GOOGLE_CLIENT_IDS: test-client-id.apps.googleusercontent.com
       ADMIN_EMAIL: admin@pathway.dev
       ADMIN_PASSWORD: admin-password
+      CLOUDINARY_CLOUD_NAME: test-cloud
+      CLOUDINARY_API_KEY: test-api-key
+      CLOUDINARY_API_SECRET: test-api-secret
 
     steps:
       - uses: actions/checkout@v4
@@ -105,6 +108,9 @@ jobs:
       GOOGLE_CLIENT_IDS: test-client-id.apps.googleusercontent.com
       ADMIN_EMAIL: admin@pathway.dev
       ADMIN_PASSWORD: admin-password
+      CLOUDINARY_CLOUD_NAME: test-cloud
+      CLOUDINARY_API_KEY: test-api-key
+      CLOUDINARY_API_SECRET: test-api-secret
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

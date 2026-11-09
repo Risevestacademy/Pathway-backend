@@ -16,6 +16,9 @@ describe('validateEnv', () => {
     GOOGLE_CLIENT_IDS: 'web-client.apps.googleusercontent.com',
     PASSWORD_RESET_URL: 'https://pathway.example.com/reset-password',
     STAFF_INVITE_URL: 'https://pathway.example.com/accept-invite',
+    CLOUDINARY_CLOUD_NAME: 'test-cloud',
+    CLOUDINARY_API_KEY: 'test-api-key',
+    CLOUDINARY_API_SECRET: 'test-api-secret',
   };
 
   it('returns the validated configuration', () => {
@@ -44,6 +47,9 @@ describe('validateEnv', () => {
       RESEND_API_KEY: validEnv.RESEND_API_KEY,
       EMAIL_FROM_ADDRESS: validEnv.EMAIL_FROM_ADDRESS,
       GOOGLE_CLIENT_IDS: validEnv.GOOGLE_CLIENT_IDS,
+      CLOUDINARY_CLOUD_NAME: validEnv.CLOUDINARY_CLOUD_NAME,
+      CLOUDINARY_API_KEY: validEnv.CLOUDINARY_API_KEY,
+      CLOUDINARY_API_SECRET: validEnv.CLOUDINARY_API_SECRET,
     });
 
     expect(config.NODE_ENV).toBe(NodeEnv.Development);
@@ -688,6 +694,44 @@ describe('validateEnv', () => {
 
       expect(config.MAIL_DRIVER).toBe(MailDriver.MailerSend);
       expect(config.RESEND_API_KEY).toBeUndefined();
+    });
+  });
+
+  // ─── CLOUDINARY ─────────────────────────────────────────────────────
+
+  describe('Cloudinary Configuration', () => {
+    it('applies default values for optional Cloudinary variables', () => {
+      const config = validateEnv(validEnv);
+
+      expect(config.CLOUDINARY_CLOUD_NAME).toBe('test-cloud');
+      expect(config.CLOUDINARY_API_KEY).toBe('test-api-key');
+      expect(config.CLOUDINARY_API_SECRET).toBe('test-api-secret');
+      expect(config.CLOUDINARY_AVATAR_PRESET).toBe('avatar_preset');
+      expect(config.CLOUDINARY_ALLOWED_HOST).toBe('res.cloudinary.com');
+    });
+
+    it('accepts custom optional Cloudinary variables', () => {
+      const config = validateEnv({
+        ...validEnv,
+        CLOUDINARY_AVATAR_PRESET: 'my_custom_preset',
+        CLOUDINARY_ALLOWED_HOST: 'custom.cloudinary.com',
+      });
+
+      expect(config.CLOUDINARY_AVATAR_PRESET).toBe('my_custom_preset');
+      expect(config.CLOUDINARY_ALLOWED_HOST).toBe('custom.cloudinary.com');
+    });
+
+    it.each([
+      ['CLOUDINARY_CLOUD_NAME', { CLOUDINARY_CLOUD_NAME: undefined }],
+      ['CLOUDINARY_CLOUD_NAME', { CLOUDINARY_CLOUD_NAME: '' }],
+      ['CLOUDINARY_API_KEY', { CLOUDINARY_API_KEY: undefined }],
+      ['CLOUDINARY_API_KEY', { CLOUDINARY_API_KEY: '' }],
+      ['CLOUDINARY_API_SECRET', { CLOUDINARY_API_SECRET: undefined }],
+      ['CLOUDINARY_API_SECRET', { CLOUDINARY_API_SECRET: '' }],
+    ])('throws when %s is %j', (variableName, overrides) => {
+      expect(() => validateEnv({ ...validEnv, ...overrides })).toThrow(
+        new RegExp(variableName),
+      );
     });
   });
 });
