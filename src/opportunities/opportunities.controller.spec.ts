@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import type { AuthenticatedUser } from '../common';
 import { OpportunityType } from '../generated/prisma/client';
 import type { GetOpportunitiesQueryDto } from './dto/get-opportunities-query.dto';
+import type { OpportunityDetailDto } from './dto/opportunity-detail.dto';
 import type { OpportunityListItemDto } from './dto/opportunity-list-item.dto';
 import type { SaveOpportunityResponseDto } from './dto/save-opportunity-response.dto';
 import { OpportunitiesController } from './opportunities.controller';
@@ -16,6 +17,8 @@ describe('OpportunitiesController', () => {
       jest.fn<
         (query: GetOpportunitiesQueryDto) => Promise<OpportunityListItemDto[]>
       >(),
+    getOpportunityById:
+      jest.fn<(id: string) => Promise<OpportunityDetailDto>>(),
     saveOpportunity:
       jest.fn<
         (
@@ -66,6 +69,20 @@ describe('OpportunitiesController', () => {
         query,
       );
       expect(result).toBe(items);
+    });
+  });
+
+  describe('getOpportunityById', () => {
+    it('should delegate the id to opportunitiesService.getOpportunityById', async () => {
+      const detail = { id: 'opp-1', status: 'CLOSED' } as OpportunityDetailDto;
+      mockOpportunitiesService.getOpportunityById.mockResolvedValue(detail);
+
+      const result = await controller.getOpportunityById('opp-1');
+
+      expect(mockOpportunitiesService.getOpportunityById).toHaveBeenCalledWith(
+        'opp-1',
+      );
+      expect(result).toBe(detail);
     });
   });
 
