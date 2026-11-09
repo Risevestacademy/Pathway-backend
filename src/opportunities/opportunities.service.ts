@@ -1,9 +1,15 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma';
 import { GetOpportunitiesQueryDto } from './dto/get-opportunities-query.dto';
+import { OpportunityDetailDto } from './dto/opportunity-detail.dto';
 import { OpportunityListItemDto } from './dto/opportunity-list-item.dto';
 import { SaveOpportunityResponseDto } from './dto/save-opportunity-response.dto';
 import { isVisible } from './opportunities.rules';
+import {
+  buildOpportunityDetailWhere,
+  OPPORTUNITY_DETAIL_SELECT,
+  toOpportunityDetail,
+} from './opportunity-detail';
 import {
   buildOpportunityListWhere,
   OPPORTUNITY_LIST_ORDER_BY,
@@ -31,6 +37,19 @@ export class OpportunitiesService {
     });
 
     return rows.map((row) => toOpportunityListItem(row, now));
+  }
+
+  async getOpportunityById(id: string): Promise<OpportunityDetailDto> {
+    const row = await this.prisma.opportunity.findFirst({
+      where: buildOpportunityDetailWhere(id),
+      select: OPPORTUNITY_DETAIL_SELECT,
+    });
+
+    if (!row) {
+      throw new NotFoundException('Opportunity not found');
+    }
+
+    return toOpportunityDetail(row, new Date());
   }
 
   async saveOpportunity(
