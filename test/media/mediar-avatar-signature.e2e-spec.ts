@@ -23,11 +23,9 @@ describe('Media & Cloudinary (e2e)', () => {
   const createdUserIds: string[] = [];
   let user: RegisteredUser;
 
-  const timestamp = Date.now();
-
-  const registerUser = async () => {
+  const registerUser = async (suffix: string) => {
     const registered = await registerAndVerify(app, apiPrefix, {
-      email: `e2e-media-${timestamp}@test.com`,
+      email: `e2e-media-${suffix}-${Date.now()}@test.com`,
       firstName: 'Media',
       lastName: 'Tester',
     });
@@ -64,7 +62,7 @@ describe('Media & Cloudinary (e2e)', () => {
     prisma = app.get(PrismaService);
     wireNotificationMock();
 
-    user = await registerUser();
+    user = await registerUser('primary');
   });
 
   afterAll(async () => {
@@ -116,7 +114,7 @@ describe('Media & Cloudinary (e2e)', () => {
     });
 
     it('issues a different folder for a different user', async () => {
-      const otherUser = await registerUser();
+      const otherUser = await registerUser('other');
 
       const responseA = await getSignature(user.accessToken).expect(201);
       const responseB = await getSignature(otherUser.accessToken).expect(201);
