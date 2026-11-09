@@ -275,6 +275,26 @@ export class EnvironmentVariables {
   @IsOptional()
   @IsUrl(FRONTEND_URL_OPTIONS)
   STAFF_INVITE_URL = 'http://localhost:5173/accept-invite';
+
+  @IsString()
+  @IsNotEmpty()
+  CLOUDINARY_CLOUD_NAME: string;
+
+  @IsString()
+  @IsNotEmpty()
+  CLOUDINARY_API_KEY: string;
+
+  @IsString()
+  @IsNotEmpty()
+  CLOUDINARY_API_SECRET: string;
+
+  @IsString()
+  @IsOptional()
+  CLOUDINARY_AVATAR_PRESET: string = 'avatar_preset';
+
+  @IsString()
+  @IsOptional()
+  CLOUDINARY_ALLOWED_HOST: string = 'res.cloudinary.com';
 }
 
 export function validateEnv(
