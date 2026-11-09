@@ -38,6 +38,7 @@ import {
 import { RetireCareerResponseDto } from './dto/retire-career-response.dto';
 import { canRetire, canSave } from './career-status.rules';
 import { SaveCareerResponseDto } from './dto/save-career-response.dto';
+import { SavedCareerListItemDto } from './dto/saved-career-list-item.dto';
 import { careerListItemSelect, toCareerListItem } from './career-list-item';
 
 const decimalToString = (
@@ -522,5 +523,37 @@ export class CareersService {
     if (count > 0) {
       this.logger.log({ userId, careerId }, 'Career unsaved');
     }
+  }
+
+  async listSavedCareers(userId: string): Promise<SavedCareerListItemDto[]> {
+    const saves = await this.prisma.userCareer.findMany({
+      where: {
+        userId,
+        career: {
+          status: { in: [CareerStatus.PUBLISHED, CareerStatus.RETIRED] },
+        },
+      },
+      orderBy: [{ savedAt: 'desc' }, { careerId: 'asc' }],
+      select: {
+        savedAt: true,
+        career: {
+          select: {
+            ...careerListItemSelect,
+            status: true,
+            userPathways: {
+              where: { userId, isActive: true },
+              select: { id: true },
+            },
+          },
+        },
+      },
+    });
+
+    return saves.map(({ savedAt, career }) => ({
+      ...toCareerListItem(career),
+      savedAt,
+      isActivePathway: career.userPathways.length > 0,
+      isRetired: career.status === CareerStatus.RETIRED,
+    }));
   }
 }
