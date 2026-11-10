@@ -3222,7 +3222,7 @@
             "description": "Short description shown on the card"
           },
           "iconKey": {
-            "type": "object",
+            "type": "string",
             "description": "Icon key used by the list/card UI (e.g. \"fe-icon\")",
             "nullable": true
           },
@@ -4501,7 +4501,7 @@
             "description": "Short description shown on the card"
           },
           "iconKey": {
-            "type": "object",
+            "type": "string",
             "description": "Icon key used by the list/card UI (e.g. \"fe-icon\")",
             "nullable": true
           },
