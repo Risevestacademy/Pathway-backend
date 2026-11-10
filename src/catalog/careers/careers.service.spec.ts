@@ -40,6 +40,7 @@ describe('CareersService', () => {
       findUnique:
         jest.fn<(args: unknown) => Promise<{ savedAt: Date } | null>>(),
       deleteMany: jest.fn<(args: unknown) => Promise<{ count: number }>>(),
+      findMany: jest.fn<(args: unknown) => Promise<unknown>>(),
     },
   };
 
@@ -1008,6 +1009,87 @@ describe('CareersService', () => {
       await service.unsaveCareer('user-1', 'career-1');
 
       expect(logSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('listSavedCareers', () => {
+    const savedAt = new Date('2026-11-09T10:00:00.000Z');
+    const row = (
+      status: CareerStatus,
+      userPathways: { id: string }[] = [],
+    ) => ({
+      savedAt,
+      career: {
+        id: 'career-1',
+        slug: 'frontend-engineer',
+        title: 'Frontend Engineer',
+        description: 'Builds interfaces.',
+        status,
+        userPathways,
+      },
+    });
+
+    it("queries only the user's saves of published or retired careers, newest first", async () => {
+      mockPrismaService.userCareer.findMany.mockResolvedValue([]);
+
+      await service.listSavedCareers('user-1');
+
+      expect(mockPrismaService.userCareer.findMany).toHaveBeenCalledWith({
+        where: {
+          userId: 'user-1',
+          career: {
+            status: { in: [CareerStatus.PUBLISHED, CareerStatus.RETIRED] },
+          },
+        },
+        orderBy: [{ savedAt: 'desc' }, { careerId: 'asc' }],
+        select: {
+          savedAt: true,
+          career: {
+            select: {
+              id: true,
+              slug: true,
+              title: true,
+              description: true,
+              status: true,
+              userPathways: {
+                where: { userId: 'user-1', isActive: true },
+                select: { id: true },
+              },
+            },
+          },
+        },
+      });
+    });
+
+    it('maps each save to the card fields plus savedAt and flags', async () => {
+      mockPrismaService.userCareer.findMany.mockResolvedValue([
+        row(CareerStatus.PUBLISHED, [{ id: 'up-1' }]),
+      ]);
+
+      const result = await service.listSavedCareers('user-1');
+
+      expect(result).toEqual([
+        {
+          id: 'career-1',
+          slug: 'frontend-engineer',
+          title: 'Frontend Engineer',
+          shortDescription: 'Builds interfaces.',
+          savedAt,
+          isActivePathway: true,
+          isRetired: false,
+        },
+      ]);
+    });
+
+    it('flags a retired career and one that is not the active pathway', async () => {
+      mockPrismaService.userCareer.findMany.mockResolvedValue([
+        row(CareerStatus.RETIRED),
+      ]);
+
+      const [item] = await service.listSavedCareers('user-1');
+
+      expect(item.isRetired).toBe(true);
+      expect(item.isActivePathway).toBe(false);
     });
   });
 });
