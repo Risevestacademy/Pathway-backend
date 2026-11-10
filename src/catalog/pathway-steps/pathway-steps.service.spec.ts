@@ -5,6 +5,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { PathwayStepsService } from './pathway-steps.service';
 import { PrismaService } from '../../prisma';
 import { AnalyticsService } from '../../analytics';
+import { ActivityService } from '../../activity';
 import {
   CareerStatus,
   ResourceCostStatus,
@@ -35,6 +36,17 @@ describe('PathwayStepsService', () => {
       updateMany: jest.fn<(args: unknown) => Promise<unknown>>(),
       createMany: jest.fn<(args: unknown) => Promise<unknown>>(),
     },
+    $transaction: jest.fn(
+      <T>(callback: (tx: unknown) => Promise<T>): Promise<T> =>
+        callback(mockPrismaService),
+    ),
+  };
+
+  const mockActivityService = {
+    recordStepCompleted:
+      jest.fn<(userId: string, stepId: string, tx: unknown) => Promise<void>>(),
+    awardEarnedBadges:
+      jest.fn<(userId: string, tx: unknown) => Promise<void>>(),
   };
 
   beforeEach(async () => {
@@ -45,6 +57,7 @@ describe('PathwayStepsService', () => {
         PathwayStepsService,
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: AnalyticsService, useValue: mockAnalyticsService },
+        { provide: ActivityService, useValue: mockActivityService },
       ],
     }).compile();
 
@@ -388,6 +401,65 @@ describe('PathwayStepsService', () => {
       expect(mockAnalyticsService.capture).not.toHaveBeenCalled();
     });
 
+    it('records XP and awards badges in the same transaction as the completion write', async () => {
+      await service.setStepStatus('user-1', 'step-1', 'COMPLETED');
+
+      expect(mockPrismaService.$transaction).toHaveBeenCalledTimes(1);
+      expect(mockActivityService.recordStepCompleted).toHaveBeenCalledWith(
+        'user-1',
+        'step-1',
+        mockPrismaService,
+      );
+      expect(mockActivityService.awardEarnedBadges).toHaveBeenCalledWith(
+        'user-1',
+        mockPrismaService,
+      );
+      expect(
+        mockPrismaService.userPathwayStep.createMany.mock
+          .invocationCallOrder[0],
+      ).toBeLessThan(
+        mockActivityService.recordStepCompleted.mock.invocationCallOrder[0],
+      );
+      expect(
+        mockActivityService.recordStepCompleted.mock.invocationCallOrder[0],
+      ).toBeLessThan(
+        mockActivityService.awardEarnedBadges.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('still records XP for a step that was already COMPLETED', async () => {
+      mockPrismaService.userPathwayStep.createMany.mockResolvedValue({
+        count: 0,
+      });
+
+      await service.setStepStatus('user-1', 'step-1', 'COMPLETED');
+
+      expect(mockActivityService.recordStepCompleted).toHaveBeenCalledTimes(1);
+    });
+
+    it('records no XP when marking a step NOT_STARTED', async () => {
+      mockPrismaService.userPathwayStep.updateMany.mockResolvedValue({
+        count: 1,
+      });
+
+      await service.setStepStatus('user-1', 'step-1', 'NOT_STARTED');
+
+      expect(mockActivityService.recordStepCompleted).not.toHaveBeenCalled();
+      expect(mockActivityService.awardEarnedBadges).not.toHaveBeenCalled();
+    });
+
+    it('emits nothing when the XP write fails', async () => {
+      mockActivityService.recordStepCompleted.mockRejectedValueOnce(
+        new Error('ledger write failed'),
+      );
+
+      await expect(
+        service.setStepStatus('user-1', 'step-1', 'COMPLETED'),
+      ).rejects.toThrow('ledger write failed');
+
+      expect(mockAnalyticsService.capture).not.toHaveBeenCalled();
+    });
+
     it('emits only after the write', async () => {
       await service.setStepStatus('user-1', 'step-1', 'COMPLETED');
 
@@ -433,15 +505,22 @@ describe('PathwayStepsService', () => {
       });
     });
 
-    it('does not open a transaction around the writes', async () => {
-      // The service does three sequential awaits, no $transaction.
-      // Guards against someone reintroducing a transaction that would
-      // re-open the door to the earlier "analytics inside tx" bug.
-      expect(
-        (mockPrismaService as { $transaction?: unknown }).$transaction,
-      ).toBeUndefined();
+    it('captures analytics only after the transaction commits', async () => {
+      const order: string[] = [];
+      mockPrismaService.$transaction.mockImplementationOnce(
+        async <T>(callback: (tx: unknown) => Promise<T>): Promise<T> => {
+          const result = await callback(mockPrismaService);
+          order.push('commit');
+          return result;
+        },
+      );
+      mockAnalyticsService.capture.mockImplementationOnce(() => {
+        order.push('capture');
+      });
 
       await service.setStepStatus('user-1', 'step-1', 'COMPLETED');
+
+      expect(order).toEqual(['commit', 'capture']);
     });
   });
 });

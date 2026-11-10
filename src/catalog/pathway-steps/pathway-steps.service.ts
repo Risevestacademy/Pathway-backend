@@ -9,6 +9,7 @@ import {
   CareerStatus,
   ResourceStatus,
   PathwayStepStatus,
+  Prisma,
 } from '../../generated/prisma/client';
 import { PathwayStepDetailDto } from './dto/pathway-step-detail.dto';
 import {
@@ -16,6 +17,7 @@ import {
   StepStatusResponseDto,
 } from './dto/step-status-response.dto';
 import { AnalyticsService } from '../../analytics';
+import { ActivityService } from '../../activity';
 import * as Progress from '../pathways/progress';
 
 @Injectable()
@@ -25,6 +27,7 @@ export class PathwayStepsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly analytics: AnalyticsService,
+    private readonly activity: ActivityService,
   ) {}
 
   async getPathwayStepById(stepId: string): Promise<PathwayStepDetailDto> {
@@ -148,7 +151,16 @@ export class PathwayStepsService {
       throw new ConflictException('Save this career before tracking its steps');
     }
 
-    const changed = await this.writeStepStatus(userId, stepId, status);
+    const changed = await this.prisma.$transaction(async (tx) => {
+      const written = await this.writeStepStatus(tx, userId, stepId, status);
+
+      if (status === PathwayStepStatus.COMPLETED) {
+        await this.activity.recordStepCompleted(userId, stepId, tx);
+        await this.activity.awardEarnedBadges(userId, tx);
+      }
+
+      return written;
+    });
 
     if (changed) {
       this.logger.log({ userId, stepId, status }, 'Step status changed');
@@ -185,6 +197,7 @@ export class PathwayStepsService {
 
   // Conditional writes, so only a real change returns true
   private async writeStepStatus(
+    tx: Prisma.TransactionClient,
     userId: string,
     pathwayStepId: string,
     status: StepCompletionStatus,
@@ -192,7 +205,7 @@ export class PathwayStepsService {
     const completedAt =
       status === PathwayStepStatus.COMPLETED ? new Date() : null;
 
-    const updated = await this.prisma.userPathwayStep.updateMany({
+    const updated = await tx.userPathwayStep.updateMany({
       where: { userId, pathwayStepId, status: { not: status } },
       data: { status, completedAt },
     });
@@ -206,7 +219,7 @@ export class PathwayStepsService {
       return false;
     }
 
-    const created = await this.prisma.userPathwayStep.createMany({
+    const created = await tx.userPathwayStep.createMany({
       data: [{ userId, pathwayStepId, status, completedAt }],
       skipDuplicates: true,
     });
