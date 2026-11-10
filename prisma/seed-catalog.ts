@@ -15,7 +15,9 @@ import {
  *
  * Default mode is CREATE-ONLY: anything that already exists (by slug / name / id)
  * is skipped entirely, so edits and additions made by admins through the app are
- * never overwritten. Re-running only adds what is missing.
+ * never overwritten. Re-running only adds what is missing: new rows, plus the
+ * pathway stages and career resource links of careers that already exist (a
+ * step only gets a stage if it has none).
  *
  * To deliberately push seed changes onto existing rows (dev/staging only), run with
  * SEED_REFRESH_CATALOG=true. This overwrites seeded rows and rebuilds their links,
@@ -29,6 +31,8 @@ type OutlookRow = Omit<
 > & { sourceId: string };
 
 interface StepSeed {
+  // PathwayStage title. Stages are numbered by first appearance in the pathway.
+  stage: string;
   title: string;
   description: string;
   learningObjective: string;
@@ -36,6 +40,15 @@ interface StepSeed {
   expectedActivity: string;
   skills: string[];
   resources: string[];
+}
+
+interface CertificationSeed {
+  // e.g. 'Frontend Expert'. The three levels are titled "<title>: Level 1" to 3.
+  title: string;
+  // Shared by all three levels.
+  badgeImageUrl: string;
+  // One stable id per level.
+  resourceIds: [string, string, string];
 }
 
 interface CareerSeed {
@@ -51,6 +64,10 @@ interface CareerSeed {
   field: string;
   skills: string[];
   outlook: OutlookRow[];
+  // Career-level resources, e.g. one course. The certification resources are
+  // linked to the career as well.
+  resources?: string[];
+  certification?: CertificationSeed;
   pathway?: {
     title: string;
     description: string;
@@ -69,12 +86,45 @@ interface ResourceSeed {
   certificationCost: string | null;
   curationRationale: string;
   status: ResourceStatus;
+  badgeImageUrl?: string;
   skills: string[];
 }
 
 const LAST_CHECKED = new Date('2026-09-25T00:00:00.000Z');
 
 const PUBLISHED_AT = new Date('2026-09-25T00:00:00.000Z');
+
+// Placeholder: a certification resource needs a url and there is no programme page
+// for these demo certifications yet. Replace before showing them to real users.
+const CERTIFICATION_URL_BASE = 'https://example.com/certifications';
+
+// Placeholder names, descriptions and icon keys for the four XP trophies.
+const BADGES = [
+  {
+    name: 'First Steps',
+    description: 'Earn 50 XP by completing pathway steps, tasks and quizzes.',
+    iconKey: 'trophy-1',
+    xpThreshold: 50,
+  },
+  {
+    name: 'Rising Learner',
+    description: 'Earn 250 XP by completing pathway steps, tasks and quizzes.',
+    iconKey: 'trophy-2',
+    xpThreshold: 250,
+  },
+  {
+    name: 'Dedicated Learner',
+    description: 'Earn 500 XP by completing pathway steps, tasks and quizzes.',
+    iconKey: 'trophy-3',
+    xpThreshold: 500,
+  },
+  {
+    name: 'Pathway Champion',
+    description: 'Earn 1000 XP by completing pathway steps, tasks and quizzes.',
+    iconKey: 'trophy-4',
+    xpThreshold: 1000,
+  },
+];
 
 const FIELDS = [
   { slug: 'software-engineering', name: 'Software Engineering' },
@@ -166,6 +216,14 @@ const SKILLS = [
     description:
       'Core cloud concepts: compute, storage, networking and pricing',
   },
+  {
+    name: 'React Native',
+    description: 'Building native mobile apps for iOS and Android with React',
+  },
+  {
+    name: 'App Publishing',
+    description: 'Building, signing and releasing apps through the app stores',
+  },
 ];
 
 const SOURCE = {
@@ -253,6 +311,21 @@ const RESOURCE = {
   nestProviders: 'bfb6d7b4-b9c5-46ba-af0d-8107b94ee523',
   prismaSchema: 'e84e0fd9-951a-4930-bb1a-46853d4d25fb',
   prismaCrud: 'fc6ffb27-1e5e-4c2b-b09b-d70f7c25a75b',
+
+  // Career courses
+  odinFoundations: '4a4724bf-7d64-413d-8c2f-f3302f051967',
+  odinFullStack: '5f114d46-6c95-4441-a356-3bf79e7d4c89',
+  expoTutorial: '773b202e-decf-4301-8216-f3b42eaed5bf',
+  kagglePandas: 'f123b3b9-fe66-4172-986a-22a9e07b2f67',
+  courseraUxFoundations: '5f6d31d4-36bc-40c1-be3c-f6de3481567b',
+  azureCloudConcepts: '51877e4a-294d-4956-9686-1eb9f9bd1895',
+
+  // Mobile
+  reactNativeComponents: 'ee39ee03-d78a-425f-b27c-0181a6cc4dc0',
+  expoRouterIntro: '29546a95-eb60-49c5-8d84-84634d70b56c',
+  reactNativeNetworking: '37b0bf02-6665-4016-ac7a-b3655edd8d84',
+  expoFirstBuild: 'dc538e03-6b50-4570-9e1a-fd4b9435f19c',
+  expoSubmit: '1639dfff-f89f-46f2-867a-d722b358491f',
 };
 
 const RESOURCES: ResourceSeed[] = [
@@ -1192,6 +1265,176 @@ const RESOURCES: ResourceSeed[] = [
     status: ResourceStatus.ACTIVE,
     skills: ['Prisma'],
   },
+
+  // ---------------------------------------------------------------------
+  // Career courses (one per demo career)
+  // ---------------------------------------------------------------------
+  {
+    id: RESOURCE.odinFoundations,
+    title: 'The Odin Project: Foundations',
+    description:
+      'A free, project-based introduction to HTML, CSS, JavaScript and Git.',
+    url: 'https://www.theodinproject.com/paths/foundations/courses/foundations',
+    type: ResourceType.COURSE,
+    provider: 'The Odin Project',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'Covers the web basics a frontend engineer starts from, with a project at each stage.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['HTML & CSS', 'JavaScript', 'Git'],
+  },
+  {
+    id: RESOURCE.odinFullStack,
+    title: 'The Odin Project: Full Stack JavaScript',
+    description:
+      'A free curriculum whose Node.js course covers Express, routing, APIs and authentication.',
+    url: 'https://www.theodinproject.com/paths/full-stack-javascript',
+    type: ResourceType.COURSE,
+    provider: 'The Odin Project',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'Its Node.js course builds server-side apps, a grounding before moving to NestJS.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['JavaScript'],
+  },
+  {
+    id: RESOURCE.expoTutorial,
+    title: 'Expo Tutorial: Create Your First App',
+    description:
+      'A step-by-step tutorial that builds a mobile app with Expo and React Native.',
+    url: 'https://docs.expo.dev/tutorial/create-your-first-app/',
+    type: ResourceType.COURSE,
+    provider: 'Expo',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'The official tutorial for starting a cross-platform app that runs on a phone.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['React Native'],
+  },
+  {
+    id: RESOURCE.kagglePandas,
+    title: 'Kaggle Learn: Pandas',
+    description:
+      'Short lessons on selecting, grouping and cleaning data with pandas.',
+    url: 'https://www.kaggle.com/learn/pandas',
+    type: ResourceType.COURSE,
+    provider: 'Kaggle',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'Hands-on exercises in the browser for working with tabular data in Python.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['Python'],
+  },
+  {
+    id: RESOURCE.courseraUxFoundations,
+    title: 'Foundations of User Experience (UX) Design',
+    description:
+      'An introduction to the UX design process and the role of a UX designer.',
+    url: 'https://www.coursera.org/learn/foundations-user-experience-design',
+    type: ResourceType.COURSE,
+    provider: 'Google (Coursera)',
+    costStatus: ResourceCostStatus.UNKNOWN,
+    certificationCost: null,
+    curationRationale:
+      'The first course of the Google UX Design certificate, aimed at beginners.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['UX Principles', 'User Research'],
+  },
+  {
+    id: RESOURCE.azureCloudConcepts,
+    title: 'Introduction to Cloud Infrastructure: Describe Cloud Concepts',
+    description:
+      'A Microsoft Learn path on cloud models, shared responsibility and pricing.',
+    url: 'https://learn.microsoft.com/en-us/training/paths/microsoft-azure-fundamentals-describe-cloud-concepts/',
+    type: ResourceType.COURSE,
+    provider: 'Microsoft Learn',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      "A second vendor's view of cloud concepts, complementing the AWS material in this pathway.",
+    status: ResourceStatus.ACTIVE,
+    skills: ['Cloud Fundamentals'],
+  },
+
+  // ---------------------------------------------------------------------
+  // Mobile Engineer
+  // ---------------------------------------------------------------------
+  {
+    id: RESOURCE.reactNativeComponents,
+    title: 'React Native: Core Components and Native Components',
+    description: 'How React components map to native views on iOS and Android.',
+    url: 'https://reactnative.dev/docs/intro-react-native-components',
+    type: ResourceType.ARTICLE,
+    provider: 'React Native',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'Explains the building blocks every React Native screen is made from.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['React Native'],
+  },
+  {
+    id: RESOURCE.expoRouterIntro,
+    title: 'Introduction to Expo Router',
+    description: 'File-based routing for React Native apps built with Expo.',
+    url: 'https://docs.expo.dev/router/introduction/',
+    type: ResourceType.ARTICLE,
+    provider: 'Expo',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'The routing approach the Expo tutorial uses for screens, stacks and tabs.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['React Native'],
+  },
+  {
+    id: RESOURCE.reactNativeNetworking,
+    title: 'React Native: Networking',
+    description:
+      'Making requests with fetch and handling responses in a mobile app.',
+    url: 'https://reactnative.dev/docs/network',
+    type: ResourceType.ARTICLE,
+    provider: 'React Native',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'Covers fetching data from an API inside a React Native screen.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['React Native', 'JavaScript'],
+  },
+  {
+    id: RESOURCE.expoFirstBuild,
+    title: 'Expo: Create Your First Build',
+    description:
+      'Setting up EAS Build and creating a build you can install on a device.',
+    url: 'https://docs.expo.dev/build/setup/',
+    type: ResourceType.ARTICLE,
+    provider: 'Expo',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale:
+      'Turns the working app into an installable build, the step before store submission.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['App Publishing'],
+  },
+  {
+    id: RESOURCE.expoSubmit,
+    title: 'Expo: Submit to App Stores',
+    description:
+      'Uploading a build to the Apple App Store and Google Play with EAS Submit.',
+    url: 'https://docs.expo.dev/submit/introduction/',
+    type: ResourceType.ARTICLE,
+    provider: 'Expo',
+    costStatus: ResourceCostStatus.FREE,
+    certificationCost: null,
+    curationRationale: 'Covers the final release step the pathway ends on.',
+    status: ResourceStatus.ACTIVE,
+    skills: ['App Publishing'],
+  },
 ];
 
 const usSalary = (
@@ -1272,11 +1515,23 @@ const CAREERS: CareerSeed[] = [
       usGrowth(208, 225),
       lagosDemand(Demand.HIGH),
     ],
+    resources: [RESOURCE.odinFullStack],
+    certification: {
+      title: 'Backend Expert',
+      badgeImageUrl:
+        'https://res.cloudinary.com/jskacvzb/image/upload/v1794262294/backen_expert_certification.png',
+      resourceIds: [
+        '2da472d6-c42a-4793-ba60-5b4ca21f95f9',
+        'dd74b830-8d63-4277-a3d8-49d776074a0c',
+        'b21ee1ac-f4df-48bc-9519-bd4a30220c99',
+      ],
+    },
     pathway: {
       title: 'Backend Engineering Fundamentals',
       description: 'Core steps to become a proficient backend engineer.',
       steps: [
         {
+          stage: 'Language foundations',
           title: 'Learn TypeScript Basics',
           description: 'Understand types, interfaces, and generics.',
           learningObjective:
@@ -1291,6 +1546,7 @@ const CAREERS: CareerSeed[] = [
           ],
         },
         {
+          stage: 'Building APIs',
           title: 'Build an API with NestJS',
           description: 'Create controllers, services, and modules.',
           learningObjective:
@@ -1344,11 +1600,23 @@ const CAREERS: CareerSeed[] = [
       usGrowth(223, 240),
       lagosDemand(Demand.HIGH),
     ],
+    resources: [RESOURCE.odinFoundations],
+    certification: {
+      title: 'Frontend Expert',
+      badgeImageUrl:
+        'https://res.cloudinary.com/jskacvzb/image/upload/v1794262294/fronted_expert.png',
+      resourceIds: [
+        '40d5843c-b27f-4656-af4e-fbba3009e56b',
+        '744313d2-d875-4424-9172-317228b05ded',
+        '5b4a7700-5104-414f-8c01-f1a3220e6477',
+      ],
+    },
     pathway: {
       title: 'Frontend Engineering Fundamentals',
       description: 'Core steps to build and ship accessible web interfaces.',
       steps: [
         {
+          stage: 'Web foundations',
           title: 'Structure and style pages with HTML and CSS',
           description:
             'Semantic HTML, the box model, flexbox and responsive layouts.',
@@ -1367,6 +1635,7 @@ const CAREERS: CareerSeed[] = [
           ],
         },
         {
+          stage: 'Web foundations',
           title: 'Program the page with JavaScript',
           description:
             'Variables, functions, arrays, DOM events and fetching data.',
@@ -1386,6 +1655,7 @@ const CAREERS: CareerSeed[] = [
           ],
         },
         {
+          stage: 'Modern frameworks',
           title: 'Build interfaces with React',
           description: 'Components, props, state and effects.',
           learningObjective:
@@ -1437,11 +1707,23 @@ const CAREERS: CareerSeed[] = [
       usGrowth(118, 145),
       lagosDemand(Demand.HIGH),
     ],
+    resources: [RESOURCE.kagglePandas],
+    certification: {
+      title: 'Data Analyst',
+      badgeImageUrl:
+        'https://res.cloudinary.com/jskacvzb/image/upload/v1794262294/data_analyst_certification.png',
+      resourceIds: [
+        '8c5fe4db-df64-415d-8da7-6948d22c6d9b',
+        '26c1f61b-9d9c-4f28-a462-b511f4449831',
+        '9fe7c00d-af08-4dfe-8348-9acaa7dfa4e7',
+      ],
+    },
     pathway: {
       title: 'Data Analysis Fundamentals',
       description: 'Core steps to answer business questions with data.',
       steps: [
         {
+          stage: 'Working with data',
           title: 'Analyse data in spreadsheets',
           description: 'Formulas, lookups, pivot tables and charts.',
           learningObjective:
@@ -1457,6 +1739,7 @@ const CAREERS: CareerSeed[] = [
           ],
         },
         {
+          stage: 'Working with data',
           title: 'Query databases with SQL',
           description: 'Filtering, aggregation and joins.',
           learningObjective:
@@ -1474,6 +1757,7 @@ const CAREERS: CareerSeed[] = [
           ],
         },
         {
+          stage: 'Communicating insights',
           title: 'Present findings with visualisations',
           description: 'Choosing charts and telling a clear story with data.',
           learningObjective:
@@ -1520,11 +1804,23 @@ const CAREERS: CareerSeed[] = [
       usGrowth(106, 115),
       lagosDemand(Demand.MEDIUM),
     ],
+    resources: [RESOURCE.courseraUxFoundations],
+    certification: {
+      title: 'UI/UX Practitioner',
+      badgeImageUrl:
+        'https://res.cloudinary.com/jskacvzb/image/upload/v1794262294/ux_practitioner_certification.png',
+      resourceIds: [
+        '6490fafb-bb88-4095-b313-d1c4b11bcca1',
+        'caaa0d95-7ddc-45de-ad14-9c63c201148e',
+        '80eb56b3-7314-4d4f-86aa-f07de89aaa0e',
+      ],
+    },
     pathway: {
       title: 'UI/UX Design Fundamentals',
       description: 'Core steps to research, design and test digital products.',
       steps: [
         {
+          stage: 'Understand users',
           title: 'Learn the principles of good UX',
           description:
             'Heuristics and the psychology behind usable interfaces.',
@@ -1541,6 +1837,7 @@ const CAREERS: CareerSeed[] = [
           ],
         },
         {
+          stage: 'Understand users',
           title: 'Research user needs',
           description: 'Planning and running user interviews.',
           learningObjective:
@@ -1556,6 +1853,7 @@ const CAREERS: CareerSeed[] = [
           ],
         },
         {
+          stage: 'Design and test',
           title: 'Design and prototype in Figma',
           description: 'Frames, components, auto layout and prototypes.',
           learningObjective:
@@ -1611,6 +1909,7 @@ const CAREERS: CareerSeed[] = [
       description: 'Core steps to test software manually and automatically.',
       steps: [
         {
+          stage: 'Testing foundations',
           title: 'Learn testing fundamentals',
           description:
             'Test levels, test design techniques and defect reporting.',
@@ -1627,6 +1926,7 @@ const CAREERS: CareerSeed[] = [
           ],
         },
         {
+          stage: 'Test automation',
           title: 'Automate browser tests',
           description: 'Writing and running end-to-end tests with Playwright.',
           learningObjective:
@@ -1643,6 +1943,7 @@ const CAREERS: CareerSeed[] = [
           ],
         },
         {
+          stage: 'Test automation',
           title: 'Test APIs',
           description: 'Requests, status codes, assertions and collections.',
           learningObjective:
@@ -1688,11 +1989,23 @@ const CAREERS: CareerSeed[] = [
       usGrowth(180, 203),
       lagosDemand(Demand.HIGH),
     ],
+    resources: [RESOURCE.azureCloudConcepts],
+    certification: {
+      title: 'Cloud Expert',
+      badgeImageUrl:
+        'https://res.cloudinary.com/jskacvzb/image/upload/v1794262294/cloud_expert_certification.png',
+      resourceIds: [
+        '002f698c-3f81-4409-9a93-ec882f2a08ad',
+        '3298025a-0b97-442d-9d56-2793d6b45d16',
+        '0cbb1484-1df0-4f19-9200-37bcf5cfc715',
+      ],
+    },
     pathway: {
       title: 'Cloud Engineering Fundamentals',
       description: 'Core steps to run applications on cloud infrastructure.',
       steps: [
         {
+          stage: 'Systems foundations',
           title: 'Work on the Linux command line',
           description: 'Files, permissions, processes and shell scripts.',
           learningObjective:
@@ -1708,6 +2021,7 @@ const CAREERS: CareerSeed[] = [
           ],
         },
         {
+          stage: 'Systems foundations',
           title: 'Package applications with Docker',
           description: 'Images, containers, volumes and Compose.',
           learningObjective:
@@ -1725,6 +2039,7 @@ const CAREERS: CareerSeed[] = [
           ],
         },
         {
+          stage: 'Cloud platforms',
           title: 'Learn cloud foundations',
           description: 'Core services, shared responsibility and pricing.',
           learningObjective:
@@ -1739,6 +2054,97 @@ const CAREERS: CareerSeed[] = [
             RESOURCE.awsPricingCalculator,
             RESOURCE.awsWellArchitected,
           ],
+        },
+      ],
+    },
+  },
+  {
+    slug: 'mobile-engineer',
+    title: 'Mobile Engineer',
+    description: 'Builds apps that run on phones and tablets.',
+    roleSummary:
+      'Designs, builds and releases mobile apps for iOS and Android, and connects them to backend APIs.',
+    exampleActivities: [
+      'Build app screens and navigation from design files',
+      'Connect the app to REST APIs and handle slow or failed requests',
+      'Test on real devices and emulators',
+      'Prepare builds and release updates through the app stores',
+      'Investigate crashes and performance problems',
+    ],
+    typicalEducationNote:
+      'Degree in computing or a related field, or a bootcamp or self-taught portfolio that includes working apps.',
+    certificationsNote:
+      'Rarely required. Apps you have built and run on real devices carry more weight.',
+    targetLevels: [TargetLevel.RECENT_GRAD, TargetLevel.EARLY_CAREER],
+    status: CareerStatus.PUBLISHED,
+    field: 'software-engineering',
+    skills: ['React Native', 'TypeScript', 'React', 'Git', 'App Publishing'],
+    // No outlook rows yet: add real salary, growth and demand figures with their
+    // sources instead of reusing another career's numbers.
+    outlook: [],
+    resources: [RESOURCE.expoTutorial],
+    certification: {
+      title: 'Mobile Engineer',
+      badgeImageUrl:
+        'https://res.cloudinary.com/jskacvzb/image/upload/v1794262294/mobile_engineer_certification.png',
+      resourceIds: [
+        'fe4ce6d4-2510-4026-8eb0-fe9214734cf0',
+        '3cf5a743-afd0-4a2f-ad02-d3809cca23fd',
+        '3ebead95-41f0-4bdd-a3d5-93ce0f290b88',
+      ],
+    },
+    pathway: {
+      title: 'Mobile Engineering Fundamentals',
+      description:
+        'Core steps to build and release a cross-platform mobile app.',
+      steps: [
+        {
+          stage: 'App foundations',
+          title: 'Build your first app with React Native',
+          description: 'Core components, styling and state with Expo.',
+          learningObjective:
+            'Build a multi-component screen with React Native core components and local state.',
+          prerequisites: 'Comfortable with React components, props and state.',
+          expectedActivity:
+            'Build a to-do app with add, complete and delete actions running on a phone or emulator.',
+          skills: ['React Native', 'TypeScript'],
+          resources: [RESOURCE.expoTutorial, RESOURCE.reactNativeComponents],
+        },
+        {
+          stage: 'App foundations',
+          title: 'Navigate between screens',
+          description: 'File-based routing, stacks and tabs with Expo Router.',
+          learningObjective:
+            'Structure an app into several screens linked by stack and tab navigation.',
+          prerequisites: 'A working single-screen React Native app.',
+          expectedActivity:
+            'Split the to-do app into a list screen and a detail screen using Expo Router.',
+          skills: ['React Native'],
+          resources: [RESOURCE.expoRouterIntro],
+        },
+        {
+          stage: 'Data and release',
+          title: 'Load data from an API',
+          description: 'Fetching data, loading states and error handling.',
+          learningObjective:
+            'Fetch remote data and handle loading and error states in a mobile screen.',
+          prerequisites: 'A multi-screen app with navigation.',
+          expectedActivity:
+            'Load the to-do items from a REST API and show loading and error states.',
+          skills: ['React Native', 'JavaScript'],
+          resources: [RESOURCE.reactNativeNetworking, RESOURCE.mdnFetchApi],
+        },
+        {
+          stage: 'Data and release',
+          title: 'Build and release the app',
+          description: 'Cloud builds, signing and store submission.',
+          learningObjective:
+            'Produce an installable build and explain the steps to release it to the app stores.',
+          prerequisites: 'A working app that loads data from an API.',
+          expectedActivity:
+            'Create a preview build with EAS Build and install it on a real device.',
+          skills: ['App Publishing'],
+          resources: [RESOURCE.expoFirstBuild, RESOURCE.expoSubmit],
         },
       ],
     },
@@ -1819,9 +2225,10 @@ async function upsertSkills(
 
 async function upsertResources(
   prisma: PrismaClient,
+  resources: ResourceSeed[],
   skillIds: Map<string, string>,
 ): Promise<void> {
-  for (const { id, skills, ...resource } of RESOURCES) {
+  for (const { id, skills, ...resource } of resources) {
     if (!REFRESH) {
       const existing = await prisma.resource.findUnique({
         where: { id },
@@ -1862,6 +2269,57 @@ async function linkStepResources(
   });
 }
 
+async function upsertBadges(prisma: PrismaClient): Promise<void> {
+  for (const badge of BADGES) {
+    await prisma.badge.upsert({
+      where: { name: badge.name },
+      update: REFRESH ? badge : {},
+      create: badge,
+    });
+  }
+}
+
+// Stage titles, in order of first appearance, become PathwayStage rows 1..n.
+async function upsertStages(
+  prisma: PrismaClient,
+  pathwayId: string,
+  steps: StepSeed[],
+): Promise<Map<string, string>> {
+  const stageIds = new Map<string, string>();
+  const titles = [...new Set(steps.map(({ stage }) => stage))];
+
+  for (const [index, title] of titles.entries()) {
+    const order = index + 1;
+
+    const { id } = await prisma.pathwayStage.upsert({
+      where: { pathwayId_order: { pathwayId, order } },
+      update: REFRESH ? { title } : {},
+      create: { pathwayId, order, title },
+    });
+
+    stageIds.set(title, id);
+  }
+
+  return stageIds;
+}
+
+// Create-only mode: give seeded steps their stage, but only where a step has none,
+// so a stage an admin assigned is never changed.
+async function backfillPathwayStages(
+  prisma: PrismaClient,
+  pathwayId: string,
+  steps: StepSeed[],
+): Promise<void> {
+  const stageIds = await upsertStages(prisma, pathwayId, steps);
+
+  for (const [index, { stage }] of steps.entries()) {
+    await prisma.pathwayStep.updateMany({
+      where: { pathwayId, order: index + 1, stageId: null },
+      data: { stageId: idOf(stageIds, stage) },
+    });
+  }
+}
+
 async function upsertPathway(
   prisma: PrismaClient,
   careerId: string,
@@ -1874,13 +2332,19 @@ async function upsertPathway(
     create: { careerId, title, description },
   });
 
-  for (const [index, { skills, resources, ...step }] of steps.entries()) {
+  const stageIds = await upsertStages(prisma, pathway.id, steps);
+
+  for (const [
+    index,
+    { stage, skills, resources, ...step },
+  ] of steps.entries()) {
     const order = index + 1;
+    const stageId = idOf(stageIds, stage);
 
     const { id: pathwayStepId } = await prisma.pathwayStep.upsert({
       where: { pathwayId_order: { pathwayId: pathway.id, order } },
-      update: step,
-      create: { pathwayId: pathway.id, order, ...step },
+      update: { ...step, stageId },
+      create: { pathwayId: pathway.id, order, stageId, ...step },
     });
 
     await prisma.pathwayStepSkill.deleteMany({ where: { pathwayStepId } });
@@ -1897,6 +2361,44 @@ async function upsertPathway(
   await prisma.pathwayStep.deleteMany({
     where: { pathwayId: pathway.id, order: { gt: steps.length } },
   });
+  await prisma.pathwayStage.deleteMany({
+    where: { pathwayId: pathway.id, order: { gt: stageIds.size } },
+  });
+}
+
+async function linkCareerResources(
+  prisma: PrismaClient,
+  careerId: string,
+  resourceIds: string[],
+): Promise<void> {
+  await prisma.careerResource.createMany({
+    data: resourceIds.map((resourceId) => ({ careerId, resourceId })),
+    skipDuplicates: true,
+  });
+}
+
+// Create-only mode for a career that already exists: add what is missing and
+// touch nothing else.
+async function backfillCareer(
+  prisma: PrismaClient,
+  careerId: string,
+  resourceIds: string[],
+  steps: StepSeed[] | undefined,
+): Promise<void> {
+  await linkCareerResources(prisma, careerId, resourceIds);
+
+  if (!steps) {
+    return;
+  }
+
+  const pathway = await prisma.pathway.findUnique({
+    where: { careerId },
+    select: { id: true },
+  });
+
+  if (pathway) {
+    await backfillPathwayStages(prisma, pathway.id, steps);
+  }
 }
 
 async function upsertSources(prisma: PrismaClient): Promise<void> {
@@ -1929,12 +2431,23 @@ async function upsertSources(prisma: PrismaClient): Promise<void> {
 
 async function upsertCareer(
   prisma: PrismaClient,
-  { slug, field, skills, outlook, pathway, ...details }: CareerSeed,
+  {
+    slug,
+    field,
+    skills,
+    outlook,
+    pathway,
+    resources = [],
+    certification,
+    ...details
+  }: CareerSeed,
   fieldIds: Map<string, string>,
   skillIds: Map<string, string>,
 ): Promise<void> {
-  // Create-only: a career that already exists is left completely alone (its
-  // skills, outlook rows and pathway included), so admin edits survive re-seeding.
+  const resourceIds = [...resources, ...(certification?.resourceIds ?? [])];
+
+  // Create-only: a career that already exists keeps everything an admin may have
+  // edited (details, skills, outlook, pathway). We only add what is missing.
   if (!REFRESH) {
     const existing = await prisma.career.findUnique({
       where: { slug },
@@ -1942,7 +2455,8 @@ async function upsertCareer(
     });
 
     if (existing) {
-      console.log(`Career "${slug}" already exists, skipping`);
+      console.log(`Career "${slug}" already exists, adding missing links only`);
+      await backfillCareer(prisma, existing.id, resourceIds, pathway?.steps);
       return;
     }
   }
@@ -1968,6 +2482,9 @@ async function upsertCareer(
     data: outlook.map((row) => ({ ...row, careerId })),
   });
 
+  await prisma.careerResource.deleteMany({ where: { careerId } });
+  await linkCareerResources(prisma, careerId, resourceIds);
+
   if (pathway) {
     await upsertPathway(prisma, careerId, pathway, skillIds);
   }
@@ -1979,6 +2496,36 @@ async function upsertCareer(
       data: { publishedAt: PUBLISHED_AT },
     });
   }
+}
+
+function certificationResources({
+  slug,
+  title: careerTitle,
+  skills,
+  certification,
+}: CareerSeed): ResourceSeed[] {
+  if (!certification) {
+    return [];
+  }
+
+  return certification.resourceIds.map((id, index) => {
+    const level = index + 1;
+
+    return {
+      id,
+      title: `${certification.title}: Level ${level}`,
+      description: `Level ${level} of the ${certification.title} certification for the ${careerTitle} pathway.`,
+      url: `${CERTIFICATION_URL_BASE}/${slug}-level-${level}`,
+      type: ResourceType.CERTIFICATION,
+      provider: 'Pathway Rise Academy',
+      costStatus: ResourceCostStatus.FREE,
+      certificationCost: null,
+      curationRationale: `Recognises the skills practised across the ${careerTitle} pathway.`,
+      status: ResourceStatus.ACTIVE,
+      badgeImageUrl: certification.badgeImageUrl,
+      skills,
+    };
+  });
 }
 
 export async function seedCatalog(prisma: PrismaClient): Promise<void> {
@@ -1998,7 +2545,12 @@ export async function seedCatalog(prisma: PrismaClient): Promise<void> {
   const skillIds = await upsertSkills(prisma);
 
   await upsertSources(prisma);
-  await upsertResources(prisma, skillIds);
+  await upsertBadges(prisma);
+  await upsertResources(
+    prisma,
+    [...RESOURCES, ...CAREERS.flatMap(certificationResources)],
+    skillIds,
+  );
 
   for (const career of CAREERS) {
     await upsertCareer(prisma, career, fieldIds, skillIds);
