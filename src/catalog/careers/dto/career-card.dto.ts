@@ -16,6 +16,7 @@ export class CareerCardDto {
 
   @ApiProperty({
     description: 'Icon key used by the list/card UI (e.g. "fe-icon")',
+    type: String,
     nullable: true,
   })
   iconKey: string | null;
