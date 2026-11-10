@@ -76,27 +76,33 @@ describe('CareersService', () => {
         slug: 'software-engineer',
         title: 'Software Engineer',
         description: 'Builds software applications.',
+        iconKey: 'se-icon',
+        targetLevels: [TargetLevel.STUDENT, TargetLevel.RECENT_GRAD],
+        _count: { resources: 12 },
+        pathway: { steps: [{ id: 's1' }, { id: 's2' }, { id: 's3' }] },
       },
     ];
 
-    it('should return mapped public careers without query filters', async () => {
+    const expectedSelect = {
+      id: true,
+      slug: true,
+      title: true,
+      description: true,
+      iconKey: true,
+      targetLevels: true,
+      _count: { select: { resources: true } },
+      pathway: { select: { steps: { select: { id: true } } } },
+    };
+
+    it('returns cards mapped through toCareerCard without query filters', async () => {
       mockPrismaService.career.findMany.mockResolvedValue(mockDbCareers);
 
       const result = await service.getPublicCareers({});
 
       expect(mockPrismaService.career.findMany).toHaveBeenCalledWith({
-        where: {
-          status: CareerStatus.PUBLISHED,
-        },
-        select: {
-          id: true,
-          slug: true,
-          title: true,
-          description: true,
-        },
-        orderBy: {
-          title: 'asc',
-        },
+        where: { status: CareerStatus.PUBLISHED },
+        select: expectedSelect,
+        orderBy: { title: 'asc' },
       });
 
       expect(result).toEqual([
@@ -104,12 +110,16 @@ describe('CareersService', () => {
           id: '1',
           slug: 'software-engineer',
           title: 'Software Engineer',
-          shortDescription: 'Builds software applications.',
+          description: 'Builds software applications.',
+          iconKey: 'se-icon',
+          targetLevels: [TargetLevel.STUDENT, TargetLevel.RECENT_GRAD],
+          topicCount: 3,
+          resourceCount: 12,
         },
       ]);
     });
 
-    it('should apply level and interest filters correctly to where clause', async () => {
+    it('applies level and interest filters to the where clause', async () => {
       mockPrismaService.career.findMany.mockResolvedValue(mockDbCareers);
 
       const query: GetCareersQueryDto = {
@@ -125,16 +135,32 @@ describe('CareersService', () => {
           targetLevels: { has: TargetLevel.RECENT_GRAD },
           field: { slug: 'software-engineering' },
         },
-        select: {
-          id: true,
-          slug: true,
-          title: true,
-          description: true,
-        },
-        orderBy: {
-          title: 'asc',
-        },
+        select: expectedSelect,
+        orderBy: { title: 'asc' },
       });
+    });
+
+    it('returns topicCount 0 for a career with no pathway', async () => {
+      mockPrismaService.career.findMany.mockResolvedValue([
+        { ...mockDbCareers[0], pathway: null },
+      ]);
+
+      const [card] = await service.getPublicCareers({});
+
+      expect(card.topicCount).toBe(0);
+      expect(card.resourceCount).toBe(12);
+    });
+
+    it('never includes curationRationale in the card payload', async () => {
+      mockPrismaService.career.findMany.mockResolvedValue(mockDbCareers);
+
+      const [card] = await service.getPublicCareers({});
+
+      expect(card).not.toHaveProperty('curationRationale');
+      // And the select object doesn't ask Prisma for it either.
+      const arg = mockPrismaService.career.findMany.mock.calls[0]?.[0] as
+        { select: Record<string, unknown> } | undefined;
+      expect(arg?.select).not.toHaveProperty('curationRationale');
     });
   });
 
@@ -1017,6 +1043,13 @@ describe('CareersService', () => {
     const row = (
       status: CareerStatus,
       userPathways: { id: string }[] = [],
+      overrides: Partial<{
+        iconKey: string | null;
+        targetLevels: TargetLevel[];
+        resourceCount: number;
+        steps: { id: string }[];
+        pathway: null;
+      }> = {},
     ) => ({
       savedAt,
       career: {
@@ -1024,6 +1057,13 @@ describe('CareersService', () => {
         slug: 'frontend-engineer',
         title: 'Frontend Engineer',
         description: 'Builds interfaces.',
+        iconKey: overrides.iconKey ?? 'fe-icon',
+        targetLevels: overrides.targetLevels ?? [TargetLevel.STUDENT],
+        _count: { resources: overrides.resourceCount ?? 8 },
+        pathway:
+          overrides.pathway === null
+            ? null
+            : { steps: overrides.steps ?? [{ id: 's1' }, { id: 's2' }] },
         status,
         userPathways,
       },
@@ -1050,6 +1090,10 @@ describe('CareersService', () => {
               slug: true,
               title: true,
               description: true,
+              iconKey: true,
+              targetLevels: true,
+              _count: { select: { resources: true } },
+              pathway: { select: { steps: { select: { id: true } } } },
               status: true,
               userPathways: {
                 where: { userId: 'user-1', isActive: true },
@@ -1061,7 +1105,7 @@ describe('CareersService', () => {
       });
     });
 
-    it('maps each save to the card fields plus savedAt and flags', async () => {
+    it('maps each save to the shared card shape plus savedAt and flags', async () => {
       mockPrismaService.userCareer.findMany.mockResolvedValue([
         row(CareerStatus.PUBLISHED, [{ id: 'up-1' }]),
       ]);
@@ -1073,7 +1117,11 @@ describe('CareersService', () => {
           id: 'career-1',
           slug: 'frontend-engineer',
           title: 'Frontend Engineer',
-          shortDescription: 'Builds interfaces.',
+          description: 'Builds interfaces.',
+          iconKey: 'fe-icon',
+          targetLevels: [TargetLevel.STUDENT],
+          topicCount: 2,
+          resourceCount: 8,
           savedAt,
           isActivePathway: true,
           isRetired: false,
@@ -1090,6 +1138,43 @@ describe('CareersService', () => {
 
       expect(item.isRetired).toBe(true);
       expect(item.isActivePathway).toBe(false);
+    });
+
+    it('returns topicCount 0 for a saved career with no pathway', async () => {
+      mockPrismaService.userCareer.findMany.mockResolvedValue([
+        row(CareerStatus.PUBLISHED, [], { pathway: null, resourceCount: 3 }),
+      ]);
+
+      const [item] = await service.listSavedCareers('user-1');
+
+      expect(item.topicCount).toBe(0);
+      expect(item.resourceCount).toBe(3);
+    });
+
+    it('uses the exact same card shape as getPublicCareers', async () => {
+      mockPrismaService.userCareer.findMany.mockResolvedValue([
+        row(CareerStatus.PUBLISHED),
+      ]);
+
+      const [savedItem] = await service.listSavedCareers('user-1');
+
+      const cardOnly = (({
+        savedAt: _s,
+        isActivePathway: _a,
+        isRetired: _r,
+        ...rest
+      }) => rest)(savedItem);
+
+      expect(cardOnly).toEqual({
+        id: 'career-1',
+        slug: 'frontend-engineer',
+        title: 'Frontend Engineer',
+        description: 'Builds interfaces.',
+        iconKey: 'fe-icon',
+        targetLevels: [TargetLevel.STUDENT],
+        topicCount: 2,
+        resourceCount: 8,
+      });
     });
   });
 });
