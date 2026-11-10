@@ -916,7 +916,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/CareerListItemDto"
+                    "$ref": "#/components/schemas/CareerCardDto"
                   }
                 }
               }
@@ -994,6 +994,87 @@
           }
         },
         "summary": "Get a published career's complete ordered pathway",
+        "tags": [
+          "Careers"
+        ]
+      }
+    },
+    "/careers/{id}/save": {
+      "put": {
+        "description": "Only a PUBLISHED career can be newly saved. Saving is idempotent and never starts or changes a pathway. Re-saving a career that was saved before it was retired returns the existing save.",
+        "operationId": "CareersController_saveCareer",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Career UUID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SaveCareerResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed career id"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "404": {
+            "description": "Career does not exist, or is not PUBLISHED and not saved"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Save a career for the signed-in user",
+        "tags": [
+          "Careers"
+        ]
+      },
+      "delete": {
+        "operationId": "CareersController_unsaveCareer",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Career UUID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "The career is not saved"
+          },
+          "400": {
+            "description": "Malformed career id"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Remove a career from the user's saves",
         "tags": [
           "Careers"
         ]
@@ -1289,6 +1370,40 @@
         "summary": "Retire a published career",
         "tags": [
           "Admin"
+        ]
+      }
+    },
+    "/me/careers": {
+      "get": {
+        "description": "Most recently saved first, with the same card fields as GET /careers. A career retired after it was saved stays listed with isRetired true. A user with no saves gets [].",
+        "operationId": "MeCareersController_listSavedCareers",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SavedCareerListItemDto"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the signed-in user's saved careers",
+        "tags": [
+          "Me"
         ]
       }
     },
@@ -2341,6 +2456,45 @@
         ]
       }
     },
+    "/opportunities/{id}": {
+      "get": {
+        "description": "Public. Returns a VERIFIED listing with its careers and skills. A listing past its deadline is still returned, with status CLOSED, so the client can show its closed banner. Draft and withdrawn listings return 404, the same as an unknown id.",
+        "operationId": "OpportunitiesController_getOpportunityById",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Opportunity UUID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpportunityDetailDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed opportunity id"
+          },
+          "404": {
+            "description": "Opportunity does not exist, or is a draft or withdrawn"
+          }
+        },
+        "summary": "Get one opportunity",
+        "tags": [
+          "Opportunities"
+        ]
+      }
+    },
     "/opportunities/{id}/save": {
       "put": {
         "operationId": "OpportunitiesController_saveOpportunity",
@@ -2418,6 +2572,87 @@
         "summary": "Remove an opportunity from the user's saves",
         "tags": [
           "Opportunities"
+        ]
+      }
+    },
+    "/me/opportunities": {
+      "get": {
+        "description": "Visible listings linked to the career of the user's active pathway, in the same shape and order as GET /opportunities. A user with no active pathway gets [].",
+        "operationId": "MeOpportunitiesController_listMyOpportunities",
+        "parameters": [
+          {
+            "name": "scope",
+            "required": true,
+            "in": "query",
+            "description": "pathway: listings for the user's active career.",
+            "schema": {
+              "example": "pathway",
+              "type": "string",
+              "enum": [
+                "pathway"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OpportunityListItemDto"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "scope is missing or not pathway (VALIDATION_ERROR)"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List opportunities for the signed-in user's active pathway",
+        "tags": [
+          "Me"
+        ]
+      }
+    },
+    "/media/avatar/signature": {
+      "post": {
+        "operationId": "CloudinaryController_getAvatarSignature",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Returns the credentials needed to upload directly to Cloudinary.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AvatarSignatureResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get a signature to upload an avatar to Cloudinary",
+        "tags": [
+          "Media"
         ]
       }
     }
@@ -2967,7 +3202,7 @@
           "slug"
         ]
       },
-      "CareerListItemDto": {
+      "CareerCardDto": {
         "type": "object",
         "properties": {
           "id": {
@@ -2982,16 +3217,47 @@
             "type": "string",
             "description": "Title of the career"
           },
-          "shortDescription": {
+          "description": {
             "type": "string",
-            "description": "Short description of the career"
+            "description": "Short description shown on the card"
+          },
+          "iconKey": {
+            "type": "object",
+            "description": "Icon key used by the list/card UI (e.g. \"fe-icon\")",
+            "nullable": true
+          },
+          "targetLevels": {
+            "type": "array",
+            "description": "Target audience levels for this career",
+            "items": {
+              "type": "string",
+              "enum": [
+                "STUDENT",
+                "RECENT_GRAD",
+                "EARLY_CAREER"
+              ]
+            }
+          },
+          "topicCount": {
+            "type": "number",
+            "description": "Number of pathway steps (\"Topics\" in the UI)",
+            "example": 113
+          },
+          "resourceCount": {
+            "type": "number",
+            "description": "Number of linked resources (\"Projects\" in the UI)",
+            "example": 30
           }
         },
         "required": [
           "id",
           "slug",
           "title",
-          "shortDescription"
+          "description",
+          "iconKey",
+          "targetLevels",
+          "topicCount",
+          "resourceCount"
         ]
       },
       "CareerFieldDto": {
@@ -3436,6 +3702,22 @@
         },
         "required": [
           "pathway"
+        ]
+      },
+      "SaveCareerResponseDto": {
+        "type": "object",
+        "properties": {
+          "careerId": {
+            "type": "string"
+          },
+          "savedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "careerId",
+          "savedAt"
         ]
       },
       "CreateCareerDto": {
@@ -4197,6 +4479,80 @@
           "status",
           "version",
           "updatedAt"
+        ]
+      },
+      "SavedCareerListItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier of the career"
+          },
+          "slug": {
+            "type": "string",
+            "description": "URL-friendly slug for the career"
+          },
+          "title": {
+            "type": "string",
+            "description": "Title of the career"
+          },
+          "description": {
+            "type": "string",
+            "description": "Short description shown on the card"
+          },
+          "iconKey": {
+            "type": "object",
+            "description": "Icon key used by the list/card UI (e.g. \"fe-icon\")",
+            "nullable": true
+          },
+          "targetLevels": {
+            "type": "array",
+            "description": "Target audience levels for this career",
+            "items": {
+              "type": "string",
+              "enum": [
+                "STUDENT",
+                "RECENT_GRAD",
+                "EARLY_CAREER"
+              ]
+            }
+          },
+          "topicCount": {
+            "type": "number",
+            "description": "Number of pathway steps (\"Topics\" in the UI)",
+            "example": 113
+          },
+          "resourceCount": {
+            "type": "number",
+            "description": "Number of linked resources (\"Projects\" in the UI)",
+            "example": 30
+          },
+          "savedAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "When the user saved this career"
+          },
+          "isActivePathway": {
+            "type": "boolean",
+            "description": "Whether this career has an active user pathway"
+          },
+          "isRetired": {
+            "type": "boolean",
+            "description": "Whether this career has been retired"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "title",
+          "description",
+          "iconKey",
+          "targetLevels",
+          "topicCount",
+          "resourceCount",
+          "savedAt",
+          "isActivePathway",
+          "isRetired"
         ]
       },
       "PathwayStepSkillDto": {
@@ -6078,6 +6434,140 @@
           "summary"
         ]
       },
+      "OpportunityCareerDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ]
+      },
+      "OpportunitySkillDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "OpportunityDetailDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "INTERNSHIP",
+              "JOB",
+              "FELLOWSHIP",
+              "HACKATHON",
+              "SCHOLARSHIP",
+              "PROGRAMME"
+            ]
+          },
+          "organisation": {
+            "type": "string"
+          },
+          "location": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "OPEN",
+              "CLOSING_SOON",
+              "CLOSED",
+              "ROLLING"
+            ],
+            "description": "Derived from the deadline. CLOSED listings are still returned so the client can show its closed banner."
+          },
+          "responsibilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "audience": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "pay": {
+            "type": "string",
+            "nullable": true
+          },
+          "duration": {
+            "type": "string",
+            "nullable": true
+          },
+          "startDate": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "applyUrl": {
+            "type": "string"
+          },
+          "deadline": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "careers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OpportunityCareerDto"
+            }
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OpportunitySkillDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "type",
+          "organisation",
+          "location",
+          "description",
+          "status",
+          "responsibilities",
+          "audience",
+          "pay",
+          "duration",
+          "startDate",
+          "applyUrl",
+          "deadline",
+          "careers",
+          "skills"
+        ]
+      },
       "SaveOpportunityResponseDto": {
         "type": "object",
         "properties": {
@@ -6092,6 +6582,43 @@
         "required": [
           "opportunityId",
           "savedAt"
+        ]
+      },
+      "AvatarSignatureResponseDto": {
+        "type": "object",
+        "properties": {
+          "cloudName": {
+            "type": "string",
+            "example": "my-cloud-name"
+          },
+          "apiKey": {
+            "type": "string",
+            "example": "123456789012345"
+          },
+          "timestamp": {
+            "type": "number",
+            "example": 1700000000
+          },
+          "signature": {
+            "type": "string",
+            "example": "abcdef1234567890abcdef1234567890abcdef12"
+          },
+          "folder": {
+            "type": "string",
+            "example": "avatars/user-uuid-here"
+          },
+          "uploadPreset": {
+            "type": "string",
+            "example": "avatar_preset"
+          }
+        },
+        "required": [
+          "cloudName",
+          "apiKey",
+          "timestamp",
+          "signature",
+          "folder",
+          "uploadPreset"
         ]
       }
     }
