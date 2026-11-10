@@ -12,6 +12,8 @@ import {
 } from '../../generated/prisma/client';
 import { CareerDetailDto } from './dto/career-detail.dto';
 import { CareerListItemDto } from './dto/list-careers.dto';
+import { SaveCareerResponseDto } from './dto/save-career-response.dto';
+import type { AuthenticatedUser } from '../../common';
 import { CareerPathwayResponseDto } from './pathways/dto/career-pathway.dto';
 
 describe('CareersController', () => {
@@ -20,11 +22,23 @@ describe('CareersController', () => {
   const mockCareersService = {
     getPublicCareers: jest.fn<() => Promise<CareerListItemDto[]>>(),
     getPublishedCareerById: jest.fn<(id: string) => Promise<CareerDetailDto>>(),
+    saveCareer:
+      jest.fn<
+        (userId: string, careerId: string) => Promise<SaveCareerResponseDto>
+      >(),
+    unsaveCareer:
+      jest.fn<(userId: string, careerId: string) => Promise<void>>(),
   };
 
   const mockPathwaysService = {
     getCareerPathway:
       jest.fn<(id: string) => Promise<CareerPathwayResponseDto>>(),
+  };
+
+  const user: AuthenticatedUser = {
+    id: 'user-1',
+    email: 'user@example.com',
+    role: 'USER',
   };
 
   beforeEach(async () => {
@@ -230,6 +244,34 @@ describe('CareersController', () => {
         'career-1',
       );
       expect(result).toEqual(mockResult);
+    });
+  });
+
+  describe('saveCareer', () => {
+    it('should pass the user and career ids to careersService.saveCareer', async () => {
+      const saved = { careerId: 'career-1', savedAt: new Date() };
+      mockCareersService.saveCareer.mockResolvedValue(saved);
+
+      const result = await controller.saveCareer(user, 'career-1');
+
+      expect(mockCareersService.saveCareer).toHaveBeenCalledWith(
+        'user-1',
+        'career-1',
+      );
+      expect(result).toEqual(saved);
+    });
+  });
+
+  describe('unsaveCareer', () => {
+    it('should pass the user and career ids to careersService.unsaveCareer', async () => {
+      mockCareersService.unsaveCareer.mockResolvedValue(undefined);
+
+      await controller.unsaveCareer(user, 'career-1');
+
+      expect(mockCareersService.unsaveCareer).toHaveBeenCalledWith(
+        'user-1',
+        'career-1',
+      );
     });
   });
 });
