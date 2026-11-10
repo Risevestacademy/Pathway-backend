@@ -3,19 +3,19 @@ import { ConfigService } from '@nestjs/config';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 
-import { AppModule } from '../src/app.module';
-import { apiPrefix as resolveApiPrefix, configureApp } from '../src/common';
-import { EnvironmentVariables } from '../src/config';
-import { NotificationService } from '../src/notifications';
-import { PrismaService } from '../src/prisma';
+import { AppModule } from '../../src/app.module';
+import { apiPrefix as resolveApiPrefix, configureApp } from '../../src/common';
+import { EnvironmentVariables } from '../../src/config';
+import { NotificationService } from '../../src/notifications';
+import { PrismaService } from '../../src/prisma';
 import {
   cleanupUsers,
   notificationMock,
   registerAndVerify,
   RegisteredUser,
   wireNotificationMock,
-} from './utils/auth';
-import { CatalogFixture, cleanupCatalog, seedCatalog } from './utils/catalog';
+} from '../utils/auth';
+import { CatalogFixture, cleanupCatalog, seedCatalog } from '../utils/catalog';
 
 describe('Saved careers list (e2e)', () => {
   let app: INestApplication;
@@ -29,7 +29,7 @@ describe('Saved careers list (e2e)', () => {
 
   const list = (token: string) =>
     request(app.getHttpServer())
-      .get(`${apiPrefix}/me/saved-careers`)
+      .get(`${apiPrefix}/me/careers`)
       .set('Authorization', `Bearer ${token}`);
 
   const saveAt = (userId: string, careerId: string, savedAt: Date) =>
@@ -88,7 +88,7 @@ describe('Saved careers list (e2e)', () => {
     expect(response.body).toEqual([]);
   });
 
-  it('should list saved careers newest first with card fields and flags', async () => {
+  it('should list saved careers newest first with full card shape and flags', async () => {
     await saveAt(
       userA.id,
       catalog.publishedCareerId,
@@ -106,13 +106,18 @@ describe('Saved careers list (e2e)', () => {
         isActive: true,
       },
     });
-    const career = await prisma.career.findUniqueOrThrow({
-      where: { id: catalog.secondPublishedCareerId },
-    });
 
     const response = await list(userA.accessToken).expect(200);
     const body = response.body as {
       id: string;
+      slug: string;
+      title: string;
+      description: string;
+      iconKey: string | null;
+      targetLevels: string[];
+      topicCount: number;
+      resourceCount: number;
+      savedAt: string;
       isActivePathway: boolean;
       isRetired: boolean;
     }[];
@@ -121,15 +126,36 @@ describe('Saved careers list (e2e)', () => {
       catalog.secondPublishedCareerId,
       catalog.publishedCareerId,
     ]);
+
+    // Confirm the DB values back the card shape, and the shape is exactly
+    // the shared card contract + savedAt + flags (no shortDescription).
+    const secondCareer = await prisma.career.findUniqueOrThrow({
+      where: { id: catalog.secondPublishedCareerId },
+      select: {
+        slug: true,
+        title: true,
+        description: true,
+        iconKey: true,
+        targetLevels: true,
+        _count: { select: { resources: true } },
+        pathway: { select: { _count: { select: { steps: true } } } },
+      },
+    });
+
     expect(body[0]).toEqual({
-      id: career.id,
-      slug: career.slug,
-      title: career.title,
-      shortDescription: career.description,
+      id: catalog.secondPublishedCareerId,
+      slug: secondCareer.slug,
+      title: secondCareer.title,
+      description: secondCareer.description,
+      iconKey: secondCareer.iconKey,
+      targetLevels: secondCareer.targetLevels,
+      topicCount: secondCareer.pathway?._count.steps ?? 0,
+      resourceCount: secondCareer._count.resources,
       savedAt: '2026-11-02T00:00:00.000Z',
       isActivePathway: false,
       isRetired: false,
     });
+    expect(body[0]).not.toHaveProperty('shortDescription');
     expect(body[1].isActivePathway).toBe(true);
   });
 
@@ -190,9 +216,47 @@ describe('Saved careers list (e2e)', () => {
     ]);
   });
 
+  it('should expose the same card shape as GET /careers', async () => {
+    await saveAt(userA.id, catalog.publishedCareerId, new Date());
+
+    const [saved] = (await list(userA.accessToken).expect(200)).body as {
+      id: string;
+      slug: string;
+      title: string;
+      description: string;
+      iconKey: string | null;
+      targetLevels: string[];
+      topicCount: number;
+      resourceCount: number;
+      savedAt: string;
+      isActivePathway: boolean;
+      isRetired: boolean;
+    }[];
+
+    const explore = await request(app.getHttpServer())
+      .get(`${apiPrefix}/careers`)
+      .expect(200);
+
+    // 5.2 will wrap `/careers` as `{ totals, items }`. This test is written
+    // for the 5.1 intermediate shape `CareerCardDto[]`; the 5.2 PR updates
+    // this line to `explore.body.items`.
+    const exploreItems = explore.body as Array<Record<string, unknown>>;
+    const match = exploreItems.find((c) => c.id === saved.id);
+    expect(match).toBeDefined();
+
+    const {
+      savedAt: _s,
+      isActivePathway: _a,
+      isRetired: _r,
+      ...cardFromSaved
+    } = saved;
+
+    expect(match).toEqual(cardFromSaved);
+  });
+
   it('should return 401 without a valid token', async () => {
     await request(app.getHttpServer())
-      .get(`${apiPrefix}/me/saved-careers`)
+      .get(`${apiPrefix}/me/careers`)
       .expect(401);
     await list('not-a-token').expect(401);
   });

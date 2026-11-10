@@ -1,15 +1,6 @@
-import { ApiProperty } from '@nestjs/swagger';
-
-export class CareerListItemDto {
-  @ApiProperty({ description: 'Unique identifier of the career' })
-  id: string;
-
-  @ApiProperty({ description: 'URL-friendly slug for the career' })
-  slug: string;
-
-  @ApiProperty({ description: 'Title of the career' })
-  title: string;
-
-  @ApiProperty({ description: 'Short description of the career' })
-  shortDescription: string;
-}
+/**
+ * @deprecated Use `CareerCardDto` from `./career-card.dto`.
+ * Kept as an alias so existing service signatures, controller `@ApiResponse`
+ * metadata, and tests compile during the 5.1 → 5.2 transition.
+ */
+export { CareerCardDto as CareerListItemDto } from './career-card.dto';

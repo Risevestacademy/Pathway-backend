@@ -2,11 +2,11 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import request from 'supertest';
-import { AppModule } from '../src/app.module';
-import { CareersService } from '../src/catalog/careers';
-import { PathwaysService } from '../src/catalog/careers/pathways/pathways.service';
-import { apiPrefix as resolveApiPrefix, configureApp } from '../src/common';
-import { EnvironmentVariables } from '../src/config';
+import { AppModule } from '../../src/app.module';
+import { CareersService } from '../../src/catalog/careers';
+import { PathwaysService } from '../../src/catalog/careers/pathways/pathways.service';
+import { apiPrefix as resolveApiPrefix, configureApp } from '../../src/common';
+import { EnvironmentVariables } from '../../src/config';
 
 describe('Careers (e2e)', () => {
   let app: INestApplication;

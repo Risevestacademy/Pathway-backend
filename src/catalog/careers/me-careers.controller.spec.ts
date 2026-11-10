@@ -1,12 +1,13 @@
 import { jest } from '@jest/globals';
 import { Test, TestingModule } from '@nestjs/testing';
+import { TargetLevel } from '../../generated/prisma/client';
 import type { AuthenticatedUser } from '../../common';
 import { CareersService } from './careers.service';
 import type { SavedCareerListItemDto } from './dto/saved-career-list-item.dto';
-import { MeSavedCareersController } from './me-saved-careers.controller';
+import { MeCareersController } from './me-careers.controller';
 
-describe('MeSavedCareersController', () => {
-  let controller: MeSavedCareersController;
+describe('MeCareersController', () => {
+  let controller: MeCareersController;
 
   const mockCareersService = {
     listSavedCareers:
@@ -23,11 +24,11 @@ describe('MeSavedCareersController', () => {
     jest.clearAllMocks();
 
     const module: TestingModule = await Test.createTestingModule({
-      controllers: [MeSavedCareersController],
+      controllers: [MeCareersController],
       providers: [{ provide: CareersService, useValue: mockCareersService }],
     }).compile();
 
-    controller = module.get<MeSavedCareersController>(MeSavedCareersController);
+    controller = module.get<MeCareersController>(MeCareersController);
   });
 
   it('should be defined', () => {
@@ -36,13 +37,18 @@ describe('MeSavedCareersController', () => {
 
   describe('listSavedCareers', () => {
     it("delegates the caller's id to careersService.listSavedCareers", async () => {
+      const savedAt = new Date('2026-11-09T10:00:00.000Z');
       const saved: SavedCareerListItemDto[] = [
         {
           id: 'career-1',
           slug: 'frontend-engineer',
           title: 'Frontend Engineer',
-          shortDescription: 'Builds interfaces.',
-          savedAt: new Date(),
+          description: 'Builds interfaces.',
+          iconKey: 'fe-icon',
+          targetLevels: [TargetLevel.STUDENT],
+          topicCount: 2,
+          resourceCount: 8,
+          savedAt,
           isActivePathway: false,
           isRetired: false,
         },

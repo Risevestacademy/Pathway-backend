@@ -14,7 +14,7 @@ import {
   type CareerSnapshotCareer,
 } from '../content-revisions';
 import { GetCareersQueryDto } from './dto/get-careers-query.dto';
-import { CareerListItemDto } from './dto/list-careers.dto';
+import { CareerCardDto } from './dto/career-card.dto';
 import {
   CareerStatus,
   Prisma,
@@ -39,8 +39,10 @@ import { RetireCareerResponseDto } from './dto/retire-career-response.dto';
 import { canRetire, canSave } from './career-status.rules';
 import { SaveCareerResponseDto } from './dto/save-career-response.dto';
 import { SavedCareerListItemDto } from './dto/saved-career-list-item.dto';
-import { careerListItemSelect, toCareerListItem } from './career-list-item';
-
+import {
+  careerCardSelect,
+  toCareerCard,
+} from '../careers/mappers/career.mappers';
 const decimalToString = (
   value: { toString(): string } | null,
 ): string | null => (value === null ? null : value.toString());
@@ -67,9 +69,7 @@ export class CareersService {
     private readonly analytics: AnalyticsService,
   ) {}
 
-  async getPublicCareers(
-    query: GetCareersQueryDto,
-  ): Promise<CareerListItemDto[]> {
+  async getPublicCareers(query: GetCareersQueryDto): Promise<CareerCardDto[]> {
     const { level, interest } = query;
 
     const where = {
@@ -80,13 +80,11 @@ export class CareersService {
 
     const careers = await this.prisma.career.findMany({
       where,
-      select: careerListItemSelect,
-      orderBy: {
-        title: 'asc',
-      },
+      select: careerCardSelect,
+      orderBy: { title: 'asc' },
     });
 
-    return careers.map(toCareerListItem);
+    return careers.map(toCareerCard);
   }
 
   async getPublishedCareerById(id: string): Promise<CareerDetailDto> {
@@ -538,7 +536,7 @@ export class CareersService {
         savedAt: true,
         career: {
           select: {
-            ...careerListItemSelect,
+            ...careerCardSelect,
             status: true,
             userPathways: {
               where: { userId, isActive: true },
@@ -550,7 +548,7 @@ export class CareersService {
     });
 
     return saves.map(({ savedAt, career }) => ({
-      ...toCareerListItem(career),
+      ...toCareerCard(career),
       savedAt,
       isActivePathway: career.userPathways.length > 0,
       isRetired: career.status === CareerStatus.RETIRED,
