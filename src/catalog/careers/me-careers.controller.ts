@@ -15,9 +15,9 @@ import { SavedCareerListItemDto } from './dto/saved-career-list-item.dto';
 
 @ApiTags('Me')
 @ApiBearerAuth()
-@Controller('me/saved-careers')
+@Controller('me/careers')
 @UseGuards(JwtAuthGuard)
-export class MeSavedCareersController {
+export class MeCareersController {
   constructor(private readonly careersService: CareersService) {}
 
   @ApiOperation({
