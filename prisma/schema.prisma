@@ -342,6 +342,7 @@ model Career {
   typicalEducationNote String? // "Degree in computing... or bootcamps/self-study"
   certificationsNote   String? // "Rarely required. Portfolio matters more."
   imageUrl             String? // Cloudinary URL
+  iconKey              String?
 
   fieldId      String
   field        Field         @relation(fields: [fieldId], references: [id])
@@ -906,7 +907,7 @@ model Badge {
   id          String   @id @default(uuid())
   name        String   @unique
   description String
-  imageUrl    String? // Cloudinary URL
+  iconKey     String?
   xpThreshold Int
   createdAt   DateTime @default(now())
 

@@ -3,6 +3,7 @@ import { PrismaClient } from '../src/generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { seedCatalog } from './seed-catalog';
 import { readAdminConfig, seedAdmin, seedDevUser } from './seed-users';
+import { seedOpportunities } from './seed-opportunities';
 
 // 1. Initialize the adapter exactly like your PrismaService does
 const adapter = new PrismaPg({
@@ -19,6 +20,7 @@ async function main() {
   await seedAdmin(prisma, adminConfig);
   await seedDevUser(prisma);
   await seedCatalog(prisma);
+  await seedOpportunities(prisma);
 
   console.log('✅ Seed completed successfully!');
 }
