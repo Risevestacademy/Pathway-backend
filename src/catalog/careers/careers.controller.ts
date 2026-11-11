@@ -24,12 +24,12 @@ import {
 } from '../../common';
 import { CareersService } from './careers.service';
 import { SaveCareerResponseDto } from './dto/save-career-response.dto';
-import { CareerListItemDto } from './dto/list-careers.dto';
 import { GetCareersQueryDto } from './dto/get-careers-query.dto';
 import { TargetLevel } from '../../generated/prisma/client';
-import { CareerDetailDto } from './dto/career-detail.dto';
 import { CareerPathwayResponseDto } from './pathways/dto/career-pathway.dto';
 import { PathwaysService } from './pathways/pathways.service';
+import { CareerListResponseDto } from './dto/career-list-response.dto';
+import { CareerDetailResponseDto } from './dto/career-detail-response.dto';
 
 @ApiTags('Careers')
 @Controller('careers')
@@ -42,12 +42,10 @@ export class CareersController {
   @Get()
   @ApiOperation({
     summary: 'Get a public catalogue of published careers',
+    description:
+      'Returns catalog-wide totals plus the published careers matching the filters, ordered by title.',
   })
-  @ApiQuery({
-    name: 'level',
-    required: false,
-    enum: TargetLevel,
-  })
+  @ApiQuery({ name: 'level', required: false, enum: TargetLevel })
   @ApiQuery({
     name: 'interest',
     required: false,
@@ -56,29 +54,28 @@ export class CareersController {
   })
   @ApiResponse({
     status: 200,
-    description:
-      'List of published careers. Returns an empty array if no matches are found.',
-    type: [CareerListItemDto],
+    description: 'Catalog totals plus a list of published career cards.',
+    type: CareerListResponseDto,
   })
   async getCareers(
     @Query() query: GetCareersQueryDto,
-  ): Promise<CareerListItemDto[]> {
+  ): Promise<CareerListResponseDto> {
     return this.careersService.getPublicCareers(query);
   }
 
   @Get(':id')
   @ApiOperation({
     summary: 'Get details for a published career',
+    description:
+      'Returns overview, projection and requirements together, so the detail page ' +
+      'renders all three tabs from a single request.',
   })
-  @ApiParam({
-    name: 'id',
-    description: 'Career UUID',
-  })
+  @ApiParam({ name: 'id', description: 'Career UUID' })
   @ApiResponse({
     status: 200,
     description:
-      'Career details including field, skills, outlook data, and a summary of the associated pathway.',
-    type: CareerDetailDto,
+      'Overview, projection and requirements for a published career.',
+    type: CareerDetailResponseDto,
   })
   @ApiResponse({
     status: 404,
@@ -86,7 +83,7 @@ export class CareersController {
   })
   async getCareerById(
     @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<CareerDetailDto> {
+  ): Promise<CareerDetailResponseDto> {
     return this.careersService.getPublishedCareerById(id);
   }
 

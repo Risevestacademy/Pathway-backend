@@ -3,7 +3,7 @@ import {
   ResourceCostStatus,
   ResourceType,
 } from '../../../../generated/prisma/client';
-import { CareerSkillDto } from '../../dto/career-detail.dto';
+import { CareerSkillDto } from '../../dto/career-skill.dto';
 
 export class PathwayResourceDto {
   @ApiProperty()

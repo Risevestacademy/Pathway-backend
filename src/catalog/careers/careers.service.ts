@@ -20,7 +20,6 @@ import {
   Prisma,
   TargetLevel,
 } from '../../generated/prisma/client';
-import { CareerDetailDto } from './dto/career-detail.dto';
 import { DeleteCareerResponseDto } from './dto/delete-career-response.dto';
 import { CreateCareerDto } from './dto/create-career.dto';
 import { CreateCareerResponseDto } from './dto/create-career-response.dto';
@@ -39,9 +38,13 @@ import { RetireCareerResponseDto } from './dto/retire-career-response.dto';
 import { canRetire, canSave } from './career-status.rules';
 import { SaveCareerResponseDto } from './dto/save-career-response.dto';
 import { SavedCareerListItemDto } from './dto/saved-career-list-item.dto';
+import { CareerListResponseDto } from './dto/career-list-response.dto';
+import { CareerDetailResponseDto } from './dto/career-detail-response.dto';
 import {
   careerCardSelect,
+  careerDetailSelect,
   toCareerCard,
+  toCareerDetail,
 } from '../careers/mappers/career.mappers';
 const decimalToString = (
   value: { toString(): string } | null,
@@ -69,7 +72,9 @@ export class CareersService {
     private readonly analytics: AnalyticsService,
   ) {}
 
-  async getPublicCareers(query: GetCareersQueryDto): Promise<CareerCardDto[]> {
+  async getPublicCareers(
+    query: GetCareersQueryDto,
+  ): Promise<CareerListResponseDto> {
     const { level, interest } = query;
 
     const where = {
@@ -78,135 +83,41 @@ export class CareersService {
       ...(interest && { field: { slug: interest } }),
     };
 
-    const careers = await this.prisma.career.findMany({
-      where,
-      select: careerCardSelect,
-      orderBy: { title: 'asc' },
-    });
+    // Totals are catalog-wide: all PUBLISHED careers, ignoring filters.
+    const totalsWhere = { status: CareerStatus.PUBLISHED };
 
-    return careers.map(toCareerCard);
+    const [careers, pathways, topics, resources] = await Promise.all([
+      this.prisma.career.findMany({
+        where,
+        select: careerCardSelect,
+        orderBy: { title: 'asc' },
+      }),
+      this.prisma.career.count({ where: totalsWhere }),
+      this.prisma.pathwayStep.count({
+        where: { pathway: { career: totalsWhere } },
+      }),
+      this.prisma.careerResource.count({
+        where: { career: totalsWhere },
+      }),
+    ]);
+
+    return {
+      totals: { pathways, topics, resources },
+      items: careers.map(toCareerCard),
+    };
   }
 
-  async getPublishedCareerById(id: string): Promise<CareerDetailDto> {
-    const career = await this.prisma.career.findFirst({
-      where: {
-        id,
-        status: CareerStatus.PUBLISHED,
-      },
-      select: {
-        id: true,
-        slug: true,
-        title: true,
-        description: true,
-        roleSummary: true,
-        exampleActivities: true,
-        typicalEducationNote: true,
-        certificationsNote: true,
-        targetLevels: true,
-        status: true,
-        publishedAt: true,
-        updatedAt: true,
-
-        field: {
-          select: {
-            name: true,
-            slug: true,
-          },
-        },
-
-        skills: {
-          select: {
-            skill: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-          },
-        },
-
-        outlook: {
-          select: {
-            id: true,
-            type: true,
-            geography: true,
-            source: {
-              select: {
-                name: true,
-                url: true,
-              },
-            },
-            period: true,
-            median: true,
-            percentile25: true,
-            percentile75: true,
-            currency: true,
-            payPeriod: true,
-            grossOrNet: true,
-            experienceLevel: true,
-            baseYear: true,
-            baseValue: true,
-            projectedYear: true,
-            projectedValue: true,
-            growthPercent: true,
-            demandLevel: true,
-            updatedAt: true,
-          },
-        },
-        pathway: {
-          select: {
-            id: true,
-            title: true,
-            _count: {
-              select: {
-                steps: true,
-              },
-            },
-          },
-        },
-      },
+  async getPublishedCareerById(id: string): Promise<CareerDetailResponseDto> {
+    const row = await this.prisma.career.findFirst({
+      where: { id, status: CareerStatus.PUBLISHED },
+      select: careerDetailSelect,
     });
 
-    if (!career) {
+    if (!row) {
       throw new NotFoundException('Career not found');
     }
 
-    return {
-      id: career.id,
-      slug: career.slug,
-      title: career.title,
-      description: career.description,
-      roleSummary: career.roleSummary ?? '',
-      exampleActivities: career.exampleActivities,
-      typicalEducationNote: career.typicalEducationNote,
-      certificationsNote: career.certificationsNote,
-      targetLevels: career.targetLevels,
-      status: career.status,
-      publishedAt: career.publishedAt,
-      updatedAt: career.updatedAt,
-
-      field: career.field,
-
-      skills: career.skills.map(({ skill }) => skill),
-
-      outlook: career.outlook.map((entry) => ({
-        ...entry,
-        source: entry.source?.name ?? '',
-        sourceUrl: entry.source?.url ?? null,
-        median: decimalToString(entry.median),
-        percentile25: decimalToString(entry.percentile25),
-        percentile75: decimalToString(entry.percentile75),
-        growthPercent: decimalToString(entry.growthPercent),
-      })),
-
-      pathway: career.pathway
-        ? {
-            id: career.pathway.id,
-            title: career.pathway.title,
-            stepCount: career.pathway._count.steps,
-          }
-        : null,
-    };
+    return toCareerDetail(row);
   }
 
   getTargetLevels(): TargetLevel[] {

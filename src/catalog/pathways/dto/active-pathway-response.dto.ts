@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { CareerSkillDto } from '../../careers/dto/career-detail.dto';
+import { CareerSkillDto } from '../../careers/dto/career-skill.dto';
 import { PathwayStepStatus } from '../../../generated/prisma/client';
 
 export class ActivePathwayCareerDto {
