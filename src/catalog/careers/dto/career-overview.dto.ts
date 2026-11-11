@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { SkillImportance } from '../../../generated/prisma/client';
 
-export class CareerSkillDto {
+export class CareerOverviewSkillDto {
   @ApiProperty()
   id: string;
 
@@ -19,7 +19,7 @@ export class CareerOverviewDto {
   @ApiProperty()
   description: string;
 
-  @ApiProperty({ nullable: true })
+  @ApiProperty({ type: String, nullable: true })
   roleSummary: string | null;
 
   @ApiProperty({ type: [String] })
@@ -27,12 +27,13 @@ export class CareerOverviewDto {
 
   @ApiProperty({
     description: 'Banner background for the detail page',
+    type: String,
     nullable: true,
   })
   imageUrl: string | null;
 
-  @ApiProperty({ type: [CareerSkillDto] })
-  skills: CareerSkillDto[];
+  @ApiProperty({ type: [CareerOverviewSkillDto] })
+  skills: CareerOverviewSkillDto[];
 
   @ApiProperty({
     description: 'Number of pathway steps ("Topics" in the UI)',

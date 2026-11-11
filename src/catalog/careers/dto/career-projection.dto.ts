@@ -11,43 +11,31 @@ export class OutlookItemDto {
   @ApiProperty({ example: 'United States' })
   geography: string;
 
-  @ApiProperty({ nullable: true })
+  @ApiProperty({ type: String, nullable: true })
   sourceId: string | null;
 
-  @ApiProperty({ example: 'May 2024' })
-  period: string;
-
-  @ApiProperty({ nullable: true, type: String, example: '92750.00' })
-  median: string | null;
-
-  @ApiProperty({ nullable: true, type: String })
-  percentile25: string | null;
-
-  @ApiProperty({ nullable: true, type: String })
-  percentile75: string | null;
-
-  @ApiProperty({ nullable: true, example: 'USD' })
+  @ApiProperty({ type: String, nullable: true, example: 'USD' })
   currency: string | null;
 
-  @ApiProperty({ nullable: true, example: 'year' })
+  @ApiProperty({ type: String, nullable: true, example: 'year' })
   payPeriod: string | null;
 
-  @ApiProperty({ nullable: true, example: 'gross' })
+  @ApiProperty({ type: String, nullable: true, example: 'gross' })
   grossOrNet: string | null;
 
-  @ApiProperty({ nullable: true, example: 'entry-level' })
+  @ApiProperty({ type: String, nullable: true, example: 'entry-level' })
   experienceLevel: string | null;
 
-  @ApiProperty({ nullable: true })
+  @ApiProperty({ type: Number, nullable: true })
   baseYear: number | null;
 
-  @ApiProperty({ nullable: true })
+  @ApiProperty({ type: Number, nullable: true })
   baseValue: number | null;
 
-  @ApiProperty({ nullable: true })
+  @ApiProperty({ type: Number, nullable: true })
   projectedYear: number | null;
 
-  @ApiProperty({ nullable: true })
+  @ApiProperty({ type: Number, nullable: true })
   projectedValue: number | null;
 
   @ApiProperty({ nullable: true, type: String, example: '8.00' })
