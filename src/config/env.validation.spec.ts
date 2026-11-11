@@ -569,6 +569,22 @@ describe('validateEnv', () => {
     expect(config.POSTHOG_API_KEY).toBe('phc_test_key');
   });
 
+  it('defaults ANALYTICS_OPT_IN_CACHE_TTL_SECONDS to 60', () => {
+    const config = validateEnv(validEnv);
+
+    expect(config.ANALYTICS_OPT_IN_CACHE_TTL_SECONDS).toBe(60);
+  });
+
+  it('coerces ANALYTICS_OPT_IN_CACHE_TTL_SECONDS and rejects 0', () => {
+    expect(
+      validateEnv({ ...validEnv, ANALYTICS_OPT_IN_CACHE_TTL_SECONDS: '30' })
+        .ANALYTICS_OPT_IN_CACHE_TTL_SECONDS,
+    ).toBe(30);
+    expect(() =>
+      validateEnv({ ...validEnv, ANALYTICS_OPT_IN_CACHE_TTL_SECONDS: '0' }),
+    ).toThrow(/ANALYTICS_OPT_IN_CACHE_TTL_SECONDS/);
+  });
+
   it('defaults POSTHOG_HOST to the EU host', () => {
     const config = validateEnv(validEnv);
 

@@ -76,6 +76,16 @@ describe('ActivityService', () => {
       );
     });
 
+    it('writes the ledger row for an opted-out user, since XP never depends on analytics', async () => {
+      await service.recordStepCompleted('opted-out-user', 'step-1', client);
+
+      expect(tx.activityLedger.createMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: [expect.objectContaining({ userId: 'opted-out-user' })],
+        }),
+      );
+    });
+
     it('ignores a duplicate insert and logs nothing', async () => {
       tx.activityLedger.createMany.mockResolvedValue({ count: 0 });
 
