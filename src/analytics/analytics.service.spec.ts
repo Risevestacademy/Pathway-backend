@@ -7,7 +7,7 @@ import { PrismaService } from '../prisma';
 jest.unstable_mockModule('posthog-node', () => ({
   PostHog: jest.fn().mockImplementation(() => ({
     capture: jest.fn(),
-    shutdown: jest.fn().mockResolvedValue(undefined),
+    shutdown: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
   })),
 }));
 
@@ -103,7 +103,9 @@ describe('AnalyticsService', () => {
     const service = await buildService(true);
     service.onModuleInit();
 
-    const client = MockedPostHog.mock.results[0]!.value;
+    const client = MockedPostHog.mock.results[0]!.value as {
+      shutdown: jest.Mock;
+    };
 
     await service.onModuleDestroy();
 
