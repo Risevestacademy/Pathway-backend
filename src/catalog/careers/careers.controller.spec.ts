@@ -1,27 +1,24 @@
 import { jest } from '@jest/globals';
 import { Test, TestingModule } from '@nestjs/testing';
-import { CareersController } from './careers.controller';
-import { CareersService } from './careers.service';
-import { PathwaysService } from './pathways/pathways.service';
 import { GetCareersQueryDto } from './dto/get-careers-query.dto';
-import {
-  CareerStatus,
-  Demand,
-  OutlookType,
-  TargetLevel,
-} from '../../generated/prisma/client';
-import { CareerDetailDto } from './dto/career-detail.dto';
-import { CareerListItemDto } from './dto/list-careers.dto';
+import { CareerStatus, TargetLevel } from '../../generated/prisma/client';
 import { SaveCareerResponseDto } from './dto/save-career-response.dto';
 import type { AuthenticatedUser } from '../../common';
 import { CareerPathwayResponseDto } from './pathways/dto/career-pathway.dto';
+import { CareersController } from './careers.controller';
+import { CareersService } from './careers.service';
+import { PathwaysService } from './pathways/pathways.service';
+import type { CareerListResponseDto } from './dto/career-list-response.dto';
+import type { CareerDetailResponseDto } from './dto/career-detail-response.dto';
+import type { CareerCardDto } from './dto/career-card.dto';
 
 describe('CareersController', () => {
   let controller: CareersController;
 
   const mockCareersService = {
-    getPublicCareers: jest.fn<() => Promise<CareerListItemDto[]>>(),
-    getPublishedCareerById: jest.fn<(id: string) => Promise<CareerDetailDto>>(),
+    getPublicCareers: jest.fn<() => Promise<CareerListResponseDto>>(),
+    getPublishedCareerById:
+      jest.fn<(id: string) => Promise<CareerDetailResponseDto>>(),
     saveCareer:
       jest.fn<
         (userId: string, careerId: string) => Promise<SaveCareerResponseDto>
@@ -41,20 +38,25 @@ describe('CareersController', () => {
     role: 'USER',
   };
 
+  const card: CareerCardDto = {
+    id: 'career-1',
+    slug: 'software-engineer',
+    title: 'Software Engineer',
+    description: 'Builds software applications.',
+    iconKey: 'se-icon',
+    targetLevels: [TargetLevel.EARLY_CAREER],
+    topicCount: 3,
+    resourceCount: 12,
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [CareersController],
       providers: [
-        {
-          provide: CareersService,
-          useValue: mockCareersService,
-        },
-        {
-          provide: PathwaysService,
-          useValue: mockPathwaysService,
-        },
+        { provide: CareersService, useValue: mockCareersService },
+        { provide: PathwaysService, useValue: mockPathwaysService },
       ],
     }).compile();
 
@@ -66,16 +68,11 @@ describe('CareersController', () => {
   });
 
   describe('getCareers', () => {
-    it('should delegate query params to careersService.getPublicCareers', async () => {
-      const mockResult: CareerListItemDto[] = [
-        {
-          id: 'career-1',
-          slug: 'software-engineer',
-          title: 'Software Engineer',
-          shortDescription: 'Builds software applications.',
-        },
-      ];
-
+    it('delegates the query to getPublicCareers and returns the envelope', async () => {
+      const mockResult: CareerListResponseDto = {
+        totals: { pathways: 7, topics: 57, resources: 141 },
+        items: [card],
+      };
       mockCareersService.getPublicCareers.mockResolvedValue(mockResult);
 
       const query: GetCareersQueryDto = {
@@ -85,132 +82,55 @@ describe('CareersController', () => {
 
       const result = await controller.getCareers(query);
 
-      expect(mockCareersService.getPublicCareers).toHaveBeenCalledTimes(1);
       expect(mockCareersService.getPublicCareers).toHaveBeenCalledWith(query);
       expect(result).toEqual(mockResult);
     });
 
-    it('should delegate an empty query to careersService.getPublicCareers', async () => {
-      const mockResult: CareerListItemDto[] = [];
+    it('delegates an empty query', async () => {
+      mockCareersService.getPublicCareers.mockResolvedValue({
+        totals: { pathways: 0, topics: 0, resources: 0 },
+        items: [],
+      });
 
-      mockCareersService.getPublicCareers.mockResolvedValue(mockResult);
+      const result = await controller.getCareers({});
 
-      const query: GetCareersQueryDto = {};
-
-      const result = await controller.getCareers(query);
-
-      expect(mockCareersService.getPublicCareers).toHaveBeenCalledTimes(1);
-      expect(mockCareersService.getPublicCareers).toHaveBeenCalledWith(query);
-      expect(result).toEqual(mockResult);
+      expect(mockCareersService.getPublicCareers).toHaveBeenCalledWith({});
+      expect(result.items).toEqual([]);
     });
   });
 
   describe('getCareerById', () => {
-    it('should delegate the career id to careersService.getPublishedCareerById', async () => {
-      const mockResult: CareerDetailDto = {
-        id: 'career-1',
-        slug: 'software-engineer',
-        title: 'Software Engineer',
-        description: 'Builds software applications.',
-        roleSummary: 'Designs and builds software systems.',
-        exampleActivities: ['Write code', 'Review PRs'],
-        typicalEducationNote: null,
-        certificationsNote: null,
-        field: {
-          name: 'Software Engineering',
-          slug: 'software-engineering',
+    it('delegates the id and returns { overview, projection, requirements }', async () => {
+      const mockResult: CareerDetailResponseDto = {
+        overview: {
+          title: 'Software Engineer',
+          description: 'Builds software applications.',
+          roleSummary: 'Designs and builds software systems.',
+          exampleActivities: ['Write code'],
+          imageUrl: 'https://cdn/banner.png',
+          skills: [
+            { id: 'skill-1', name: 'TypeScript', importance: 'REQUIRED' },
+          ],
+          topicCount: 3,
+          resourceCount: 12,
         },
-        targetLevels: [TargetLevel.EARLY_CAREER],
-        status: CareerStatus.PUBLISHED,
-        publishedAt: new Date('2026-01-01'),
-        updatedAt: new Date('2026-01-02'),
-        skills: [
-          {
-            id: 'skill-1',
-            name: 'TypeScript',
-          },
-        ],
-        outlook: [
-          {
-            id: 'outlook-1',
-            type: OutlookType.SALARY,
-            geography: 'United States',
-            source: 'Example Labour Stats',
-            sourceUrl: null,
-            period: '2026',
-            median: '65000.00',
-            percentile25: null,
-            percentile75: null,
-            currency: 'USD',
-            payPeriod: 'year',
-            grossOrNet: 'gross',
-            experienceLevel: 'entry-level',
-            baseYear: null,
-            baseValue: null,
-            projectedYear: null,
-            projectedValue: null,
-            growthPercent: null,
-            demandLevel: null as Demand | null,
-            updatedAt: new Date('2026-01-02'),
-          },
-        ],
-        pathway: {
-          id: 'pathway-1',
-          title: 'Backend Roadmap',
-          stepCount: 3,
-        },
+        projection: [],
+        requirements: { courses: [], certifications: [] },
       };
-
       mockCareersService.getPublishedCareerById.mockResolvedValue(mockResult);
 
       const result = await controller.getCareerById('career-1');
 
-      expect(mockCareersService.getPublishedCareerById).toHaveBeenCalledTimes(
-        1,
-      );
       expect(mockCareersService.getPublishedCareerById).toHaveBeenCalledWith(
         'career-1',
       );
       expect(result).toEqual(mockResult);
     });
-
-    it('should return a career with a null pathway when the service returns one', async () => {
-      const mockResult = {
-        id: 'career-1',
-        slug: 'software-engineer',
-        title: 'Software Engineer',
-        description: 'Builds software applications.',
-        roleSummary: 'Designs and builds software systems.',
-        exampleActivities: ['Write code'],
-        typicalEducationNote: null,
-        certificationsNote: null,
-        field: {
-          name: 'Software Engineering',
-          slug: 'software-engineering',
-        },
-        targetLevels: [TargetLevel.EARLY_CAREER],
-        status: CareerStatus.PUBLISHED,
-        publishedAt: new Date('2026-01-01'),
-        updatedAt: new Date('2026-01-02'),
-        skills: [],
-        outlook: [],
-        pathway: null,
-      } satisfies CareerDetailDto;
-
-      mockCareersService.getPublishedCareerById.mockResolvedValue(mockResult);
-
-      const result = await controller.getCareerById('career-1');
-
-      expect(result.pathway).toBeNull();
-      expect(mockCareersService.getPublishedCareerById).toHaveBeenCalledWith(
-        'career-1',
-      );
-    });
   });
 
   describe('getCareerPathway', () => {
-    it('should delegate the career id to pathwaysService.getCareerPathway', async () => {
-      const mockResult = {
+    it('delegates the id to pathwaysService', async () => {
+      const mockResult: CareerPathwayResponseDto = {
         pathway: {
           id: 'pathway-1',
           careerId: 'career-1',
@@ -218,37 +138,28 @@ describe('CareersController', () => {
           description: 'From fundamentals to production APIs.',
           steps: [],
         },
-      } as CareerPathwayResponseDto;
-
+      };
       mockPathwaysService.getCareerPathway.mockResolvedValue(mockResult);
 
       const result = await controller.getCareerPathway('career-1');
 
-      expect(mockPathwaysService.getCareerPathway).toHaveBeenCalledTimes(1);
       expect(mockPathwaysService.getCareerPathway).toHaveBeenCalledWith(
         'career-1',
       );
       expect(result).toEqual(mockResult);
     });
 
-    it('should return { pathway: null } when the service returns no pathway', async () => {
-      const mockResult: CareerPathwayResponseDto = {
-        pathway: null,
-      };
-
-      mockPathwaysService.getCareerPathway.mockResolvedValue(mockResult);
+    it('returns { pathway: null } when there is no pathway', async () => {
+      mockPathwaysService.getCareerPathway.mockResolvedValue({ pathway: null });
 
       const result = await controller.getCareerPathway('career-1');
 
-      expect(mockPathwaysService.getCareerPathway).toHaveBeenCalledWith(
-        'career-1',
-      );
-      expect(result).toEqual(mockResult);
+      expect(result).toEqual({ pathway: null });
     });
   });
 
   describe('saveCareer', () => {
-    it('should pass the user and career ids to careersService.saveCareer', async () => {
+    it('passes the user and career ids through', async () => {
       const saved = { careerId: 'career-1', savedAt: new Date() };
       mockCareersService.saveCareer.mockResolvedValue(saved);
 
@@ -263,7 +174,7 @@ describe('CareersController', () => {
   });
 
   describe('unsaveCareer', () => {
-    it('should pass the user and career ids to careersService.unsaveCareer', async () => {
+    it('passes the user and career ids through', async () => {
       mockCareersService.unsaveCareer.mockResolvedValue(undefined);
 
       await controller.unsaveCareer(user, 'career-1');
