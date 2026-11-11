@@ -265,6 +265,11 @@ export class EnvironmentVariables {
   @IsProductionHttpsUrl()
   POSTHOG_HOST = 'https://eu.i.posthog.com';
 
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  ANALYTICS_OPT_IN_CACHE_TTL_SECONDS: number = 60;
+
   @ValidateIf(
     (env: EnvironmentVariables) => env.MAIL_DRIVER === MailDriver.Resend,
   )

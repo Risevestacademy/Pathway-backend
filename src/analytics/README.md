@@ -11,6 +11,7 @@ Fire-and-forget analytics via PostHog.
 | `ANALYTICS_ENABLED` | No | `false` | When `false`, no network calls are made and no client is created. |
 | `POSTHOG_API_KEY` | Only when `ANALYTICS_ENABLED=true` | — | Enforced by `@ValidateIf`. |
 | `POSTHOG_HOST` | No | `https://eu.i.posthog.com` | EU host by default (GDPR compliance). |
+| `ANALYTICS_OPT_IN_CACHE_TTL_SECONDS` | No | `60` | How long a user's opt-out flag is cached. |
 
 ---
 
@@ -29,6 +30,15 @@ this.analytics.capture('user_signed_up', userId, {
 ```
 
 > **Note:** `capture` never throws and never blocks execution. It is safe to call directly inside request handlers without delaying the HTTP response.
+
+---
+
+## Opt-out
+
+- `capture` is for user-linked events: `distinctId` is the user id. Each event checks `User.analyticsEnabled` and is dropped for opted-out users, or when the lookup fails.
+- The flag is cached in memory per user for `ANALYTICS_OPT_IN_CACHE_TTL_SECONDS` (default 60). Call `invalidateUser(userId)` after changing it so the next event on that instance re-reads it; other instances pick it up when the TTL expires.
+- `captureAnonymous` is for events with no user data. It is never gated, and its `distinctId` must not identify a user.
+- The flag never affects XP, streaks, badges or saved data.
 
 ---
 
@@ -78,7 +88,7 @@ await this.users.create(dto);
 
 ## Testing
 
-- `analytics.service.spec.ts`: Tests no-op behavior when disabled, error containment, and shutdown flushing.
+- `analytics.service.spec.ts`: Tests no-op behavior when disabled, error containment, shutdown flushing, and the opt-out gate and its cache.
 
 ---
 
