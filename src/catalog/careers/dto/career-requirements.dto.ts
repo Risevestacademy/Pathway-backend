@@ -17,10 +17,10 @@ export class ResourceSummaryDto {
   @ApiProperty({ enum: ResourceCostStatus })
   costStatus: ResourceCostStatus;
 
-  @ApiProperty({ nullable: true })
+  @ApiProperty({ type: Number, nullable: true })
   estimatedWeeks: number | null;
 
-  @ApiProperty({ nullable: true })
+  @ApiProperty({ type: String, nullable: true })
   badgeImageUrl: string | null;
 }
 

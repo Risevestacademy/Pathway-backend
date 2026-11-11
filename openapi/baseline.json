@@ -881,6 +881,7 @@
     },
     "/careers": {
       "get": {
+        "description": "Returns catalog-wide totals plus the published careers matching the filters, ordered by title.",
         "operationId": "CareersController_getCareers",
         "parameters": [
           {
@@ -910,14 +911,11 @@
         ],
         "responses": {
           "200": {
-            "description": "List of published careers. Returns an empty array if no matches are found.",
+            "description": "Catalog totals plus a list of published career cards.",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/CareerCardDto"
-                  }
+                  "$ref": "#/components/schemas/CareerListResponseDto"
                 }
               }
             }
@@ -931,6 +929,7 @@
     },
     "/careers/{id}": {
       "get": {
+        "description": "Returns overview, projection and requirements together, so the detail page renders all three tabs from a single request.",
         "operationId": "CareersController_getCareerById",
         "parameters": [
           {
@@ -945,11 +944,11 @@
         ],
         "responses": {
           "200": {
-            "description": "Career details including field, skills, outlook data, and a summary of the associated pathway.",
+            "description": "Overview, projection and requirements for a published career.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CareerDetailDto"
+                  "$ref": "#/components/schemas/CareerDetailResponseDto"
                 }
               }
             }
@@ -3202,6 +3201,31 @@
           "slug"
         ]
       },
+      "CareerListTotalsDto": {
+        "type": "object",
+        "properties": {
+          "pathways": {
+            "type": "number",
+            "description": "Total number of published careers (UI label: \"Pathways\")",
+            "example": 7
+          },
+          "topics": {
+            "type": "number",
+            "description": "Total number of pathway steps across all published careers (UI label: \"Topics\")",
+            "example": 57
+          },
+          "resources": {
+            "type": "number",
+            "description": "Total number of linked career resources across all published careers (UI label: \"Projects\")",
+            "example": 141
+          }
+        },
+        "required": [
+          "pathways",
+          "topics",
+          "resources"
+        ]
+      },
       "CareerCardDto": {
         "type": "object",
         "properties": {
@@ -3260,24 +3284,31 @@
           "resourceCount"
         ]
       },
-      "CareerFieldDto": {
+      "CareerListResponseDto": {
         "type": "object",
         "properties": {
-          "name": {
-            "type": "string",
-            "description": "Name of the field/category"
+          "totals": {
+            "description": "Catalog-wide totals. Not affected by level/interest filters.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CareerListTotalsDto"
+              }
+            ]
           },
-          "slug": {
-            "type": "string",
-            "description": "URL-friendly slug for the field"
+          "items": {
+            "description": "Published careers matching the filters, ordered by title. Empty array if no matches.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CareerCardDto"
+            }
           }
         },
         "required": [
-          "name",
-          "slug"
+          "totals",
+          "items"
         ]
       },
-      "CareerSkillDto": {
+      "CareerOverviewSkillDto": {
         "type": "object",
         "properties": {
           "id": {
@@ -3285,14 +3316,72 @@
           },
           "name": {
             "type": "string"
+          },
+          "importance": {
+            "type": "string",
+            "enum": [
+              "REQUIRED",
+              "NICE_TO_HAVE"
+            ]
           }
         },
         "required": [
           "id",
-          "name"
+          "name",
+          "importance"
         ]
       },
-      "OutlookDataDto": {
+      "CareerOverviewDto": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "roleSummary": {
+            "type": "string",
+            "nullable": true
+          },
+          "exampleActivities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "imageUrl": {
+            "type": "string",
+            "description": "Banner background for the detail page",
+            "nullable": true
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CareerOverviewSkillDto"
+            }
+          },
+          "topicCount": {
+            "type": "number",
+            "description": "Number of pathway steps (\"Topics\" in the UI)"
+          },
+          "resourceCount": {
+            "type": "number",
+            "description": "Number of linked resources (\"Projects\" in the UI)"
+          }
+        },
+        "required": [
+          "title",
+          "description",
+          "roleSummary",
+          "exampleActivities",
+          "imageUrl",
+          "skills",
+          "topicCount",
+          "resourceCount"
+        ]
+      },
+      "OutlookItemDto": {
         "type": "object",
         "properties": {
           "id": {
@@ -3307,48 +3396,32 @@
             ]
           },
           "geography": {
-            "type": "string"
+            "type": "string",
+            "example": "United States"
           },
-          "source": {
-            "type": "string"
-          },
-          "sourceUrl": {
+          "sourceId": {
             "type": "string",
             "nullable": true
-          },
-          "period": {
-            "type": "string"
-          },
-          "median": {
-            "type": "string",
-            "nullable": true,
-            "description": "Decimal serialized as a string"
-          },
-          "percentile25": {
-            "type": "string",
-            "nullable": true,
-            "description": "Decimal serialized as a string"
-          },
-          "percentile75": {
-            "type": "string",
-            "nullable": true,
-            "description": "Decimal serialized as a string"
           },
           "currency": {
             "type": "string",
-            "nullable": true
+            "nullable": true,
+            "example": "USD"
           },
           "payPeriod": {
             "type": "string",
-            "nullable": true
+            "nullable": true,
+            "example": "year"
           },
           "grossOrNet": {
             "type": "string",
-            "nullable": true
+            "nullable": true,
+            "example": "gross"
           },
           "experienceLevel": {
             "type": "string",
-            "nullable": true
+            "nullable": true,
+            "example": "entry-level"
           },
           "baseYear": {
             "type": "number",
@@ -3369,32 +3442,23 @@
           "growthPercent": {
             "type": "string",
             "nullable": true,
-            "description": "Decimal serialized as a string"
+            "example": "8.00"
           },
           "demandLevel": {
             "type": "string",
+            "nullable": true,
             "enum": [
               "LOW",
               "MEDIUM",
               "HIGH"
-            ],
-            "nullable": true
-          },
-          "updatedAt": {
-            "format": "date-time",
-            "type": "string"
+            ]
           }
         },
         "required": [
           "id",
           "type",
           "geography",
-          "source",
-          "sourceUrl",
-          "period",
-          "median",
-          "percentile25",
-          "percentile75",
+          "sourceId",
           "currency",
           "payPeriod",
           "grossOrNet",
@@ -3404,135 +3468,108 @@
           "projectedYear",
           "projectedValue",
           "growthPercent",
-          "demandLevel",
-          "updatedAt"
+          "demandLevel"
         ]
       },
-      "CareerPathwaySummaryDto": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "description": "Pathway UUID"
-          },
-          "title": {
-            "type": "string",
-            "description": "Pathway title"
-          },
-          "stepCount": {
-            "type": "number",
-            "description": "Number of steps in the pathway"
-          }
-        },
-        "required": [
-          "id",
-          "title",
-          "stepCount"
-        ]
-      },
-      "CareerDetailDto": {
+      "ResourceSummaryDto": {
         "type": "object",
         "properties": {
           "id": {
             "type": "string"
           },
-          "slug": {
-            "type": "string"
-          },
           "title": {
             "type": "string"
           },
-          "description": {
+          "provider": {
             "type": "string"
           },
-          "roleSummary": {
+          "url": {
             "type": "string"
           },
-          "exampleActivities": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "typicalEducationNote": {
-            "type": "string",
-            "nullable": true
-          },
-          "certificationsNote": {
-            "type": "string",
-            "nullable": true
-          },
-          "field": {
-            "$ref": "#/components/schemas/CareerFieldDto"
-          },
-          "targetLevels": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "enum": [
-                "STUDENT",
-                "RECENT_GRAD",
-                "EARLY_CAREER"
-              ]
-            }
-          },
-          "status": {
+          "costStatus": {
             "type": "string",
             "enum": [
-              "DRAFT",
-              "PUBLISHED",
-              "RETIRED"
+              "FREE",
+              "PAID",
+              "UNKNOWN"
             ]
           },
-          "publishedAt": {
-            "format": "date-time",
-            "type": "string",
+          "estimatedWeeks": {
+            "type": "number",
             "nullable": true
           },
-          "updatedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "skills": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/CareerSkillDto"
-            }
-          },
-          "outlook": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/OutlookDataDto"
-            }
-          },
-          "pathway": {
-            "nullable": true,
-            "description": "Summary of the associated pathway. Use the pathway ID to retrieve the full pathway.",
-            "type": "object",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/CareerPathwaySummaryDto"
-              }
-            ]
+          "badgeImageUrl": {
+            "type": "string",
+            "nullable": true
           }
         },
         "required": [
           "id",
-          "slug",
           "title",
-          "description",
-          "roleSummary",
-          "exampleActivities",
-          "typicalEducationNote",
-          "certificationsNote",
-          "field",
-          "targetLevels",
-          "status",
-          "publishedAt",
-          "updatedAt",
-          "skills",
-          "outlook",
-          "pathway"
+          "provider",
+          "url",
+          "costStatus",
+          "estimatedWeeks",
+          "badgeImageUrl"
+        ]
+      },
+      "CareerRequirementsDto": {
+        "type": "object",
+        "properties": {
+          "courses": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResourceSummaryDto"
+            }
+          },
+          "certifications": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResourceSummaryDto"
+            }
+          }
+        },
+        "required": [
+          "courses",
+          "certifications"
+        ]
+      },
+      "CareerDetailResponseDto": {
+        "type": "object",
+        "properties": {
+          "overview": {
+            "$ref": "#/components/schemas/CareerOverviewDto"
+          },
+          "projection": {
+            "description": "Outlook data in stored order.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OutlookItemDto"
+            }
+          },
+          "requirements": {
+            "$ref": "#/components/schemas/CareerRequirementsDto"
+          }
+        },
+        "required": [
+          "overview",
+          "projection",
+          "requirements"
+        ]
+      },
+      "CareerSkillDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
         ]
       },
       "PathwayResourceDto": {

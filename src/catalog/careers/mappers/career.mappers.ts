@@ -6,6 +6,7 @@ import {
 import { CareerCardDto } from '../dto/career-card.dto';
 import { CareerOverviewDto } from '../dto/career-overview.dto';
 import { OutlookItemDto } from '../dto/career-projection.dto';
+import { CareerDetailResponseDto } from '../dto/career-detail-response.dto';
 import {
   CareerRequirementsDto,
   ResourceSummaryDto,
@@ -203,3 +204,25 @@ export const toCareerRequirements = (
 
   return { courses, certifications };
 };
+
+// ─── 5. DETAIL COMPOSER ──────────────────────────────────────────────
+// One round-trip: merge the three sections' selects. No key collisions —
+// scalars overlap harmlessly, relations are distinct
+// (skills, outlook, resources, _count, pathway).
+export const careerDetailSelect = {
+  ...careerOverviewSelect,
+  ...careerProjectionSelect,
+  ...careerRequirementsSelect,
+} satisfies Prisma.CareerSelect;
+
+export type CareerDetailRow = Prisma.CareerGetPayload<{
+  select: typeof careerDetailSelect;
+}>;
+
+export const toCareerDetail = (
+  row: CareerDetailRow,
+): CareerDetailResponseDto => ({
+  overview: toCareerOverview(row),
+  projection: toCareerProjection(row),
+  requirements: toCareerRequirements(row),
+});

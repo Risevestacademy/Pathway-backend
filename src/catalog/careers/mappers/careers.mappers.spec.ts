@@ -6,11 +6,13 @@ import {
   CareerStatus,
 } from '../../../generated/prisma/client';
 import {
+  careerDetailSelect,
   careerRequirementsSelect,
   toCareerCard,
   toCareerOverview,
   toCareerProjection,
   toCareerRequirements,
+  toCareerDetail,
 } from './career.mappers';
 
 // ─── helpers ─────────────────────────────────────────────────────────
@@ -317,5 +319,124 @@ describe('toCareerRequirements', () => {
   it('returns empty buckets when no linked resources', () => {
     const out = toCareerRequirements({ resources: [] });
     expect(out).toEqual({ courses: [], certifications: [] });
+  });
+
+  describe('toCareerDetail', () => {
+    it('composes overview, projection and requirements from one row', () => {
+      const row = {
+        title: 'Frontend Developer',
+        description: 'Builds UI.',
+        roleSummary: 'What the role involves…',
+        exampleActivities: ['Accessible Form UI'],
+        imageUrl: 'https://cdn/banner.png',
+        _count: { resources: 2 },
+        pathway: { steps: [{ id: 's1' }] },
+        skills: [
+          {
+            importance: SkillImportance.REQUIRED,
+            skill: { id: 'sk1', name: 'HTML' },
+          },
+        ],
+        outlook: [
+          {
+            id: 'o1',
+            type: 'SALARY',
+            geography: 'United States',
+            sourceId: null,
+            period: 'May 2024',
+            median: dec('92750.00'),
+            percentile25: null,
+            percentile75: null,
+            currency: 'USD',
+            payPeriod: 'year',
+            grossOrNet: 'gross',
+            experienceLevel: 'entry-level',
+            baseYear: null,
+            baseValue: null,
+            projectedYear: null,
+            projectedValue: null,
+            growthPercent: null,
+            demandLevel: null,
+          },
+        ],
+        resources: [
+          {
+            resource: {
+              id: 'r1',
+              title: 'UX Fundamentals',
+              provider: 'Coursera',
+              url: 'https://example.com',
+              type: ResourceType.COURSE,
+              costStatus: 'FREE',
+              estimatedWeeks: 6,
+              badgeImageUrl: null,
+            },
+          },
+          {
+            resource: {
+              id: 'r2',
+              title: 'Certified UX',
+              provider: 'NN/g',
+              url: 'https://example.com/cert',
+              type: ResourceType.CERTIFICATION,
+              costStatus: 'PAID',
+              estimatedWeeks: null,
+              badgeImageUrl: 'https://cdn/badge.png',
+            },
+          },
+        ],
+      };
+
+      const out = toCareerDetail(row);
+
+      expect(out.overview.title).toBe('Frontend Developer');
+      expect(out.overview.topicCount).toBe(1);
+      expect(out.overview.resourceCount).toBe(2);
+      expect(out.overview.skills).toEqual([
+        { id: 'sk1', name: 'HTML', importance: SkillImportance.REQUIRED },
+      ]);
+      expect(out.projection).toHaveLength(1);
+      expect(out.projection[0].median).toBe('92750.00');
+      expect(out.requirements.courses.map((r) => r.id)).toEqual(['r1']);
+      expect(out.requirements.certifications.map((r) => r.id)).toEqual(['r2']);
+    });
+
+    it('never leaks curationRationale or field', () => {
+      const row = {
+        title: 't',
+        description: 'd',
+        roleSummary: null,
+        exampleActivities: [],
+        imageUrl: null,
+        _count: { resources: 0 },
+        pathway: null,
+        skills: [],
+        outlook: [],
+        resources: [],
+      };
+      const out = toCareerDetail(row);
+      expectNoKeyDeep(out, 'curationRationale');
+      expectNoKeyDeep(out, 'field');
+      expectNoKeyDeep(out, 'fieldId');
+    });
+  });
+
+  describe('careerDetailSelect', () => {
+    it('merges the three section selects without collisions', () => {
+      expect(careerDetailSelect.skills).toBeDefined();
+      expect(careerDetailSelect.outlook).toMatchObject({
+        orderBy: { createdAt: 'asc' },
+      });
+      const resources = careerDetailSelect.resources as {
+        where: { resource: { status: ResourceStatus } };
+      };
+      expect(resources.where.resource.status).toBe(ResourceStatus.ACTIVE);
+      expect(careerDetailSelect._count).toEqual({
+        select: { resources: true },
+      });
+      expect(careerDetailSelect.pathway).toEqual({
+        select: { steps: { select: { id: true } } },
+      });
+    });
   });
 });

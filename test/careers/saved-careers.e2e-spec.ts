@@ -240,7 +240,11 @@ describe('Saved careers list (e2e)', () => {
     // 5.2 will wrap `/careers` as `{ totals, items }`. This test is written
     // for the 5.1 intermediate shape `CareerCardDto[]`; the 5.2 PR updates
     // this line to `explore.body.items`.
-    const exploreItems = explore.body as Array<Record<string, unknown>>;
+    const exploreItems = (
+      explore.body as {
+        items: Array<Record<string, unknown>>;
+      }
+    ).items;
     const match = exploreItems.find((c) => c.id === saved.id);
     expect(match).toBeDefined();
 

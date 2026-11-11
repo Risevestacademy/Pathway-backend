@@ -42,6 +42,12 @@ describe('CareersService', () => {
       deleteMany: jest.fn<(args: unknown) => Promise<{ count: number }>>(),
       findMany: jest.fn<(args: unknown) => Promise<unknown>>(),
     },
+    pathwayStep: {
+      count: jest.fn<(args: unknown) => Promise<number>>(),
+    },
+    careerResource: {
+      count: jest.fn<(args: unknown) => Promise<number>>(),
+    },
   };
 
   const mockAnalyticsService = {
@@ -94,8 +100,11 @@ describe('CareersService', () => {
       pathway: { select: { steps: { select: { id: true } } } },
     };
 
-    it('returns cards mapped through toCareerCard without query filters', async () => {
+    it('returns global totals plus cards without filters', async () => {
       mockPrismaService.career.findMany.mockResolvedValue(mockDbCareers);
+      mockPrismaService.career.count.mockResolvedValue(7);
+      mockPrismaService.pathwayStep.count.mockResolvedValue(57);
+      mockPrismaService.careerResource.count.mockResolvedValue(141);
 
       const result = await service.getPublicCareers({});
 
@@ -104,30 +113,46 @@ describe('CareersService', () => {
         select: expectedSelect,
         orderBy: { title: 'asc' },
       });
-
-      expect(result).toEqual([
-        {
-          id: '1',
-          slug: 'software-engineer',
-          title: 'Software Engineer',
-          description: 'Builds software applications.',
-          iconKey: 'se-icon',
-          targetLevels: [TargetLevel.STUDENT, TargetLevel.RECENT_GRAD],
-          topicCount: 3,
-          resourceCount: 12,
+      expect(mockPrismaService.career.count).toHaveBeenCalledWith({
+        where: { status: CareerStatus.PUBLISHED },
+      });
+      expect(mockPrismaService.pathwayStep.count).toHaveBeenCalledWith({
+        where: {
+          pathway: { career: { status: CareerStatus.PUBLISHED } },
         },
-      ]);
+      });
+      expect(mockPrismaService.careerResource.count).toHaveBeenCalledWith({
+        where: { career: { status: CareerStatus.PUBLISHED } },
+      });
+
+      expect(result).toEqual({
+        totals: { pathways: 7, topics: 57, resources: 141 },
+        items: [
+          {
+            id: '1',
+            slug: 'software-engineer',
+            title: 'Software Engineer',
+            description: 'Builds software applications.',
+            iconKey: 'se-icon',
+            targetLevels: [TargetLevel.STUDENT, TargetLevel.RECENT_GRAD],
+            topicCount: 3,
+            resourceCount: 12,
+          },
+        ],
+      });
     });
 
-    it('applies level and interest filters to the where clause', async () => {
-      mockPrismaService.career.findMany.mockResolvedValue(mockDbCareers);
+    it('applies level + interest filters to items, not totals', async () => {
+      mockPrismaService.career.findMany.mockResolvedValue([]);
+      mockPrismaService.career.count.mockResolvedValue(7);
+      mockPrismaService.pathwayStep.count.mockResolvedValue(57);
+      mockPrismaService.careerResource.count.mockResolvedValue(141);
 
       const query: GetCareersQueryDto = {
         level: TargetLevel.RECENT_GRAD,
         interest: 'software-engineering',
       };
-
-      await service.getPublicCareers(query);
+      const result = await service.getPublicCareers(query);
 
       expect(mockPrismaService.career.findMany).toHaveBeenCalledWith({
         where: {
@@ -138,69 +163,41 @@ describe('CareersService', () => {
         select: expectedSelect,
         orderBy: { title: 'asc' },
       });
-    });
-
-    it('returns topicCount 0 for a career with no pathway', async () => {
-      mockPrismaService.career.findMany.mockResolvedValue([
-        { ...mockDbCareers[0], pathway: null },
-      ]);
-
-      const [card] = await service.getPublicCareers({});
-
-      expect(card.topicCount).toBe(0);
-      expect(card.resourceCount).toBe(12);
-    });
-
-    it('never includes curationRationale in the card payload', async () => {
-      mockPrismaService.career.findMany.mockResolvedValue(mockDbCareers);
-
-      const [card] = await service.getPublicCareers({});
-
-      expect(card).not.toHaveProperty('curationRationale');
-      // And the select object doesn't ask Prisma for it either.
-      const arg = mockPrismaService.career.findMany.mock.calls[0]?.[0] as
-        { select: Record<string, unknown> } | undefined;
-      expect(arg?.select).not.toHaveProperty('curationRationale');
+      // Totals queries must NOT include the filter.
+      expect(mockPrismaService.career.count).toHaveBeenCalledWith({
+        where: { status: CareerStatus.PUBLISHED },
+      });
+      expect(result.totals).toEqual({
+        pathways: 7,
+        topics: 57,
+        resources: 141,
+      });
+      expect(result.items).toEqual([]);
     });
   });
 
   describe('getPublishedCareerById', () => {
-    const mockDbCareer = {
-      id: 'career-1',
-      slug: 'software-engineer',
+    const row = {
       title: 'Software Engineer',
       description: 'Builds software applications.',
       roleSummary: 'Designs and builds software systems.',
       exampleActivities: ['Write code', 'Review PRs'],
-      typicalEducationNote: null,
-      certificationsNote: null,
-      targetLevels: [TargetLevel.RECENT_GRAD],
-      status: CareerStatus.PUBLISHED,
-      publishedAt: new Date('2026-01-01'),
-      updatedAt: new Date('2026-01-02'),
-
-      field: {
-        name: 'Software Engineering',
-        slug: 'software-engineering',
-      },
-
+      imageUrl: 'https://cdn/banner.png',
+      _count: { resources: 4 },
+      pathway: { steps: [{ id: 's1' }, { id: 's2' }, { id: 's3' }] },
       skills: [
         {
-          skill: {
-            id: 'skill-1',
-            name: 'TypeScript',
-          },
+          importance: 'REQUIRED',
+          skill: { id: 'skill-1', name: 'TypeScript' },
         },
       ],
-
       outlook: [
         {
           id: 'outlook-1',
-          type: OutlookType.SALARY,
+          type: 'SALARY',
           geography: 'United States',
-          source: 'Example Labour Stats',
-          sourceUrl: null,
-          period: '2026',
+          sourceId: 'src-1',
+          period: 'May 2024',
           median: { toString: () => '65000.00' },
           percentile25: null,
           percentile75: null,
@@ -213,210 +210,77 @@ describe('CareersService', () => {
           projectedYear: null,
           projectedValue: null,
           growthPercent: null,
-          demandLevel: null as Demand | null,
-          updatedAt: new Date('2026-01-02'),
+          demandLevel: null,
         },
       ],
-
-      pathway: {
-        id: 'pathway-1',
-        title: 'Backend Roadmap',
-        _count: {
-          steps: 3,
+      resources: [
+        {
+          resource: {
+            id: 'r1',
+            title: 'TypeScript Deep Dive',
+            provider: 'Coursera',
+            url: 'https://example.com/course',
+            type: 'COURSE',
+            costStatus: 'FREE',
+            estimatedWeeks: 6,
+            badgeImageUrl: null,
+          },
         },
-      },
+        {
+          resource: {
+            id: 'r2',
+            title: 'Certified SE',
+            provider: 'IEEE',
+            url: 'https://example.com/cert',
+            type: 'CERTIFICATION',
+            costStatus: 'PAID',
+            estimatedWeeks: null,
+            badgeImageUrl: 'https://cdn/badge.png',
+          },
+        },
+      ],
     };
 
-    it('should return the published career with field, skills, outlook and pathway summary', async () => {
-      mockPrismaService.career.findFirst.mockResolvedValue(mockDbCareer);
+    it('returns overview, projection and requirements from a single query', async () => {
+      mockPrismaService.career.findFirst.mockResolvedValue(row);
 
       const result = await service.getPublishedCareerById('career-1');
 
-      expect(result).toEqual({
+      expect(mockPrismaService.career.findFirst).toHaveBeenCalledTimes(1);
+      const args = mockPrismaService.career.findFirst.mock.calls[0][0] as {
+        where: { id: string; status: CareerStatus };
+      };
+      expect(args.where).toEqual({
         id: 'career-1',
-        slug: 'software-engineer',
+        status: CareerStatus.PUBLISHED,
+      });
+
+      expect(result.overview).toEqual({
         title: 'Software Engineer',
         description: 'Builds software applications.',
         roleSummary: 'Designs and builds software systems.',
         exampleActivities: ['Write code', 'Review PRs'],
-        typicalEducationNote: null,
-        certificationsNote: null,
-        targetLevels: [TargetLevel.RECENT_GRAD],
-        status: CareerStatus.PUBLISHED,
-        publishedAt: new Date('2026-01-01'),
-        updatedAt: new Date('2026-01-02'),
-
-        field: {
-          name: 'Software Engineering',
-          slug: 'software-engineering',
-        },
-
-        skills: [
-          {
-            id: 'skill-1',
-            name: 'TypeScript',
-          },
-        ],
-
-        outlook: [
-          expect.objectContaining({
-            id: 'outlook-1',
-            type: OutlookType.SALARY,
-            median: '65000.00',
-          }),
-        ],
-
-        pathway: {
-          id: 'pathway-1',
-          title: 'Backend Roadmap',
-          stepCount: 3,
-        },
+        imageUrl: 'https://cdn/banner.png',
+        skills: [{ id: 'skill-1', name: 'TypeScript', importance: 'REQUIRED' }],
+        topicCount: 3,
+        resourceCount: 4,
       });
+      expect(result.projection).toHaveLength(1);
+      expect(result.projection[0].median).toBe('65000.00');
+      expect(result.requirements.courses.map((r) => r.id)).toEqual(['r1']);
+      expect(result.requirements.certifications.map((r) => r.id)).toEqual([
+        'r2',
+      ]);
+      expect(result).not.toHaveProperty('field');
+      expect(result.overview).not.toHaveProperty('field');
     });
 
-    it('should query only the career fields and relationship data required by the detail response', async () => {
-      mockPrismaService.career.findFirst.mockResolvedValue(mockDbCareer);
-
-      await service.getPublishedCareerById('career-1');
-
-      expect(mockPrismaService.career.findFirst).toHaveBeenCalledWith({
-        where: {
-          id: 'career-1',
-          status: CareerStatus.PUBLISHED,
-        },
-        select: {
-          id: true,
-          slug: true,
-          title: true,
-          description: true,
-          roleSummary: true,
-          exampleActivities: true,
-          typicalEducationNote: true,
-          certificationsNote: true,
-          targetLevels: true,
-          status: true,
-          publishedAt: true,
-          updatedAt: true,
-
-          field: {
-            select: {
-              name: true,
-              slug: true,
-            },
-          },
-
-          skills: {
-            select: {
-              skill: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-            },
-          },
-
-          outlook: {
-            select: {
-              id: true,
-              type: true,
-              geography: true,
-              source: {
-                select: {
-                  name: true,
-                  url: true,
-                },
-              },
-              period: true,
-              median: true,
-              percentile25: true,
-              percentile75: true,
-              currency: true,
-              payPeriod: true,
-              grossOrNet: true,
-              experienceLevel: true,
-              baseYear: true,
-              baseValue: true,
-              projectedYear: true,
-              projectedValue: true,
-              growthPercent: true,
-              demandLevel: true,
-              updatedAt: true,
-            },
-          },
-
-          pathway: {
-            select: {
-              id: true,
-              title: true,
-              _count: {
-                select: {
-                  steps: true,
-                },
-              },
-            },
-          },
-        },
-      });
-    });
-
-    it('should return a pathway summary without loading pathway steps', async () => {
-      mockPrismaService.career.findFirst.mockResolvedValue(mockDbCareer);
-
-      const result = await service.getPublishedCareerById('career-1');
-
-      expect(result.pathway).toEqual({
-        id: 'pathway-1',
-        title: 'Backend Roadmap',
-        stepCount: 3,
-      });
-
-      expect(result.pathway).not.toHaveProperty('steps');
-      expect(result.pathway).not.toHaveProperty('resources');
-    });
-
-    it('should return an empty role summary when none is stored', async () => {
-      mockPrismaService.career.findFirst.mockResolvedValue({
-        ...mockDbCareer,
-        roleSummary: null,
-      });
-
-      const result = await service.getPublishedCareerById('career-1');
-
-      expect(result.roleSummary).toBe('');
-    });
-
-    it('should return null pathway when the career has no pathway', async () => {
-      mockPrismaService.career.findFirst.mockResolvedValue({
-        ...mockDbCareer,
-        pathway: null,
-      });
-
-      const result = await service.getPublishedCareerById('career-1');
-
-      expect(result.pathway).toBeNull();
-    });
-
-    it('should throw NotFoundException when the career does not exist', async () => {
+    it('throws NotFoundException when nothing matches (draft, retired, or missing)', async () => {
       mockPrismaService.career.findFirst.mockResolvedValue(null);
 
-      await expect(
-        service.getPublishedCareerById('missing-career'),
-      ).rejects.toThrow(NotFoundException);
-    });
-
-    it('should throw NotFoundException when the career is not published', async () => {
-      // Because the query filters by PUBLISHED status, Prisma returns null
-      // for DRAFT and RETIRED careers.
-      mockPrismaService.career.findFirst.mockResolvedValue(null);
-
-      await expect(
-        service.getPublishedCareerById('draft-career'),
-      ).rejects.toThrow(NotFoundException);
-
-      await expect(
-        service.getPublishedCareerById('retired-career'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.getPublishedCareerById('anything')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
