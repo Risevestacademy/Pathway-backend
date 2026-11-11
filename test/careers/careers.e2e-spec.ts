@@ -12,49 +12,39 @@ describe('Careers (e2e)', () => {
   let app: INestApplication;
   let apiPrefix: string;
 
-  const mockCareersList = [
-    {
-      id: '123e4567-e89b-12d3-a456-426614174000',
-      slug: 'software-engineer',
-      title: 'Software Engineer',
-      shortDescription: 'Builds scalable web applications.',
-    },
-  ];
-
-  const mockCareerDetail = {
+  const mockCareerCard = {
     id: '123e4567-e89b-12d3-a456-426614174000',
     slug: 'software-engineer',
     title: 'Software Engineer',
     description: 'Builds scalable web applications.',
-    roleSummary: 'Designs and builds software systems.',
-    exampleActivities: ['Write code', 'Review pull requests'],
-    typicalEducationNote: null,
-    certificationsNote: null,
-
-    field: {
-      name: 'Software Engineering',
-      slug: 'software-engineering',
-    },
-
+    iconKey: 'se-icon',
     targetLevels: ['RECENT_GRAD'],
-    status: 'PUBLISHED',
-    publishedAt: '2026-01-01T00:00:00.000Z',
-    updatedAt: '2026-01-02T00:00:00.000Z',
+    topicCount: 3,
+    resourceCount: 12,
+  };
 
-    skills: [
-      {
-        id: 'skill-1',
-        name: 'TypeScript',
-      },
-    ],
+  const mockCareersList = {
+    totals: { pathways: 7, topics: 57, resources: 141 },
+    items: [mockCareerCard],
+  };
 
-    outlook: [
+  const mockCareerDetail = {
+    overview: {
+      title: 'Software Engineer',
+      description: 'Builds scalable web applications.',
+      roleSummary: 'Designs and builds software systems.',
+      exampleActivities: ['Write code', 'Review pull requests'],
+      imageUrl: 'https://cdn/banner.png',
+      skills: [{ id: 'skill-1', name: 'TypeScript', importance: 'REQUIRED' }],
+      topicCount: 3,
+      resourceCount: 12,
+    },
+    projection: [
       {
         id: 'outlook-1',
         type: 'SALARY',
         geography: 'United States',
-        source: 'Example Labour Stats',
-        sourceUrl: null,
+        sourceId: 'src-1',
         period: '2026',
         median: '65000.00',
         percentile25: null,
@@ -69,21 +59,29 @@ describe('Careers (e2e)', () => {
         projectedValue: null,
         growthPercent: null,
         demandLevel: null,
-        updatedAt: '2026-01-02T00:00:00.000Z',
       },
     ],
-
-    pathway: {
-      id: 'pathway-1',
-      title: 'Backend Roadmap',
-      stepCount: 3,
+    requirements: {
+      courses: [
+        {
+          id: 'r1',
+          title: 'TypeScript Deep Dive',
+          provider: 'Coursera',
+          url: 'https://example.com/course',
+          costStatus: 'FREE',
+          estimatedWeeks: 6,
+          badgeImageUrl: null,
+        },
+      ],
+      certifications: [],
     },
   };
 
   const mockCareersService = {
     getPublicCareers: jest.fn().mockResolvedValue(mockCareersList),
     getPublishedCareerById: jest.fn().mockResolvedValue(mockCareerDetail),
-    getCareerPathway: jest.fn(),
+    saveCareer: jest.fn(),
+    unsaveCareer: jest.fn(),
   };
 
   const mockPathwaysService = {
@@ -119,7 +117,7 @@ describe('Careers (e2e)', () => {
   });
 
   describe('GET /careers', () => {
-    it('should return 200 OK with public careers list', async () => {
+    it('returns 200 with { totals, items } and delegates empty query', async () => {
       const response = await request(app.getHttpServer())
         .get(`${apiPrefix}/careers`)
         .expect(200);
@@ -128,7 +126,7 @@ describe('Careers (e2e)', () => {
       expect(mockCareersService.getPublicCareers).toHaveBeenCalledWith({});
     });
 
-    it('should pass query parameters (interest & level) to service layer', async () => {
+    it('passes level and interest through to the service', async () => {
       const queryParams = {
         level: 'RECENT_GRAD',
         interest: 'software-engineering',
@@ -146,44 +144,30 @@ describe('Careers (e2e)', () => {
   });
 
   describe('GET /careers/:id', () => {
-    it('should return 200 OK with career details and pathway summary', async () => {
-      const careerId = '123e4567-e89b-12d3-a456-426614174000';
+    const careerId = '123e4567-e89b-12d3-a456-426614174000';
 
+    it('returns 200 with { overview, projection, requirements }', async () => {
       const response = await request(app.getHttpServer())
         .get(`${apiPrefix}/careers/${careerId}`)
         .expect(200);
 
       expect(response.body).toEqual(mockCareerDetail);
-
       expect(mockCareersService.getPublishedCareerById).toHaveBeenCalledWith(
         careerId,
       );
     });
 
-    it('should return a career without a pathway when no pathway exists', async () => {
-      const careerWithoutPathway = {
-        ...mockCareerDetail,
-        pathway: null,
-      };
-
-      mockCareersService.getPublishedCareerById.mockResolvedValueOnce(
-        careerWithoutPathway,
+    it('propagates a 404 from the service', async () => {
+      mockCareersService.getPublishedCareerById.mockRejectedValueOnce(
+        new NotFoundException('Career not found'),
       );
 
-      const careerId = '123e4567-e89b-12d3-a456-426614174000';
-
-      const response = await request(app.getHttpServer())
+      await request(app.getHttpServer())
         .get(`${apiPrefix}/careers/${careerId}`)
-        .expect(200);
-
-      expect(response.body.pathway).toBeNull();
-
-      expect(mockCareersService.getPublishedCareerById).toHaveBeenCalledWith(
-        careerId,
-      );
+        .expect(404);
     });
 
-    it('should reject an invalid career UUID', async () => {
+    it('rejects a malformed UUID with 400 and never calls the service', async () => {
       await request(app.getHttpServer())
         .get(`${apiPrefix}/careers/not-a-uuid`)
         .expect(400);
@@ -217,7 +201,7 @@ describe('Careers (e2e)', () => {
       },
     };
 
-    it('should return 200 OK with the ordered pathway', async () => {
+    it('returns 200 with the ordered pathway', async () => {
       mockPathwaysService.getCareerPathway.mockResolvedValue(
         mockPathwayResponse,
       );
@@ -232,7 +216,7 @@ describe('Careers (e2e)', () => {
       );
     });
 
-    it('should return { pathway: null } when the career has no pathway yet', async () => {
+    it('returns { pathway: null } when the career has no pathway yet', async () => {
       mockPathwaysService.getCareerPathway.mockResolvedValue({ pathway: null });
 
       const response = await request(app.getHttpServer())
@@ -242,7 +226,7 @@ describe('Careers (e2e)', () => {
       expect(response.body).toEqual({ pathway: null });
     });
 
-    it('should return 404 when the career does not exist or is not published', async () => {
+    it('returns 404 when the career is missing or not PUBLISHED', async () => {
       mockPathwaysService.getCareerPathway.mockRejectedValue(
         new NotFoundException('Career not found'),
       );
@@ -252,17 +236,17 @@ describe('Careers (e2e)', () => {
         .expect(404);
     });
 
-    it('should reject an invalid career UUID', async () => {
+    it('rejects a malformed UUID with 400', async () => {
       await request(app.getHttpServer())
         .get(`${apiPrefix}/careers/not-a-uuid/pathway`)
         .expect(400);
 
-      expect(mockCareersService.getCareerPathway).not.toHaveBeenCalled();
+      expect(mockPathwaysService.getCareerPathway).not.toHaveBeenCalled();
     });
   });
 
   describe('GET /careers/:careerId/pathway/steps', () => {
-    it('should return 404 in the standard format', async () => {
+    it('returns 404 in the standard error format', async () => {
       const careerId = '123e4567-e89b-12d3-a456-426614174000';
 
       const response = await request(app.getHttpServer())
