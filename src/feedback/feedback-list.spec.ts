@@ -20,6 +20,7 @@ describe('feedback list', () => {
     id: 'feedback-1',
     category: FeedbackCategory.BROKEN_LINK,
     section: FeedbackSection.RESOURCES,
+    careerId: 'career-1',
     status: FeedbackStatus.NEW,
     resolution: null,
     description: 'Step 3 link is dead.',
@@ -28,6 +29,7 @@ describe('feedback list', () => {
     targetType: FeedbackTargetType.PATHWAY_STEP,
     targetId: 'step-1',
     createdAt: new Date('2026-11-12T10:00:00.000Z'),
+    updatedAt: new Date('2026-11-12T11:00:00.000Z'),
   };
 
   describe('buildFeedbackListWhere', () => {
@@ -85,26 +87,29 @@ describe('feedback list', () => {
         id: 'feedback-1',
         category: 'BROKEN_LINK',
         section: 'RESOURCES',
+        careerId: 'career-1',
         status: 'NEW',
         resolution: null,
+        description: 'Step 3 link is dead.',
+        userEmail: 'ada@example.com',
         snippet: 'Step 3 link is dead.',
         target: {
           type: 'PATHWAY_STEP',
           id: 'step-1',
           label: 'Step 3: SQL basics',
         },
-        reporterEmail: 'ada@example.com',
         platform: 'WEB',
         createdAt: new Date('2026-11-12T10:00:00.000Z'),
+        updatedAt: new Date('2026-11-12T11:00:00.000Z'),
       });
     });
 
-    it('sends the snippet, not the full description', () => {
+    it('adds a short snippet next to the full description', () => {
       const long = 'word '.repeat(60).trim();
 
       const item = toAdminFeedbackListItem({ ...row, description: long }, null);
 
-      expect(item).not.toHaveProperty('description');
+      expect(item.description).toBe(long);
       expect(item.snippet).not.toBe(long);
     });
 

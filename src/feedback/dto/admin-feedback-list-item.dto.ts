@@ -1,12 +1,9 @@
 import { ApiProperty } from '@nestjs/swagger';
 import {
-  FeedbackCategory,
-  FeedbackPlatform,
   FeedbackResolution,
-  FeedbackSection,
-  FeedbackStatus,
   FeedbackTargetType,
 } from '../../generated/prisma/client';
+import { FeedbackResponseDto } from './feedback-response.dto';
 
 export class FeedbackTargetDto {
   @ApiProperty({ enum: FeedbackTargetType, example: 'PATHWAY_STEP' })
@@ -30,19 +27,9 @@ export class FeedbackTargetDto {
   label: string | null;
 }
 
-export class AdminFeedbackListItemDto {
-  @ApiProperty({ format: 'uuid' })
-  id: string;
-
-  @ApiProperty({ enum: FeedbackCategory, example: 'BROKEN_LINK' })
-  category: FeedbackCategory;
-
-  @ApiProperty({ enum: FeedbackSection, example: 'RESOURCES' })
-  section: FeedbackSection;
-
-  @ApiProperty({ enum: FeedbackStatus, example: 'NEW' })
-  status: FeedbackStatus;
-
+// Extends the existing item so every field clients already read stays, and
+// adds the two the Reports table needs.
+export class AdminFeedbackListItemDto extends FeedbackResponseDto {
   @ApiProperty({
     enum: FeedbackResolution,
     nullable: true,
@@ -52,24 +39,11 @@ export class AdminFeedbackListItemDto {
 
   @ApiProperty({
     example: 'The link on step 3 returns a 404.',
-    description: 'The start of the description, up to 120 characters',
+    description:
+      'The start of the description, up to 120 characters, for the table',
   })
   snippet: string;
 
   @ApiProperty({ type: FeedbackTargetDto })
   target: FeedbackTargetDto;
-
-  @ApiProperty({
-    type: String,
-    nullable: true,
-    example: 'user@example.com',
-    description: 'The contact email the reporter left, if any',
-  })
-  reporterEmail: string | null;
-
-  @ApiProperty({ enum: FeedbackPlatform, nullable: true, example: 'WEB' })
-  platform: FeedbackPlatform | null;
-
-  @ApiProperty()
-  createdAt: Date;
 }

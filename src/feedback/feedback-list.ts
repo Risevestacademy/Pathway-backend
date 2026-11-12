@@ -4,11 +4,12 @@ import type { GetFeedbackQueryDto } from './dto/get-feedback-query.dto';
 
 export const SNIPPET_MAX_LENGTH = 120;
 
-// Left out on purpose: notes, which the Reports table does not show
+// Left out on purpose: notes, which the list never carries
 export const FEEDBACK_LIST_SELECT = {
   id: true,
   category: true,
   section: true,
+  careerId: true,
   status: true,
   resolution: true,
   description: true,
@@ -17,6 +18,7 @@ export const FEEDBACK_LIST_SELECT = {
   targetType: true,
   targetId: true,
   createdAt: true,
+  updatedAt: true,
 } satisfies Prisma.ContentFeedbackSelect;
 
 export type FeedbackListRow = Prisma.ContentFeedbackGetPayload<{
@@ -58,15 +60,18 @@ export const toAdminFeedbackListItem = (
   id: row.id,
   category: row.category,
   section: row.section,
+  careerId: row.careerId,
   status: row.status,
   resolution: row.resolution,
+  description: row.description,
+  userEmail: row.userEmail,
   snippet: toSnippet(row.description),
   target: {
     type: row.targetType ?? FeedbackTargetType.OTHER,
     id: row.targetId,
     label,
   },
-  reporterEmail: row.userEmail,
   platform: row.platform,
   createdAt: row.createdAt,
+  updatedAt: row.updatedAt,
 });

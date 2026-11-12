@@ -287,6 +287,7 @@ describe('FeedbackService', () => {
       id: 'feedback-1',
       category: 'BROKEN_LINK',
       section: 'RESOURCES',
+      careerId: 'career-1',
       status: 'NEW',
       resolution: null,
       description: 'Step 2 course link is dead.',
@@ -295,6 +296,7 @@ describe('FeedbackService', () => {
       targetType: 'CAREER',
       targetId: 'career-1',
       createdAt,
+      updatedAt: createdAt,
       ...overrides,
     });
 
@@ -357,17 +359,20 @@ describe('FeedbackService', () => {
           id: 'feedback-1',
           category: 'BROKEN_LINK',
           section: 'RESOURCES',
+          careerId: 'career-1',
           status: 'NEW',
           resolution: null,
+          description: 'Step 2 course link is dead.',
+          userEmail: 'ada@example.com',
           snippet: 'Step 2 course link is dead.',
           target: {
             type: 'CAREER',
             id: 'career-1',
             label: 'Software Engineer',
           },
-          reporterEmail: 'ada@example.com',
           platform: 'WEB',
           createdAt,
+          updatedAt: createdAt,
         },
       ]);
     });

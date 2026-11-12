@@ -32,7 +32,7 @@ export class AdminController {
   @ApiOperation({
     summary: 'List submitted feedback and reports',
     description:
-      'Minimum role: REVIEWER. Newest first, paginated with page and limit. Filter by status, category, targetType or career. Each item has what the Reports table needs: a description snippet, the target with its title, the reporter email and the date. The full description and the internal notes are not part of the list.',
+      'Minimum role: REVIEWER. Newest first, paginated with page and limit. Filter by status, category, targetType or career. Each item has what the Reports table needs: a description snippet, the target with its title, the reporter email (userEmail) and the date. The full description stays in each item and the internal notes are never part of the list.',
   })
   @ApiResponse({ status: 200, type: FeedbackListResponseDto })
   @ApiResponse({ status: 400, description: 'A query parameter is invalid' })

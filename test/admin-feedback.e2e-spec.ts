@@ -309,22 +309,24 @@ describe('Admin feedback (e2e)', () => {
         id: feedbackIds.careerReport,
         category: 'BROKEN_LINK',
         section: 'GENERAL',
+        careerId: reportsCareerId,
         status: 'NEW',
         resolution: null,
+        description: longDescription,
         snippet: expect.stringMatching(/…$/),
         target: {
           type: 'CAREER',
           id: reportsCareerId,
           label: `Admin Feedback Reports Career ${timestamp}`,
         },
-        reporterEmail: 'reporter@example.com',
+        userEmail: 'reporter@example.com',
         platform: 'WEB',
         createdAt: '2026-10-25T00:00:00.000Z',
+        updatedAt: expect.any(String),
       });
       expect((item.snippet as string).length).toBeLessThan(
         longDescription.length,
       );
-      expect(item).not.toHaveProperty('description');
       expect(item).not.toHaveProperty('notes');
     });
 
