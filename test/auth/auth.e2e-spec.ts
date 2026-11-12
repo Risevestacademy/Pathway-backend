@@ -32,14 +32,23 @@ describe('AuthController (e2e)', () => {
   const realNotificationService = { send: jest.fn() };
 
   const userKeys = [
+    'analyticsEnabled',
+    'avatarUrl',
+    'careerInterests',
+    'careerStage',
     'createdAt',
+    'educationLevel',
     'email',
     'emailVerified',
+    'experienceYears',
     'firstName',
     'fullName',
     'id',
+    'internshipCount',
     'lastName',
+    'learningGoals',
     'role',
+    'weeklyTimeCommitment',
   ];
 
   const testUser = {
