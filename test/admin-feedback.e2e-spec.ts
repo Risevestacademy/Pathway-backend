@@ -129,6 +129,8 @@ describe('Admin feedback (e2e)', () => {
       feedbackIds[label] = created.id;
     }
 
+    // A second career holds the reports used by the filter and shape tests,
+    // so their results are not mixed with the rows above.
     const reportsCareer = await prisma.career.create({
       data: {
         slug: `${marker}-reports-career`,
@@ -508,9 +510,9 @@ describe('Admin feedback (e2e)', () => {
           status: 'RESOLVED',
         }).expect(400);
 
-        expect(response.body).toMatchObject({
-          error: 'RESOLUTION_REQUIRED',
-        });
+        expect(response.body.message).toBe(
+          'A resolution is required to resolve feedback',
+        );
         const saved = await prisma.contentFeedback.findUniqueOrThrow({
           where: { id: triageIds.notes },
         });
@@ -523,7 +525,9 @@ describe('Admin feedback (e2e)', () => {
           resolution: 'FIXED',
         }).expect(400);
 
-        expect(response.body.error).toBe('RESOLUTION_NOT_ALLOWED');
+        expect(response.body.message).toBe(
+          'A resolution can only be set when the status is RESOLVED',
+        );
       });
 
       it.each([
