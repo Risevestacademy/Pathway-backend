@@ -1722,7 +1722,7 @@
     },
     "/feedback": {
       "post": {
-        "description": "Public and anonymous. The optional contact email is stored but never logged.",
+        "description": "Public and anonymous. Say what the report is about with targetType and targetId, for example PATHWAY_STEP with the step id, or CERTIFICATION for a certification. The item must exist and be visible. OTHER needs no targetId. Older clients can still send only careerId, which is read as a CAREER target. The optional contact email is stored but never logged.",
         "operationId": "FeedbackController_submitFeedback",
         "parameters": [],
         "requestBody": {
@@ -1747,7 +1747,10 @@
             }
           },
           "400": {
-            "description": "Body failed validation, careerId is missing for a section other than GENERAL, or careerId matches no career"
+            "description": "Body failed validation, targetId is missing for a targetType other than OTHER, careerId is missing for a section other than GENERAL (when no targetType is sent), or careerId matches no career"
+          },
+          "404": {
+            "description": "The target does not exist or is not visible"
           },
           "429": {
             "description": "Rate limit exceeded"
@@ -1761,7 +1764,7 @@
     },
     "/admin/feedback": {
       "get": {
-        "description": "Newest first. Filter by status or career, paginated with page and limit.",
+        "description": "Minimum role: REVIEWER. Newest first, paginated with page and limit. Filter by status, category, targetType or career. Each item has what the Reports table needs: a description snippet, the target with its title, the reporter email (userEmail) and the date. The full description stays in each item and the internal notes are never part of the list.",
         "operationId": "AdminController_getFeedback",
         "parameters": [
           {
@@ -1775,6 +1778,41 @@
                 "NEW",
                 "UNDER_REVIEW",
                 "RESOLVED"
+              ]
+            }
+          },
+          {
+            "name": "category",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": "BROKEN_LINK",
+              "type": "string",
+              "enum": [
+                "INCORRECT_CONTENT",
+                "BROKEN_LINK",
+                "USABILITY",
+                "OTHER"
+              ]
+            }
+          },
+          {
+            "name": "targetType",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": "PATHWAY_STEP",
+              "type": "string",
+              "enum": [
+                "CAREER",
+                "PATHWAY",
+                "PATHWAY_STAGE",
+                "PATHWAY_STEP",
+                "RESOURCE",
+                "TASK",
+                "OUTLOOK",
+                "CERTIFICATION",
+                "OTHER"
               ]
             }
           },
@@ -1829,10 +1867,180 @@
             "description": "Access token missing or invalid"
           },
           "403": {
-            "description": "The user is not an editor or admin"
+            "description": "The user is below the REVIEWER role"
           }
         },
-        "summary": "List submitted feedback",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List submitted feedback and reports",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/admin/feedback/{id}": {
+      "get": {
+        "description": "Minimum role: REVIEWER. The only response that carries notes. Notes are internal and are never part of any public response.",
+        "operationId": "AdminController_getFeedbackDetail",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminFeedbackDetailDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "id is not a UUID"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "403": {
+            "description": "The user is below the REVIEWER role"
+          },
+          "404": {
+            "description": "Feedback not found"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get one feedback entry with its internal notes",
+        "tags": [
+          "Admin"
+        ]
+      },
+      "patch": {
+        "description": "Minimum role: REVIEWER. Status and resolution change together. RESOLVED needs a resolution (FIXED or NOT_AN_ISSUE). Any other status clears it, and sending one with another status is rejected. Returns the admin detail with notes.",
+        "operationId": "AdminController_updateFeedback",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateFeedbackDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminFeedbackDetailDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "id is not a UUID, a value is invalid, RESOLUTION_REQUIRED or RESOLUTION_NOT_ALLOWED"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "403": {
+            "description": "The user is below the REVIEWER role"
+          },
+          "404": {
+            "description": "Feedback not found"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Set the status and resolution of a feedback entry",
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/admin/feedback/{id}/notes": {
+      "post": {
+        "description": "Minimum role: REVIEWER. Notes are internal: they appear only in admin responses and never in a public one.",
+        "operationId": "AdminController_addNote",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateFeedbackNoteDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackNoteDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "id is not a UUID or body is empty or longer than 2000"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "403": {
+            "description": "The user is below the REVIEWER role"
+          },
+          "404": {
+            "description": "Feedback not found"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Add an internal note to a feedback entry",
         "tags": [
           "Admin"
         ]
@@ -1840,6 +2048,8 @@
     },
     "/admin/feedback/{id}/status": {
       "patch": {
+        "deprecated": true,
+        "description": "Deprecated: use PATCH /admin/feedback/{id}, which sets the status and resolution together. Minimum role: REVIEWER.",
         "operationId": "AdminController_updateFeedbackStatus",
         "parameters": [
           {
@@ -1879,12 +2089,17 @@
             "description": "Access token missing or invalid"
           },
           "403": {
-            "description": "The user is not an editor or admin"
+            "description": "The user is below the REVIEWER role"
           },
           "404": {
             "description": "Feedback not found"
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "summary": "Update the review status of a feedback entry",
         "tags": [
           "Admin"
@@ -2680,17 +2895,100 @@
           "firstName": {
             "type": "string",
             "example": "Ada",
-            "description": "First name, 1 to 100 characters."
+            "description": "First name, 1 to 100 characters. Cannot be null."
           },
           "lastName": {
             "type": "string",
+            "nullable": true,
             "example": "Obi",
             "description": "Last name, 1 to 100 characters."
+          },
+          "avatarUrl": {
+            "type": "string",
+            "nullable": true,
+            "example": "https://res.cloudinary.com/pathway/image/upload/v1/avatars/123e4567-e89b-12d3-a456-426614174000/photo.jpg",
+            "description": "Cloudinary URL from the signed avatar upload, in the user's own avatars folder."
+          },
+          "careerStage": {
+            "type": "string",
+            "enum": [
+              "STUDENT",
+              "RECENT_GRAD",
+              "EARLY_CAREER"
+            ],
+            "nullable": true,
+            "example": "STUDENT"
+          },
+          "educationLevel": {
+            "type": "string",
+            "enum": [
+              "SECONDARY_SCHOOL",
+              "DIPLOMA",
+              "BACHELOR_IN_PROGRESS",
+              "BACHELOR",
+              "MASTERS",
+              "OTHER"
+            ],
+            "nullable": true,
+            "example": "BACHELOR_IN_PROGRESS"
+          },
+          "internshipCount": {
+            "type": "string",
+            "enum": [
+              "NONE",
+              "ONE",
+              "TWO",
+              "THREE_PLUS"
+            ],
+            "nullable": true,
+            "example": "ONE"
+          },
+          "experienceYears": {
+            "type": "string",
+            "enum": [
+              "ZERO",
+              "UNDER_ONE",
+              "ONE_TO_TWO",
+              "THREE_PLUS"
+            ],
+            "nullable": true,
+            "example": "UNDER_ONE"
+          },
+          "learningGoals": {
+            "nullable": true,
+            "example": [
+              "Land a first internship"
+            ],
+            "description": "Up to 10 goals, 1 to 100 characters each. Null clears the list.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "weeklyTimeCommitment": {
+            "type": "string",
+            "nullable": true,
+            "example": "5-10 hours a week",
+            "description": "1 to 50 characters."
+          },
+          "careerInterests": {
+            "nullable": true,
+            "example": [
+              "software-engineering",
+              "design"
+            ],
+            "description": "Field slugs from GET /fields, up to 20, no duplicates. Null clears the list.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "analyticsEnabled": {
+            "type": "boolean",
+            "example": false,
+            "description": "Usage analytics opt-in. Cannot be null."
           }
-        },
-        "required": [
-          "firstName"
-        ]
+        }
       },
       "UserResponseDto": {
         "type": "object",
@@ -2729,6 +3027,81 @@
           "createdAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "avatarUrl": {
+            "type": "string",
+            "nullable": true,
+            "example": "https://res.cloudinary.com/pathway/image/upload/v1/avatars/123e4567-e89b-12d3-a456-426614174000/photo.jpg"
+          },
+          "careerStage": {
+            "type": "string",
+            "enum": [
+              "STUDENT",
+              "RECENT_GRAD",
+              "EARLY_CAREER"
+            ],
+            "nullable": true,
+            "example": null
+          },
+          "educationLevel": {
+            "type": "string",
+            "enum": [
+              "SECONDARY_SCHOOL",
+              "DIPLOMA",
+              "BACHELOR_IN_PROGRESS",
+              "BACHELOR",
+              "MASTERS",
+              "OTHER"
+            ],
+            "nullable": true,
+            "example": null
+          },
+          "internshipCount": {
+            "type": "string",
+            "enum": [
+              "NONE",
+              "ONE",
+              "TWO",
+              "THREE_PLUS"
+            ],
+            "nullable": true,
+            "example": null
+          },
+          "experienceYears": {
+            "type": "string",
+            "enum": [
+              "ZERO",
+              "UNDER_ONE",
+              "ONE_TO_TWO",
+              "THREE_PLUS"
+            ],
+            "nullable": true,
+            "example": null
+          },
+          "learningGoals": {
+            "example": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "weeklyTimeCommitment": {
+            "type": "string",
+            "nullable": true,
+            "example": null
+          },
+          "careerInterests": {
+            "example": [
+              "software-engineering"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "analyticsEnabled": {
+            "type": "boolean",
+            "example": true
           }
         },
         "required": [
@@ -2739,7 +3112,16 @@
           "lastName",
           "fullName",
           "emailVerified",
-          "createdAt"
+          "createdAt",
+          "avatarUrl",
+          "careerStage",
+          "educationLevel",
+          "internshipCount",
+          "experienceYears",
+          "learningGoals",
+          "weeklyTimeCommitment",
+          "careerInterests",
+          "analyticsEnabled"
         ]
       },
       "RegisterDto": {
@@ -3403,6 +3785,25 @@
             "type": "string",
             "nullable": true
           },
+          "period": {
+            "type": "string",
+            "example": "May 2024"
+          },
+          "median": {
+            "type": "string",
+            "nullable": true,
+            "example": "95000.00"
+          },
+          "percentile25": {
+            "type": "string",
+            "nullable": true,
+            "example": "75000.00"
+          },
+          "percentile75": {
+            "type": "string",
+            "nullable": true,
+            "example": "120000.00"
+          },
           "currency": {
             "type": "string",
             "nullable": true,
@@ -3459,6 +3860,10 @@
           "type",
           "geography",
           "sourceId",
+          "period",
+          "median",
+          "percentile25",
+          "percentile75",
           "currency",
           "payPeriod",
           "grossOrNet",
@@ -5226,9 +5631,30 @@
             "default": "GENERAL",
             "example": "RESOURCES"
           },
+          "targetType": {
+            "type": "string",
+            "enum": [
+              "CAREER",
+              "PATHWAY",
+              "PATHWAY_STAGE",
+              "PATHWAY_STEP",
+              "RESOURCE",
+              "TASK",
+              "OUTLOOK",
+              "CERTIFICATION",
+              "OTHER"
+            ],
+            "example": "PATHWAY_STEP",
+            "description": "What the report is about. A certification is reported as CERTIFICATION. When omitted it is CAREER if only careerId is sent, otherwise OTHER."
+          },
+          "targetId": {
+            "type": "string",
+            "description": "Id of the item named by targetType. Required unless targetType is OTHER, which needs none and ignores it. The item must exist and be visible.",
+            "format": "uuid"
+          },
           "careerId": {
             "type": "string",
-            "description": "Career the feedback is about. Required unless section is GENERAL, and must match an existing career.",
+            "description": "Career the feedback is about. Without a targetType it is required unless section is GENERAL, and it is read as the target. With a targetType it is optional context, and must match an existing career.",
             "format": "uuid"
           },
           "userEmail": {
@@ -5262,6 +5688,379 @@
         },
         "required": [
           "message"
+        ]
+      },
+      "FeedbackTargetDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "CAREER",
+              "PATHWAY",
+              "PATHWAY_STAGE",
+              "PATHWAY_STEP",
+              "RESOURCE",
+              "TASK",
+              "OUTLOOK",
+              "CERTIFICATION",
+              "OTHER"
+            ],
+            "example": "PATHWAY_STEP"
+          },
+          "id": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid",
+            "description": "Null for OTHER"
+          },
+          "label": {
+            "type": "string",
+            "nullable": true,
+            "example": "Step 3: SQL basics",
+            "description": "The title of the item. Null for OTHER, or when the item no longer exists (reports keep no foreign key to their target)."
+          }
+        },
+        "required": [
+          "type",
+          "id",
+          "label"
+        ]
+      },
+      "AdminFeedbackListItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "INCORRECT_CONTENT",
+              "BROKEN_LINK",
+              "USABILITY",
+              "OTHER"
+            ],
+            "example": "BROKEN_LINK"
+          },
+          "section": {
+            "type": "string",
+            "enum": [
+              "CAREER_DETAILS",
+              "OUTLOOK",
+              "PATHWAY",
+              "RESOURCES",
+              "GENERAL"
+            ],
+            "example": "RESOURCES"
+          },
+          "careerId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          },
+          "description": {
+            "type": "string",
+            "example": "The link on step 3 returns a 404."
+          },
+          "userEmail": {
+            "type": "string",
+            "nullable": true,
+            "example": "user@example.com"
+          },
+          "platform": {
+            "type": "string",
+            "enum": [
+              "WEB",
+              "IOS",
+              "ANDROID"
+            ],
+            "nullable": true,
+            "example": "WEB"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "NEW",
+              "UNDER_REVIEW",
+              "RESOLVED"
+            ],
+            "example": "NEW"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "resolution": {
+            "type": "string",
+            "enum": [
+              "FIXED",
+              "NOT_AN_ISSUE"
+            ],
+            "nullable": true,
+            "description": "Set only when the status is RESOLVED"
+          },
+          "snippet": {
+            "type": "string",
+            "example": "The link on step 3 returns a 404.",
+            "description": "The start of the description, up to 120 characters, for the table"
+          },
+          "target": {
+            "$ref": "#/components/schemas/FeedbackTargetDto"
+          }
+        },
+        "required": [
+          "id",
+          "category",
+          "section",
+          "careerId",
+          "description",
+          "userEmail",
+          "platform",
+          "status",
+          "createdAt",
+          "updatedAt",
+          "resolution",
+          "snippet",
+          "target"
+        ]
+      },
+      "FeedbackListResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminFeedbackListItemDto"
+            }
+          },
+          "total": {
+            "type": "number",
+            "example": 42,
+            "description": "Total matching feedback entries"
+          },
+          "page": {
+            "type": "number",
+            "example": 1
+          },
+          "limit": {
+            "type": "number",
+            "example": 20
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "limit"
+        ]
+      },
+      "FeedbackNoteDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "feedbackId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "authorId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The staff member who wrote it"
+          },
+          "body": {
+            "type": "string",
+            "example": "Checked with the content team, fixing today."
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "feedbackId",
+          "authorId",
+          "body",
+          "createdAt"
+        ]
+      },
+      "AdminFeedbackDetailDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "INCORRECT_CONTENT",
+              "BROKEN_LINK",
+              "USABILITY",
+              "OTHER"
+            ],
+            "example": "BROKEN_LINK"
+          },
+          "section": {
+            "type": "string",
+            "enum": [
+              "CAREER_DETAILS",
+              "OUTLOOK",
+              "PATHWAY",
+              "RESOURCES",
+              "GENERAL"
+            ],
+            "example": "RESOURCES"
+          },
+          "careerId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          },
+          "description": {
+            "type": "string",
+            "example": "The link on step 3 returns a 404."
+          },
+          "userEmail": {
+            "type": "string",
+            "nullable": true,
+            "example": "user@example.com"
+          },
+          "platform": {
+            "type": "string",
+            "enum": [
+              "WEB",
+              "IOS",
+              "ANDROID"
+            ],
+            "nullable": true,
+            "example": "WEB"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "NEW",
+              "UNDER_REVIEW",
+              "RESOLVED"
+            ],
+            "example": "NEW"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "resolution": {
+            "type": "string",
+            "enum": [
+              "FIXED",
+              "NOT_AN_ISSUE"
+            ],
+            "nullable": true,
+            "description": "Set only when the status is RESOLVED"
+          },
+          "snippet": {
+            "type": "string",
+            "example": "The link on step 3 returns a 404.",
+            "description": "The start of the description, up to 120 characters, for the table"
+          },
+          "target": {
+            "$ref": "#/components/schemas/FeedbackTargetDto"
+          },
+          "notes": {
+            "description": "Internal notes, oldest first",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FeedbackNoteDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "category",
+          "section",
+          "careerId",
+          "description",
+          "userEmail",
+          "platform",
+          "status",
+          "createdAt",
+          "updatedAt",
+          "resolution",
+          "snippet",
+          "target",
+          "notes"
+        ]
+      },
+      "UpdateFeedbackDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "NEW",
+              "UNDER_REVIEW",
+              "RESOLVED"
+            ],
+            "example": "RESOLVED"
+          },
+          "resolution": {
+            "type": "string",
+            "enum": [
+              "FIXED",
+              "NOT_AN_ISSUE"
+            ],
+            "nullable": true,
+            "example": "FIXED",
+            "description": "Required when status is RESOLVED. Not allowed with any other status, which clears it."
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "CreateFeedbackNoteDto": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "string",
+            "example": "Checked with the content team, fixing today.",
+            "description": "An internal note, never shown to users. 1 to 2000 characters.",
+            "minLength": 1,
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "body"
+        ]
+      },
+      "UpdateFeedbackStatusDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "NEW",
+              "UNDER_REVIEW",
+              "RESOLVED"
+            ],
+            "example": "UNDER_REVIEW"
+          }
+        },
+        "required": [
+          "status"
         ]
       },
       "FeedbackResponseDto": {
@@ -5345,53 +6144,6 @@
           "status",
           "createdAt",
           "updatedAt"
-        ]
-      },
-      "FeedbackListResponseDto": {
-        "type": "object",
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/FeedbackResponseDto"
-            }
-          },
-          "total": {
-            "type": "number",
-            "example": 42,
-            "description": "Total matching feedback entries"
-          },
-          "page": {
-            "type": "number",
-            "example": 1
-          },
-          "limit": {
-            "type": "number",
-            "example": 20
-          }
-        },
-        "required": [
-          "items",
-          "total",
-          "page",
-          "limit"
-        ]
-      },
-      "UpdateFeedbackStatusDto": {
-        "type": "object",
-        "properties": {
-          "status": {
-            "type": "string",
-            "enum": [
-              "NEW",
-              "UNDER_REVIEW",
-              "RESOLVED"
-            ],
-            "example": "UNDER_REVIEW"
-          }
-        },
-        "required": [
-          "status"
         ]
       },
       "SnapshotCareerDto": {
