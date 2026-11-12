@@ -25,6 +25,18 @@ import { DomainException } from '../common';
 const sha256 = (value: string) =>
   createHash('sha256').update(value).digest('hex');
 
+const PROFILE_SHAPE_DEFAULTS = {
+  avatarUrl: null,
+  careerStage: null,
+  educationLevel: null,
+  internshipCount: null,
+  experienceYears: null,
+  learningGoals: [],
+  weeklyTimeCommitment: null,
+  careerInterests: [],
+  analyticsEnabled: true,
+};
+
 describe('AuthService', () => {
   let service: AuthService;
 
@@ -167,6 +179,7 @@ describe('AuthService', () => {
       emailVerifiedAt: createdAt,
       createdAt,
       updatedAt: createdAt,
+      analyticsEnabled: true,
       profile: { fullName: 'Ada Obi', firstName: 'Ada', lastName: 'Obi' },
     };
     let logSpy: jest.SpiedFunction<Logger['log']>;
@@ -229,6 +242,7 @@ describe('AuthService', () => {
           fullName: 'Ada Obi',
           emailVerified: true,
           createdAt,
+          ...PROFILE_SHAPE_DEFAULTS,
         },
         tokens: { accessToken: 'mock-token', refreshToken: 'mock-token' },
       });
@@ -338,6 +352,7 @@ describe('AuthService', () => {
       emailVerifiedAt: null,
       createdAt,
       updatedAt: createdAt,
+      analyticsEnabled: true,
       profile: { fullName: 'Ada Obi', firstName: 'Ada', lastName: 'Obi' },
     };
 
@@ -491,6 +506,7 @@ describe('AuthService', () => {
         passwordHash: hashedPassword,
         role: Role.USER,
         emailVerifiedAt: createdAt,
+        analyticsEnabled: true,
         createdAt,
         updatedAt: createdAt,
         profile: null,
@@ -513,6 +529,7 @@ describe('AuthService', () => {
           fullName: null,
           emailVerified: true,
           createdAt,
+          ...PROFILE_SHAPE_DEFAULTS,
         },
         tokens: {
           accessToken: 'mock-token',
@@ -540,6 +557,7 @@ describe('AuthService', () => {
       emailVerifiedAt,
       createdAt,
       updatedAt: createdAt,
+      analyticsEnabled: true,
       profile: { fullName: 'Ada Obi', firstName: 'Ada', lastName: 'Obi' },
     });
 
@@ -581,6 +599,7 @@ describe('AuthService', () => {
             fullName: 'Ada Obi',
             emailVerified: true,
             createdAt,
+            ...PROFILE_SHAPE_DEFAULTS,
           },
           tokens: { accessToken: 'mock-token', refreshToken: 'mock-token' },
         });
@@ -680,6 +699,7 @@ describe('AuthService', () => {
       emailVerifiedAt: null,
       createdAt,
       updatedAt: createdAt,
+      analyticsEnabled: true,
       profile: { fullName: 'Ada Obi', firstName: 'Ada', lastName: 'Obi' },
     };
 
@@ -743,6 +763,7 @@ describe('AuthService', () => {
           fullName: 'Ada Obi',
           emailVerified: true,
           createdAt,
+          ...PROFILE_SHAPE_DEFAULTS,
         },
         tokens: {
           accessToken: 'mock-token',
@@ -963,6 +984,7 @@ describe('AuthService', () => {
         emailVerifiedAt: null,
         createdAt,
         updatedAt: createdAt,
+        analyticsEnabled: true,
         profile: { fullName: 'Ada Obi', firstName: 'Ada', lastName: 'Obi' },
       });
 
@@ -975,6 +997,7 @@ describe('AuthService', () => {
         fullName: 'Ada Obi',
         emailVerified: false,
         createdAt,
+        ...PROFILE_SHAPE_DEFAULTS,
       });
       expect(mockUsersService.findById).toHaveBeenCalledWith('user-1');
     });
@@ -1655,6 +1678,7 @@ describe('AuthService', () => {
           emailVerifiedAt: createdAt,
           createdAt,
           updatedAt: createdAt,
+          analyticsEnabled: true,
           profile: { fullName: 'Ada Obi', firstName: 'Ada', lastName: 'Obi' },
         },
       };
@@ -1673,6 +1697,7 @@ describe('AuthService', () => {
           fullName: 'Ada Obi',
           emailVerified: true,
           createdAt,
+          ...PROFILE_SHAPE_DEFAULTS,
         },
         tokens: {
           accessToken: 'mock-token',
@@ -1694,6 +1719,7 @@ describe('AuthService', () => {
         ...existingUnverifiedUser,
         passwordHash: null,
         emailVerifiedAt: new Date(),
+        analyticsEnabled: true,
         profile: { fullName: 'Ada Obi', firstName: 'Ada', lastName: 'Obi' },
       };
 
@@ -1739,6 +1765,7 @@ describe('AuthService', () => {
         emailVerifiedAt: createdAt,
         createdAt,
         updatedAt: createdAt,
+        analyticsEnabled: true,
         profile: { fullName: 'Ada Obi', firstName: 'Ada', lastName: 'Obi' },
       };
 
@@ -1962,6 +1989,7 @@ describe('AuthService', () => {
         emailVerifiedAt: null,
         createdAt,
         updatedAt: createdAt,
+        analyticsEnabled: true,
         profile: { fullName: 'Ada Obi', firstName: 'Ada', lastName: 'Obi' },
       });
       mockPrismaService.emailVerificationOtp.updateMany.mockResolvedValue({
@@ -2102,6 +2130,7 @@ describe('AuthService', () => {
       emailVerifiedAt: createdAt,
       createdAt,
       updatedAt: createdAt,
+      analyticsEnabled: true,
       profile: { fullName: 'Ada Obi', firstName: 'Ada', lastName: 'Obi' },
     };
 

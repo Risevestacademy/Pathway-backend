@@ -1,8 +1,10 @@
+import { jest } from '@jest/globals';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 
+import { AnalyticsService } from '../../src/analytics';
 import { AppModule } from '../../src/app.module';
 import { apiPrefix as resolveApiPrefix, configureApp } from '../../src/common';
 import { EnvironmentVariables } from '../../src/config';
@@ -82,14 +84,23 @@ describe('Users (e2e)', () => {
       .expect(200);
 
     expect(Object.keys(response.body).sort()).toEqual([
+      'analyticsEnabled',
+      'avatarUrl',
+      'careerInterests',
+      'careerStage',
       'createdAt',
+      'educationLevel',
       'email',
       'emailVerified',
+      'experienceYears',
       'firstName',
       'fullName',
       'id',
+      'internshipCount',
       'lastName',
+      'learningGoals',
       'role',
+      'weeklyTimeCommitment',
     ]);
     expect(response.body).toMatchObject({
       id: userId,
@@ -135,8 +146,16 @@ describe('Users (e2e)', () => {
     expect(me.body).toEqual(response.body);
   });
 
+  it('keeps the stored names when firstName is omitted', async () => {
+    await patchMe().send({ firstName: 'Ada', lastName: 'Obi' }).expect(200);
+
+    const response = await patchMe().send({}).expect(200);
+
+    expect(response.body).toMatchObject({ firstName: 'Ada', lastName: 'Obi' });
+  });
+
   it.each([
-    ['missing', {}],
+    ['null', { firstName: null }],
     ['blank', { firstName: '   ' }],
     ['over 100 characters', { firstName: 'a'.repeat(101) }],
     ['not a string', { firstName: 42 }],
@@ -167,6 +186,191 @@ describe('Users (e2e)', () => {
       where: { userId: otherUserId },
     });
     expect(otherProfile?.firstName ?? null).not.toBe('Mallory');
+  });
+
+  describe('onboarding and settings fields', () => {
+    const avatarUrl = () => {
+      const cloudName = app
+        .get<ConfigService<EnvironmentVariables, true>>(ConfigService)
+        .get('CLOUDINARY_CLOUD_NAME', { infer: true });
+      return `https://res.cloudinary.com/${cloudName}/image/upload/v1/avatars/${userId}/photo.jpg`;
+    };
+
+    const fullPayload = () => ({
+      firstName: 'Ada',
+      lastName: 'Obi',
+      avatarUrl: avatarUrl(),
+      careerStage: 'RECENT_GRAD',
+      educationLevel: 'BACHELOR',
+      internshipCount: 'ONE',
+      experienceYears: 'UNDER_ONE',
+      learningGoals: ['Land a first internship', 'Build a portfolio'],
+      weeklyTimeCommitment: '5-10 hours a week',
+      careerInterests: ['software-engineering', 'design'],
+      analyticsEnabled: false,
+    });
+
+    afterEach(async () => {
+      await prisma.user.update({
+        where: { id: userId },
+        data: { analyticsEnabled: true },
+      });
+    });
+
+    it('saves a full payload and returns it', async () => {
+      const payload = fullPayload();
+
+      const response = await patchMe().send(payload).expect(200);
+
+      expect(response.body).toMatchObject({
+        ...payload,
+        fullName: 'Ada Obi',
+      });
+
+      const stored = await prisma.user.findUnique({
+        where: { id: userId },
+        include: { profile: true },
+      });
+      const { analyticsEnabled, ...profileFields } = payload;
+      expect(stored?.analyticsEnabled).toBe(analyticsEnabled);
+      expect(stored?.profile).toMatchObject(profileFields);
+    });
+
+    it('changes only the fields sent', async () => {
+      await patchMe().send(fullPayload()).expect(200);
+
+      const response = await patchMe()
+        .send({ educationLevel: 'MASTERS' })
+        .expect(200);
+
+      expect(response.body).toMatchObject({
+        ...fullPayload(),
+        educationLevel: 'MASTERS',
+      });
+    });
+
+    it('clears fields sent as null', async () => {
+      await patchMe().send(fullPayload()).expect(200);
+
+      const response = await patchMe()
+        .send({
+          lastName: null,
+          avatarUrl: null,
+          careerStage: null,
+          educationLevel: null,
+          internshipCount: null,
+          experienceYears: null,
+          learningGoals: null,
+          weeklyTimeCommitment: null,
+          careerInterests: null,
+        })
+        .expect(200);
+
+      expect(response.body).toMatchObject({
+        firstName: 'Ada',
+        lastName: null,
+        fullName: 'Ada',
+        avatarUrl: null,
+        careerStage: null,
+        educationLevel: null,
+        internshipCount: null,
+        experienceYears: null,
+        learningGoals: [],
+        weeklyTimeCommitment: null,
+        careerInterests: [],
+      });
+    });
+
+    it.each([
+      ['an invalid enum', { educationLevel: 'PHD' }, 'educationLevel'],
+      ['a null analytics flag', { analyticsEnabled: null }, 'analyticsEnabled'],
+      [
+        'too many goals',
+        { learningGoals: Array.from({ length: 11 }, (_, i) => `Goal ${i}`) },
+        'learningGoals',
+      ],
+      [
+        'duplicate interests',
+        { careerInterests: ['design', 'design'] },
+        'careerInterests',
+      ],
+    ])('rejects %s with 400 and saves nothing', async (_label, body, field) => {
+      const before = await prisma.userProfile.findUnique({
+        where: { userId },
+      });
+
+      const response = await patchMe()
+        .send({ ...body, weeklyTimeCommitment: 'changed' })
+        .expect(400);
+
+      expect(response.body.error).toBe('VALIDATION_ERROR');
+      expect(response.body.fields).toHaveProperty(field);
+      await expect(
+        prisma.userProfile.findUnique({ where: { userId } }),
+      ).resolves.toEqual(before);
+    });
+
+    it('rejects an unknown field slug with 400 and saves nothing', async () => {
+      await patchMe()
+        .send({ careerInterests: ['design'] })
+        .expect(200);
+
+      const response = await patchMe()
+        .send({ careerInterests: ['design', 'astrology'] })
+        .expect(400);
+
+      expect(response.body).toMatchObject({
+        code: 'UNKNOWN_CAREER_INTEREST',
+        details: { slugs: ['astrology'] },
+      });
+      const profile = await prisma.userProfile.findUnique({
+        where: { userId },
+      });
+      expect(profile?.careerInterests).toEqual(['design']);
+    });
+
+    it("rejects an avatar URL in another user's folder", async () => {
+      const response = await patchMe()
+        .send({ avatarUrl: avatarUrl().replace(userId, otherUserId) })
+        .expect(400);
+
+      expect(response.body.code).toBe('INVALID_AVATAR_URL');
+    });
+
+    describe('analytics opt-out', () => {
+      let invalidateUser: jest.SpiedFunction<
+        AnalyticsService['invalidateUser']
+      >;
+
+      beforeEach(() => {
+        invalidateUser = jest.spyOn(
+          app.get(AnalyticsService),
+          'invalidateUser',
+        );
+      });
+
+      afterEach(() => {
+        invalidateUser.mockRestore();
+      });
+
+      it('saves the change and clears the cached flag for the next event', async () => {
+        await patchMe().send({ analyticsEnabled: false }).expect(200);
+
+        const user = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { analyticsEnabled: true },
+        });
+        expect(user?.analyticsEnabled).toBe(false);
+        expect(invalidateUser).toHaveBeenCalledTimes(1);
+        expect(invalidateUser).toHaveBeenCalledWith(userId);
+      });
+
+      it('leaves the cache alone when the flag is sent unchanged', async () => {
+        await patchMe().send({ analyticsEnabled: true }).expect(200);
+
+        expect(invalidateUser).not.toHaveBeenCalled();
+      });
+    });
   });
 
   it('returns 401 without an access token', async () => {
