@@ -8,8 +8,13 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { JwtAuthGuard, Roles, RolesGuard } from '../common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { JwtAuthGuard, MinRole, RolesGuard } from '../common';
 import { Role } from '../generated/prisma/client';
 import { FeedbackService } from './feedback.service';
 import { GetFeedbackQueryDto } from './dto/get-feedback-query.dto';
@@ -18,24 +23,25 @@ import { FeedbackResponseDto } from './dto/feedback-response.dto';
 import { FeedbackListResponseDto } from './dto/feedback-list-response.dto';
 
 @ApiTags('Admin')
+@ApiBearerAuth()
 @Controller('admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.EDITOR, Role.ADMIN)
 export class AdminController {
   constructor(private readonly feedbackService: FeedbackService) {}
 
   @ApiOperation({
-    summary: 'List submitted feedback',
+    summary: 'List submitted feedback and reports',
     description:
-      'Newest first. Filter by status or career, paginated with page and limit.',
+      'Minimum role: REVIEWER. Newest first, paginated with page and limit. Filter by status, category, targetType or career. Each item has what the Reports table needs: a description snippet, the target with its title, the reporter email and the date. The full description and the internal notes are not part of the list.',
   })
   @ApiResponse({ status: 200, type: FeedbackListResponseDto })
   @ApiResponse({ status: 400, description: 'A query parameter is invalid' })
   @ApiResponse({ status: 401, description: 'Access token missing or invalid' })
   @ApiResponse({
     status: 403,
-    description: 'The user is not an editor or admin',
+    description: 'The user is below the REVIEWER role',
   })
+  @MinRole(Role.REVIEWER)
   @Get('feedback')
   async getFeedback(
     @Query() query: GetFeedbackQueryDto,
@@ -43,7 +49,10 @@ export class AdminController {
     return this.feedbackService.getFeedback(query);
   }
 
-  @ApiOperation({ summary: 'Update the review status of a feedback entry' })
+  @ApiOperation({
+    summary: 'Update the review status of a feedback entry',
+    description: 'Minimum role: REVIEWER.',
+  })
   @ApiResponse({ status: 200, type: FeedbackResponseDto })
   @ApiResponse({
     status: 400,
@@ -52,9 +61,10 @@ export class AdminController {
   @ApiResponse({ status: 401, description: 'Access token missing or invalid' })
   @ApiResponse({
     status: 403,
-    description: 'The user is not an editor or admin',
+    description: 'The user is below the REVIEWER role',
   })
   @ApiResponse({ status: 404, description: 'Feedback not found' })
+  @MinRole(Role.REVIEWER)
   @Patch('feedback/:id/status')
   async updateFeedbackStatus(
     @Param('id', ParseUUIDPipe) id: string,

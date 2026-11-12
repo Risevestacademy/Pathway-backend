@@ -14,6 +14,7 @@ import {
   FeedbackCategory,
   FeedbackPlatform,
   FeedbackSection,
+  FeedbackTargetType,
 } from '../../generated/prisma/client';
 
 export class CreateFeedbackDto {
@@ -44,13 +45,43 @@ export class CreateFeedbackDto {
   section: FeedbackSection = FeedbackSection.GENERAL;
 
   @ApiPropertyOptional({
+    enum: FeedbackTargetType,
+    example: 'PATHWAY_STEP',
     description:
-      'Career the feedback is about. Required unless section is GENERAL, and must match an existing career.',
+      'What the report is about. A certification is reported as CERTIFICATION. When omitted it is CAREER if only careerId is sent, otherwise OTHER.',
+  })
+  @ValidateIf((_dto, value) => value !== undefined)
+  @IsEnum(FeedbackTargetType)
+  targetType?: FeedbackTargetType;
+
+  @ApiPropertyOptional({
+    description:
+      'Id of the item named by targetType. Required unless targetType is OTHER, which needs none and ignores it. The item must exist and be visible.',
     format: 'uuid',
   })
   @ValidateIf(
     (dto: CreateFeedbackDto) =>
-      dto.careerId !== undefined || dto.section !== FeedbackSection.GENERAL,
+      dto.targetId !== undefined ||
+      (dto.targetType !== undefined &&
+        dto.targetType !== FeedbackTargetType.OTHER),
+  )
+  @IsUUID('all', {
+    message: ({ value }) =>
+      value === undefined
+        ? 'targetId is required when targetType is not OTHER'
+        : 'targetId must be a UUID',
+  })
+  targetId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Career the feedback is about. Without a targetType it is required unless section is GENERAL, and it is read as the target. With a targetType it is optional context, and must match an existing career.',
+    format: 'uuid',
+  })
+  @ValidateIf(
+    (dto: CreateFeedbackDto) =>
+      dto.careerId !== undefined ||
+      (dto.section !== FeedbackSection.GENERAL && dto.targetType === undefined),
   )
   @IsUUID('all', {
     message: ({ value }) =>

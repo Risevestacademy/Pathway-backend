@@ -22,8 +22,16 @@ import { FeedbackResponseDto } from './dto/feedback-response.dto';
 import { FeedbackListResponseDto } from './dto/feedback-list-response.dto';
 import { FeedbackNoteDto } from './dto/feedback-note.dto';
 import {
+  buildFeedbackListWhere,
+  FEEDBACK_LIST_SELECT,
+  type FeedbackListRow,
+  targetKey,
+  toAdminFeedbackListItem,
+} from './feedback-list';
+import {
   type FeedbackUpdateFailure,
   type FeedbackUpdateInput,
+  resolveFeedbackTarget,
   resolveStatusUpdate,
 } from './feedback.rules';
 
@@ -54,6 +62,16 @@ const UPDATE_FAILURE_MESSAGES: Record<FeedbackUpdateFailure, string> = {
 
 const PUBLISHED_CAREER = { status: CareerStatus.PUBLISHED };
 
+type LabelledTargetType = Exclude<FeedbackTargetType, 'OTHER'>;
+
+interface TargetLabel {
+  id: string;
+  label: string;
+}
+
+const byTitle = (rows: { id: string; title: string }[]): TargetLabel[] =>
+  rows.map(({ id, title }) => ({ id, label: title }));
+
 @Injectable()
 export class FeedbackService {
   private readonly logger = new Logger(FeedbackService.name);
@@ -63,8 +81,12 @@ export class FeedbackService {
   async submitFeedback(
     dto: CreateFeedbackDto,
   ): Promise<CreateFeedbackResponseDto> {
+    const { targetType, targetId } = resolveFeedbackTarget(dto);
+    await this.assertTargetVisible(targetType, targetId);
+
+    let created: { id: string };
     try {
-      await this.prisma.contentFeedback.create({
+      created = await this.prisma.contentFeedback.create({
         data: {
           category: dto.category,
           description: dto.description,
@@ -72,6 +94,8 @@ export class FeedbackService {
           careerId: dto.careerId,
           userEmail: dto.userEmail,
           platform: dto.platform,
+          targetType,
+          targetId,
         },
         select: { id: true },
       });
@@ -90,24 +114,23 @@ export class FeedbackService {
     }
 
     this.logger.log(
-      { category: dto.category, section: dto.section, careerId: dto.careerId },
+      { feedbackId: created.id, targetType },
       'Feedback submitted',
     );
 
     return { message: 'Feedback received' };
   }
 
-  async getFeedback({
-    status,
-    careerId,
-    page,
-    limit,
-  }: GetFeedbackQueryDto): Promise<FeedbackListResponseDto> {
-    const where: Prisma.ContentFeedbackWhereInput = { status, careerId };
+  async getFeedback(
+    query: GetFeedbackQueryDto,
+  ): Promise<FeedbackListResponseDto> {
+    const { page, limit } = query;
+    const where = buildFeedbackListWhere(query);
 
-    const [items, total] = await this.prisma.$transaction([
+    const [rows, total] = await this.prisma.$transaction([
       this.prisma.contentFeedback.findMany({
         where,
+        select: FEEDBACK_LIST_SELECT,
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         skip: (page - 1) * limit,
         take: limit,
@@ -115,7 +138,21 @@ export class FeedbackService {
       this.prisma.contentFeedback.count({ where }),
     ]);
 
-    return { items, total, page, limit };
+    const labels = await this.loadTargetLabels(rows);
+
+    return {
+      items: rows.map((row) =>
+        toAdminFeedbackListItem(
+          row,
+          row.targetType && row.targetId
+            ? (labels.get(targetKey(row.targetType, row.targetId)) ?? null)
+            : null,
+        ),
+      ),
+      total,
+      page,
+      limit,
+    };
   }
 
   async updateFeedbackStatus(
@@ -242,6 +279,81 @@ export class FeedbackService {
     this.logger.log({ feedbackId, actorId }, 'Feedback note added');
 
     return note;
+  }
+
+  // Reports keep no foreign key to their target, so labels are looked up per
+  // type for the whole page: one query per type that appears, never per row.
+  private async loadTargetLabels(
+    rows: FeedbackListRow[],
+  ): Promise<Map<string, string>> {
+    const idsByType = new Map<LabelledTargetType, Set<string>>();
+    for (const { targetType, targetId } of rows) {
+      if (!targetType || !targetId || targetType === FeedbackTargetType.OTHER) {
+        continue;
+      }
+      const ids = idsByType.get(targetType) ?? new Set<string>();
+      ids.add(targetId);
+      idsByType.set(targetType, ids);
+    }
+
+    const labels = new Map<string, string>();
+    await Promise.all(
+      [...idsByType].map(async ([type, ids]) => {
+        for (const { id, label } of await this.findTargetLabels(type, [
+          ...ids,
+        ])) {
+          labels.set(targetKey(type, id), label);
+        }
+      }),
+    );
+
+    return labels;
+  }
+
+  private async findTargetLabels(
+    targetType: LabelledTargetType,
+    ids: string[],
+  ): Promise<TargetLabel[]> {
+    const where = { id: { in: ids } };
+    const title = { id: true, title: true };
+
+    switch (targetType) {
+      case FeedbackTargetType.CAREER:
+        return byTitle(
+          await this.prisma.career.findMany({ where, select: title }),
+        );
+      case FeedbackTargetType.PATHWAY:
+        return byTitle(
+          await this.prisma.pathway.findMany({ where, select: title }),
+        );
+      case FeedbackTargetType.PATHWAY_STAGE:
+        return byTitle(
+          await this.prisma.pathwayStage.findMany({ where, select: title }),
+        );
+      case FeedbackTargetType.PATHWAY_STEP:
+        return byTitle(
+          await this.prisma.pathwayStep.findMany({ where, select: title }),
+        );
+      case FeedbackTargetType.TASK:
+        return byTitle(
+          await this.prisma.pathwayStepTask.findMany({ where, select: title }),
+        );
+      case FeedbackTargetType.RESOURCE:
+      case FeedbackTargetType.CERTIFICATION:
+        return byTitle(
+          await this.prisma.resource.findMany({ where, select: title }),
+        );
+      case FeedbackTargetType.OUTLOOK: {
+        const outlook = await this.prisma.outlookData.findMany({
+          where,
+          select: { id: true, geography: true, period: true },
+        });
+        return outlook.map(({ id, geography, period }) => ({
+          id,
+          label: `${geography} (${period})`,
+        }));
+      }
+    }
   }
 
   private async isTargetVisible(

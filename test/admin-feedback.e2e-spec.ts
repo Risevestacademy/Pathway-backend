@@ -15,6 +15,12 @@ import {
   wireNotificationMock,
 } from './utils/auth';
 
+interface ListItem {
+  id: string;
+  status: string;
+  [key: string]: unknown;
+}
+
 describe('Admin feedback (e2e)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
@@ -25,11 +31,14 @@ describe('Admin feedback (e2e)', () => {
   let adminToken: string;
   let fieldId: string;
   let careerId: string;
+  let reportsCareerId: string;
   const feedbackIds: Record<string, string> = {};
 
   const password = 'Password123!';
   const timestamp = Date.now();
   const marker = `e2e-admin-feedback-${timestamp}`;
+  const orphanTargetId = '00000000-0000-4000-8000-000000000001';
+  const longDescription = `${marker} ${'word '.repeat(60)}`.trim();
 
   const list = (query: Record<string, string | number>, token = adminToken) =>
     request(app.getHttpServer())
@@ -42,6 +51,9 @@ describe('Admin feedback (e2e)', () => {
       .patch(`${apiPrefix}/admin/feedback/${id}/status`)
       .set('Authorization', `Bearer ${token}`)
       .send(body as object);
+
+  const idsOf = (body: { items: ListItem[] }) =>
+    body.items.map((item) => item.id);
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -116,11 +128,67 @@ describe('Admin feedback (e2e)', () => {
       });
       feedbackIds[label] = created.id;
     }
+
+    const reportsCareer = await prisma.career.create({
+      data: {
+        slug: `${marker}-reports-career`,
+        title: `Admin Feedback Reports Career ${timestamp}`,
+        description: 'd',
+        roleSummary: 'r',
+        exampleActivities: [],
+        fieldId,
+      },
+    });
+    reportsCareerId = reportsCareer.id;
+
+    const reports = [
+      {
+        label: 'careerReport',
+        data: {
+          category: 'BROKEN_LINK' as const,
+          description: longDescription,
+          targetType: 'CAREER' as const,
+          targetId: reportsCareerId,
+          userEmail: 'reporter@example.com',
+          platform: 'WEB' as const,
+          createdAt: new Date(Date.UTC(2026, 9, 25)),
+        },
+      },
+      {
+        label: 'orphanReport',
+        data: {
+          category: 'INCORRECT_CONTENT' as const,
+          description: `${marker} orphan`,
+          targetType: 'RESOURCE' as const,
+          targetId: orphanTargetId,
+          createdAt: new Date(Date.UTC(2026, 9, 24)),
+        },
+      },
+      {
+        label: 'generalReport',
+        data: {
+          category: 'OTHER' as const,
+          description: `${marker} general`,
+          targetType: 'OTHER' as const,
+          createdAt: new Date(Date.UTC(2026, 9, 23)),
+        },
+      },
+    ];
+    for (const { label, data } of reports) {
+      const created = await prisma.contentFeedback.create({
+        data: { ...data, careerId: reportsCareerId },
+      });
+      feedbackIds[label] = created.id;
+    }
   });
 
   afterAll(async () => {
-    await prisma.contentFeedback.deleteMany({ where: { careerId } });
-    await prisma.career.deleteMany({ where: { id: careerId } });
+    await prisma.contentFeedback.deleteMany({
+      where: { careerId: { in: [careerId, reportsCareerId] } },
+    });
+    await prisma.career.deleteMany({
+      where: { id: { in: [careerId, reportsCareerId] } },
+    });
     await prisma.field.deleteMany({ where: { id: fieldId } });
     await prisma.user.deleteMany({ where: { id: { in: userIds } } });
     await app.close();
@@ -135,7 +203,7 @@ describe('Admin feedback (e2e)', () => {
       expect(response.body.error).toBe('UNAUTHORIZED');
     });
 
-    it.each([Role.USER, Role.REVIEWER, Role.PUBLISHER])(
+    it.each([Role.USER, Role.EDITOR])(
       'returns 403 to %s on both routes',
       async (role) => {
         await list({}, tokens[role]).expect(403);
@@ -149,12 +217,18 @@ describe('Admin feedback (e2e)', () => {
       },
     );
 
-    it('lets an EDITOR list feedback and update its status', async () => {
-      await list({ careerId }, tokens[Role.EDITOR]).expect(200);
+    it.each([Role.REVIEWER, Role.PUBLISHER])(
+      'lets a %s list feedback',
+      async (role) => {
+        await list({ careerId }, tokens[role]).expect(200);
+      },
+    );
+
+    it('lets a REVIEWER update a status', async () => {
       const response = await patchStatus(
         feedbackIds.middle,
         { status: 'RESOLVED' },
-        tokens[Role.EDITOR],
+        tokens[Role.REVIEWER],
       ).expect(200);
 
       expect(response.body.status).toBe('RESOLVED');
@@ -166,9 +240,11 @@ describe('Admin feedback (e2e)', () => {
       const response = await list({ careerId }).expect(200);
 
       expect(response.body).toMatchObject({ total: 3, page: 1, limit: 20 });
-      expect(
-        (response.body.items as { id: string }[]).map((item) => item.id),
-      ).toEqual([feedbackIds.newest, feedbackIds.middle, feedbackIds.oldest]);
+      expect(idsOf(response.body)).toEqual([
+        feedbackIds.newest,
+        feedbackIds.middle,
+        feedbackIds.oldest,
+      ]);
     });
 
     it('filters by status', async () => {
@@ -176,23 +252,112 @@ describe('Admin feedback (e2e)', () => {
 
       expect(response.body.total).toBe(2);
       expect(
-        (response.body.items as { status: string }[]).every(
+        (response.body.items as ListItem[]).every(
           (item) => item.status === 'NEW',
         ),
       ).toBe(true);
+    });
+
+    it('filters by category', async () => {
+      const response = await list({
+        careerId: reportsCareerId,
+        category: 'BROKEN_LINK',
+      }).expect(200);
+
+      expect(idsOf(response.body)).toEqual([feedbackIds.careerReport]);
+    });
+
+    it.each([
+      ['RESOURCE', 'orphanReport'],
+      ['OTHER', 'generalReport'],
+      ['CAREER', 'careerReport'],
+    ])('filters by targetType %s', async (targetType, label) => {
+      const response = await list({
+        careerId: reportsCareerId,
+        targetType,
+      }).expect(200);
+
+      expect(idsOf(response.body)).toEqual([feedbackIds[label]]);
+    });
+
+    it('combines the status, category and targetType filters', async () => {
+      const response = await list({
+        careerId: reportsCareerId,
+        status: 'NEW',
+        category: 'BROKEN_LINK',
+        targetType: 'RESOURCE',
+      }).expect(200);
+
+      expect(response.body).toMatchObject({ total: 0, items: [] });
     });
 
     it('paginates with page and limit', async () => {
       const response = await list({ careerId, page: 2, limit: 2 }).expect(200);
 
       expect(response.body).toMatchObject({ total: 3, page: 2, limit: 2 });
-      expect(
-        (response.body.items as { id: string }[]).map((item) => item.id),
-      ).toEqual([feedbackIds.oldest]);
+      expect(idsOf(response.body)).toEqual([feedbackIds.oldest]);
+    });
+
+    it('returns the fields the Reports table needs', async () => {
+      const response = await list({
+        careerId: reportsCareerId,
+        category: 'BROKEN_LINK',
+      }).expect(200);
+      const [item] = response.body.items as ListItem[];
+
+      expect(item).toEqual({
+        id: feedbackIds.careerReport,
+        category: 'BROKEN_LINK',
+        section: 'GENERAL',
+        status: 'NEW',
+        resolution: null,
+        snippet: expect.stringMatching(/…$/),
+        target: {
+          type: 'CAREER',
+          id: reportsCareerId,
+          label: `Admin Feedback Reports Career ${timestamp}`,
+        },
+        reporterEmail: 'reporter@example.com',
+        platform: 'WEB',
+        createdAt: '2026-10-25T00:00:00.000Z',
+      });
+      expect((item.snippet as string).length).toBeLessThan(
+        longDescription.length,
+      );
+      expect(item).not.toHaveProperty('description');
+      expect(item).not.toHaveProperty('notes');
+    });
+
+    it('gives a null label for a target that no longer exists', async () => {
+      const response = await list({
+        careerId: reportsCareerId,
+        targetType: 'RESOURCE',
+      }).expect(200);
+
+      expect((response.body.items as ListItem[])[0].target).toEqual({
+        type: 'RESOURCE',
+        id: orphanTargetId,
+        label: null,
+      });
+    });
+
+    it('gives an OTHER report no target id and no label', async () => {
+      const response = await list({
+        careerId: reportsCareerId,
+        targetType: 'OTHER',
+      }).expect(200);
+
+      expect((response.body.items as ListItem[])[0].target).toEqual({
+        type: 'OTHER',
+        id: null,
+        label: null,
+      });
     });
 
     it.each([
       ['an unknown status', { status: 'OPEN' }],
+      ['an unknown category', { category: 'BUG' }],
+      ['an unknown targetType', { targetType: 'TOPIC' }],
       ['a non-UUID careerId', { careerId: 'career-1' }],
       ['a page below 1', { page: 0 }],
       ['a page above 10000', { page: 10001 }],
