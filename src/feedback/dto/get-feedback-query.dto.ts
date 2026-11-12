@@ -1,13 +1,27 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsEnum, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
-import { FeedbackStatus } from '../../generated/prisma/client';
+import {
+  FeedbackCategory,
+  FeedbackStatus,
+  FeedbackTargetType,
+} from '../../generated/prisma/client';
 
 export class GetFeedbackQueryDto {
   @ApiPropertyOptional({ enum: FeedbackStatus, example: 'NEW' })
   @IsOptional()
   @IsEnum(FeedbackStatus)
   status?: FeedbackStatus;
+
+  @ApiPropertyOptional({ enum: FeedbackCategory, example: 'BROKEN_LINK' })
+  @IsOptional()
+  @IsEnum(FeedbackCategory)
+  category?: FeedbackCategory;
+
+  @ApiPropertyOptional({ enum: FeedbackTargetType, example: 'PATHWAY_STEP' })
+  @IsOptional()
+  @IsEnum(FeedbackTargetType)
+  targetType?: FeedbackTargetType;
 
   @ApiPropertyOptional({
     description: 'Only feedback about this career.',

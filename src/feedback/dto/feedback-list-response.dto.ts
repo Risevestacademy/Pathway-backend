@@ -1,9 +1,9 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { FeedbackResponseDto } from './feedback-response.dto';
+import { AdminFeedbackListItemDto } from './admin-feedback-list-item.dto';
 
 export class FeedbackListResponseDto {
-  @ApiProperty({ type: [FeedbackResponseDto] })
-  items: FeedbackResponseDto[];
+  @ApiProperty({ type: [AdminFeedbackListItemDto] })
+  items: AdminFeedbackListItemDto[];
 
   @ApiProperty({ example: 42, description: 'Total matching feedback entries' })
   total: number;
