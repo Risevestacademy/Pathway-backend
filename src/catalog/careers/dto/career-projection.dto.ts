@@ -14,6 +14,18 @@ export class OutlookItemDto {
   @ApiProperty({ type: String, nullable: true })
   sourceId: string | null;
 
+  @ApiProperty({ example: 'May 2024' })
+  period: string;
+
+  @ApiProperty({ type: String, nullable: true, example: '95000.00' })
+  median: string | null;
+
+  @ApiProperty({ type: String, nullable: true, example: '75000.00' })
+  percentile25: string | null;
+
+  @ApiProperty({ type: String, nullable: true, example: '120000.00' })
+  percentile75: string | null;
+
   @ApiProperty({ type: String, nullable: true, example: 'USD' })
   currency: string | null;
 
