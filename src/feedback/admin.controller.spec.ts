@@ -54,9 +54,28 @@ describe('AdminController', () => {
 
   describe('getFeedback', () => {
     it('should pass the query to feedbackService.getFeedback and return its result', async () => {
-      const query: GetFeedbackQueryDto = { status: 'NEW', page: 2, limit: 5 };
+      const query: GetFeedbackQueryDto = {
+        status: 'NEW',
+        category: 'BROKEN_LINK',
+        targetType: 'PATHWAY_STEP',
+        page: 2,
+        limit: 5,
+      };
       const list: FeedbackListResponseDto = {
-        items: [feedback],
+        items: [
+          {
+            id: 'feedback-1',
+            category: 'BROKEN_LINK',
+            section: 'RESOURCES',
+            status: 'NEW',
+            resolution: null,
+            snippet: 'Step 3 link is dead.',
+            target: { type: 'PATHWAY_STEP', id: 'step-1', label: 'SQL basics' },
+            reporterEmail: null,
+            platform: 'WEB',
+            createdAt: new Date('2026-10-20T10:00:00.000Z'),
+          },
+        ],
         total: 6,
         page: 2,
         limit: 5,
