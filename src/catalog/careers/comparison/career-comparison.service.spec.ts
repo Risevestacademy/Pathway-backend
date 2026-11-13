@@ -1,11 +1,17 @@
+import { jest } from '@jest/globals';
+import { NotFoundException } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
 import {
+  CareerStatus,
   Demand,
   OutlookType,
   Prisma,
   SkillImportance,
   TargetLevel,
 } from '../../../generated/prisma/client';
+import { PrismaService } from '../../../prisma';
 import {
+  careerComparisonSelect,
   CareerComparisonRow,
   CareerComparisonService,
 } from './career-comparison.service';
@@ -100,7 +106,106 @@ const findKeys = (value: unknown, pattern: RegExp): string[] => {
 };
 
 describe('CareerComparisonService', () => {
-  const service = new CareerComparisonService();
+  let service: CareerComparisonService;
+
+  const mockPrismaService = {
+    career: {
+      findMany: jest.fn<(args: unknown) => Promise<CareerComparisonRow[]>>(),
+    },
+    userSkill: {
+      findMany: jest.fn<(args: unknown) => Promise<{ skillId: string }[]>>(),
+    },
+  };
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+
+    const module = await Test.createTestingModule({
+      providers: [
+        CareerComparisonService,
+        { provide: PrismaService, useValue: mockPrismaService },
+      ],
+    }).compile();
+
+    service = module.get(CareerComparisonService);
+  });
+
+  describe('compareCareers', () => {
+    const careerA = careerRow();
+    const careerB = careerRow({ id: 'career-b', title: 'Data Analyst' });
+
+    it('reads both careers as PUBLISHED and returns no skillMatch when anonymous', async () => {
+      mockPrismaService.career.findMany.mockResolvedValue([careerA, careerB]);
+
+      const result = await service.compareCareers(['career-a', 'career-b']);
+
+      expect(mockPrismaService.career.findMany).toHaveBeenCalledWith({
+        where: {
+          id: { in: ['career-a', 'career-b'] },
+          status: CareerStatus.PUBLISHED,
+        },
+        select: careerComparisonSelect,
+      });
+      expect(mockPrismaService.userSkill.findMany).not.toHaveBeenCalled();
+      expect(result.careers.map(({ skillMatch }) => skillMatch)).toEqual([
+        null,
+        null,
+      ]);
+    });
+
+    it('returns the careers in the order of ids', async () => {
+      mockPrismaService.career.findMany.mockResolvedValue([careerA, careerB]);
+
+      const result = await service.compareCareers(['career-b', 'career-a']);
+
+      expect(result.careers.map(({ id }) => id)).toEqual([
+        'career-b',
+        'career-a',
+      ]);
+    });
+
+    it('throws 404 when either career is missing or not published', async () => {
+      mockPrismaService.career.findMany.mockResolvedValue([careerA]);
+
+      await expect(
+        service.compareCareers(['career-a', 'career-b']),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it("matches each career against the signed-in user's skills", async () => {
+      mockPrismaService.career.findMany.mockResolvedValue([
+        careerA,
+        careerRow({ id: 'career-b', skills: [] }),
+      ]);
+      mockPrismaService.userSkill.findMany.mockResolvedValue([
+        { skillId: 'skill-ts' },
+      ]);
+
+      const result = await service.compareCareers(
+        ['career-a', 'career-b'],
+        'user-1',
+      );
+
+      expect(mockPrismaService.userSkill.findMany).toHaveBeenCalledWith({
+        where: { userId: 'user-1' },
+        select: { skillId: true },
+      });
+      expect(result.careers.map(({ skillMatch }) => skillMatch)).toEqual([
+        {
+          matchedRequiredSkills: [{ id: 'skill-ts', name: 'TypeScript' }],
+          requiredSkillCount: 1,
+          percentage: 100,
+          niceToHaveSkills: [],
+        },
+        {
+          matchedRequiredSkills: [],
+          requiredSkillCount: 0,
+          percentage: null,
+          niceToHaveSkills: [],
+        },
+      ]);
+    });
+  });
 
   describe('buildComparison', () => {
     it('maps both careers in the order given', () => {
