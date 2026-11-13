@@ -208,6 +208,7 @@ model User {
   contentRevisions      ContentRevision[]
   reviews               Review[]
   staffInvites          StaffInvite[]
+  quizAttempts          QuizAttempt[]
   publishedCareers      Career[]               @relation("CareerPublishedBy")
   reviewedCareers       Career[]               @relation("CareerReviewedBy")
 
@@ -444,6 +445,7 @@ model PathwayStage {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  quiz StageQuiz?
   pathway Pathway       @relation(fields: [pathwayId], references: [id], onDelete: Cascade)
   steps   PathwayStep[]
 
@@ -952,4 +954,57 @@ model FeedbackNote {
   author   User            @relation(fields: [authorId], references: [id], onDelete: Cascade)
 
   @@index([feedbackId])
+}
+
+
+model StageQuiz {
+  id        String   @id @default(uuid())
+  stageId   String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  stage     PathwayStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  questions QuizQuestion[]
+  attempts  QuizAttempt[]
+
+  @@index([stageId])
+}
+
+model QuizQuestion {
+  id           String @id @default(uuid())
+  quizId       String
+  prompt       String
+  order        Int
+  correctIndex Int    // 0..3, stored server-side; never returned
+
+  quiz    StageQuiz    @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  options QuizOption[]
+
+  @@unique([quizId, order])
+}
+
+model QuizOption {
+  id         String @id @default(uuid())
+  questionId String
+  text       String
+  order      Int    // 0..3
+
+  question QuizQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, order])
+}
+
+model QuizAttempt {
+  id          String   @id @default(uuid())
+  userId      String
+  stageQuizId String
+  correct     Int
+  total       Int
+  submittedAt DateTime @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stageQuiz StageQuiz @relation(fields: [stageQuizId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, stageQuizId])
+  @@index([userId])
 }
