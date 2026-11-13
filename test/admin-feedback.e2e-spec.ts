@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, Logger } from '@nestjs/common';
 import request from 'supertest';
 
 import { AppModule } from '../src/app.module';
@@ -129,6 +129,8 @@ describe('Admin feedback (e2e)', () => {
       feedbackIds[label] = created.id;
     }
 
+    // A second career holds the reports used by the filter and shape tests,
+    // so their results are not mixed with the rows above.
     const reportsCareer = await prisma.career.create({
       data: {
         slug: `${marker}-reports-career`,
@@ -184,7 +186,12 @@ describe('Admin feedback (e2e)', () => {
 
   afterAll(async () => {
     await prisma.contentFeedback.deleteMany({
-      where: { careerId: { in: [careerId, reportsCareerId] } },
+      where: {
+        OR: [
+          { careerId: { in: [careerId, reportsCareerId] } },
+          { description: { startsWith: marker } },
+        ],
+      },
     });
     await prisma.career.deleteMany({
       where: { id: { in: [careerId, reportsCareerId] } },
@@ -417,6 +424,318 @@ describe('Admin feedback (e2e)', () => {
 
     it('returns 400 for an id that is not a UUID', async () => {
       await patchStatus('feedback-1', { status: 'RESOLVED' }).expect(400);
+    });
+  });
+
+  describe('triage and notes', () => {
+    const triageIds: Record<string, string> = {};
+
+    const patchFeedback = (id: string, body: unknown, token = adminToken) =>
+      request(app.getHttpServer())
+        .patch(`${apiPrefix}/admin/feedback/${id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .send(body as object);
+
+    const addNote = (id: string, body: unknown, token = adminToken) =>
+      request(app.getHttpServer())
+        .post(`${apiPrefix}/admin/feedback/${id}/notes`)
+        .set('Authorization', `Bearer ${token}`)
+        .send(body as object);
+
+    const getDetail = (id: string, token = adminToken) =>
+      request(app.getHttpServer())
+        .get(`${apiPrefix}/admin/feedback/${id}`)
+        .set('Authorization', `Bearer ${token}`);
+
+    beforeAll(async () => {
+      for (const label of ['resolve', 'reopen', 'notes', 'public']) {
+        const created = await prisma.contentFeedback.create({
+          data: {
+            category: 'OTHER',
+            description: `${marker} triage ${label}`,
+            careerId,
+            targetType: 'CAREER',
+            targetId: careerId,
+          },
+        });
+        triageIds[label] = created.id;
+      }
+    });
+
+    describe('PATCH /admin/feedback/:id', () => {
+      it('sets status and resolution together and returns the detail', async () => {
+        const response = await patchFeedback(triageIds.resolve, {
+          status: 'RESOLVED',
+          resolution: 'FIXED',
+        }).expect(200);
+
+        expect(response.body).toMatchObject({
+          id: triageIds.resolve,
+          status: 'RESOLVED',
+          resolution: 'FIXED',
+          notes: [],
+          target: { type: 'CAREER', id: careerId },
+        });
+        const saved = await prisma.contentFeedback.findUniqueOrThrow({
+          where: { id: triageIds.resolve },
+        });
+        expect(saved).toMatchObject({
+          status: 'RESOLVED',
+          resolution: 'FIXED',
+        });
+      });
+
+      it('clears the resolution when the report is reopened', async () => {
+        await patchFeedback(triageIds.reopen, {
+          status: 'RESOLVED',
+          resolution: 'NOT_AN_ISSUE',
+        }).expect(200);
+
+        const response = await patchFeedback(triageIds.reopen, {
+          status: 'UNDER_REVIEW',
+        }).expect(200);
+
+        expect(response.body).toMatchObject({
+          status: 'UNDER_REVIEW',
+          resolution: null,
+        });
+        const saved = await prisma.contentFeedback.findUniqueOrThrow({
+          where: { id: triageIds.reopen },
+        });
+        expect(saved.resolution).toBeNull();
+      });
+
+      it('returns 400 for RESOLVED without a resolution and changes nothing', async () => {
+        const response = await patchFeedback(triageIds.notes, {
+          status: 'RESOLVED',
+        }).expect(400);
+
+        expect(response.body.message).toBe(
+          'A resolution is required to resolve feedback',
+        );
+        const saved = await prisma.contentFeedback.findUniqueOrThrow({
+          where: { id: triageIds.notes },
+        });
+        expect(saved).toMatchObject({ status: 'NEW', resolution: null });
+      });
+
+      it('returns 400 for a resolution on a status other than RESOLVED', async () => {
+        const response = await patchFeedback(triageIds.notes, {
+          status: 'UNDER_REVIEW',
+          resolution: 'FIXED',
+        }).expect(400);
+
+        expect(response.body.message).toBe(
+          'A resolution can only be set when the status is RESOLVED',
+        );
+      });
+
+      it.each([
+        ['an unknown status', { status: 'CLOSED' }],
+        ['a missing status', { resolution: 'FIXED' }],
+        ['an unknown resolution', { status: 'RESOLVED', resolution: 'DONE' }],
+      ])('returns 400 for %s', async (_label, body) => {
+        const response = await patchFeedback(triageIds.notes, body).expect(400);
+
+        expect(response.body.error).toBe('VALIDATION_ERROR');
+      });
+
+      it('returns 404 for feedback that does not exist', async () => {
+        await patchFeedback('00000000-0000-4000-8000-000000000000', {
+          status: 'NEW',
+        }).expect(404);
+      });
+
+      it('returns 400 for an id that is not a UUID', async () => {
+        await patchFeedback('feedback-1', { status: 'NEW' }).expect(400);
+      });
+
+      it.each([Role.USER, Role.EDITOR])('returns 403 to %s', async (role) => {
+        await patchFeedback(
+          triageIds.notes,
+          { status: 'UNDER_REVIEW' },
+          tokens[role],
+        ).expect(403);
+      });
+
+      it('returns 401 without an access token', async () => {
+        await request(app.getHttpServer())
+          .patch(`${apiPrefix}/admin/feedback/${triageIds.notes}`)
+          .send({ status: 'NEW' })
+          .expect(401);
+      });
+    });
+
+    describe('POST /admin/feedback/:id/notes', () => {
+      it('adds a note with the acting admin as author', async () => {
+        const response = await addNote(triageIds.notes, {
+          body: '  Checked with the content team.  ',
+        }).expect(201);
+
+        expect(response.body).toMatchObject({
+          feedbackId: triageIds.notes,
+          authorId: userIds[Object.values(Role).indexOf(Role.ADMIN)],
+          body: 'Checked with the content team.',
+        });
+        expect(
+          await prisma.feedbackNote.count({
+            where: { feedbackId: triageIds.notes },
+          }),
+        ).toBe(1);
+      });
+
+      it('lets a REVIEWER add a note', async () => {
+        await addNote(
+          triageIds.notes,
+          { body: 'Second look from a reviewer.' },
+          tokens[Role.REVIEWER],
+        ).expect(201);
+      });
+
+      it('writes the note body to no log line', async () => {
+        const spy = jest
+          .spyOn(Logger.prototype, 'log')
+          .mockImplementation(() => undefined);
+        let output: string;
+        try {
+          await addNote(triageIds.notes, {
+            body: 'A private remark about the reporter.',
+          }).expect(201);
+          output = JSON.stringify(spy.mock.calls);
+        } finally {
+          spy.mockRestore();
+        }
+
+        expect(output).toContain('Feedback note added');
+        expect(output).not.toContain('private remark');
+      });
+
+      it.each([
+        ['an empty body', { body: '' }],
+        ['a blank body', { body: '   ' }],
+        ['a missing body', {}],
+        ['a body over 2000 characters', { body: 'x'.repeat(2001) }],
+      ])('returns 400 for %s', async (_label, body) => {
+        const response = await addNote(triageIds.notes, body).expect(400);
+
+        expect(response.body.error).toBe('VALIDATION_ERROR');
+      });
+
+      it('returns 404 for feedback that does not exist', async () => {
+        await addNote('00000000-0000-4000-8000-000000000000', {
+          body: 'hello',
+        }).expect(404);
+      });
+
+      it.each([Role.USER, Role.EDITOR])('returns 403 to %s', async (role) => {
+        await addNote(triageIds.notes, { body: 'hello' }, tokens[role]).expect(
+          403,
+        );
+      });
+
+      it('returns 401 without an access token', async () => {
+        await request(app.getHttpServer())
+          .post(`${apiPrefix}/admin/feedback/${triageIds.notes}/notes`)
+          .send({ body: 'hello' })
+          .expect(401);
+      });
+    });
+
+    describe('GET /admin/feedback/:id', () => {
+      it('returns the detail with the notes oldest first', async () => {
+        const response = await getDetail(triageIds.notes).expect(200);
+
+        const bodies = (response.body.notes as { body: string }[]).map(
+          (note) => note.body,
+        );
+        expect(bodies.slice(0, 2)).toEqual([
+          'Checked with the content team.',
+          'Second look from a reviewer.',
+        ]);
+        expect(response.body).toMatchObject({
+          id: triageIds.notes,
+          description: `${marker} triage notes`,
+          target: {
+            type: 'CAREER',
+            id: careerId,
+            label: `Admin Feedback Career ${timestamp}`,
+          },
+        });
+      });
+
+      it('shows the notes in the PATCH response too', async () => {
+        const response = await patchFeedback(triageIds.notes, {
+          status: 'UNDER_REVIEW',
+        }).expect(200);
+
+        expect(
+          (response.body.notes as { body: string }[]).map((n) => n.body),
+        ).toContain('Checked with the content team.');
+      });
+
+      it('never puts notes in the list', async () => {
+        const response = await list({ careerId }).expect(200);
+
+        expect(JSON.stringify(response.body)).not.toContain('content team');
+        for (const item of response.body.items as ListItem[]) {
+          expect(item).not.toHaveProperty('notes');
+        }
+      });
+
+      it('returns 404 for feedback that does not exist', async () => {
+        await getDetail('00000000-0000-4000-8000-000000000000').expect(404);
+      });
+
+      it('returns 400 for an id that is not a UUID', async () => {
+        await getDetail('feedback-1').expect(400);
+      });
+
+      it.each([Role.USER, Role.EDITOR])('returns 403 to %s', async (role) => {
+        const response = await getDetail(triageIds.notes, tokens[role]).expect(
+          403,
+        );
+
+        expect(JSON.stringify(response.body)).not.toContain('content team');
+      });
+
+      it('returns 401 without an access token', async () => {
+        await request(app.getHttpServer())
+          .get(`${apiPrefix}/admin/feedback/${triageIds.notes}`)
+          .expect(401);
+      });
+    });
+
+    describe('public responses', () => {
+      it('never carry notes, even for a report that has some', async () => {
+        await addNote(triageIds.public, {
+          body: 'Internal only: reporter is a repeat submitter.',
+        }).expect(201);
+
+        const response = await request(app.getHttpServer())
+          .post(`${apiPrefix}/feedback`)
+          .send({
+            category: 'OTHER',
+            description: `${marker} public after note`,
+          })
+          .expect(201);
+
+        expect(response.body).toEqual({ message: 'Feedback received' });
+        expect(JSON.stringify(response.body)).not.toContain('Internal only');
+      });
+
+      it('give a signed-in USER no route to read a note', async () => {
+        for (const path of [
+          `/admin/feedback/${triageIds.public}`,
+          '/admin/feedback',
+        ]) {
+          const response = await request(app.getHttpServer())
+            .get(`${apiPrefix}${path}`)
+            .set('Authorization', `Bearer ${tokens[Role.USER]}`)
+            .expect(403);
+
+          expect(JSON.stringify(response.body)).not.toContain('Internal only');
+        }
+      });
     });
   });
 });

@@ -21,6 +21,12 @@ import { UpdateFeedbackStatusDto } from './dto/update-feedback-status.dto';
 import { FeedbackResponseDto } from './dto/feedback-response.dto';
 import { FeedbackListResponseDto } from './dto/feedback-list-response.dto';
 import { FeedbackNoteDto } from './dto/feedback-note.dto';
+import type { AdminFeedbackDetailDto } from './dto/admin-feedback-detail.dto';
+import {
+  FEEDBACK_DETAIL_SELECT,
+  FEEDBACK_NOTE_SELECT,
+  toAdminFeedbackDetail,
+} from './feedback-detail';
 import {
   buildFeedbackListWhere,
   FEEDBACK_LIST_SELECT,
@@ -34,14 +40,6 @@ import {
   resolveFeedbackTarget,
   resolveStatusUpdate,
 } from './feedback.rules';
-
-const FEEDBACK_NOTE_SELECT = {
-  id: true,
-  feedbackId: true,
-  authorId: true,
-  body: true,
-  createdAt: true,
-} satisfies Prisma.FeedbackNoteSelect;
 
 const STATUS_CHANGE_SELECT = {
   id: true,
@@ -153,6 +151,33 @@ export class FeedbackService {
       page,
       limit,
     };
+  }
+
+  async getFeedbackDetail(id: string): Promise<AdminFeedbackDetailDto> {
+    const row = await this.prisma.contentFeedback.findUnique({
+      where: { id },
+      select: FEEDBACK_DETAIL_SELECT,
+    });
+    if (!row) throw new NotFoundException('Feedback not found');
+
+    const labels = await this.loadTargetLabels([row]);
+
+    return toAdminFeedbackDetail(
+      row,
+      row.targetType && row.targetId
+        ? (labels.get(targetKey(row.targetType, row.targetId)) ?? null)
+        : null,
+    );
+  }
+
+  /** Status and resolution change together, then the admin detail is read. */
+  async triageFeedback(
+    id: string,
+    actorId: string,
+    input: FeedbackUpdateInput,
+  ): Promise<AdminFeedbackDetailDto> {
+    await this.updateFeedback(id, actorId, input);
+    return this.getFeedbackDetail(id);
   }
 
   async updateFeedbackStatus(

@@ -7,6 +7,7 @@ import { DomainException } from '../common';
 import { Prisma } from '../generated/prisma/client';
 import type { FeedbackResponseDto } from './dto/feedback-response.dto';
 import { buildFeedbackListWhere, FEEDBACK_LIST_SELECT } from './feedback-list';
+import { FEEDBACK_DETAIL_SELECT } from './feedback-detail';
 
 describe('FeedbackService', () => {
   let service: FeedbackService;
@@ -21,6 +22,7 @@ describe('FeedbackService', () => {
     contentFeedback: {
       create: jest.fn<(args: unknown) => Promise<{ id: string }>>(),
       findMany: jest.fn<(args: unknown) => Promise<unknown[]>>(),
+      findUnique: jest.fn<(args: unknown) => Promise<unknown>>(),
       count: jest.fn<(args: unknown) => Promise<number>>(),
       update: jest.fn<(args: unknown) => Promise<unknown>>(),
     },
@@ -792,6 +794,203 @@ describe('FeedbackService', () => {
       await expect(
         service.addNote('feedback-1', 'admin-1', 'hello'),
       ).rejects.toBe(failure);
+    });
+  });
+
+  describe('getFeedbackDetail', () => {
+    const createdAt = new Date('2026-11-12T10:00:00.000Z');
+    const notes = [
+      {
+        id: 'note-1',
+        feedbackId: 'feedback-1',
+        authorId: 'admin-1',
+        body: 'Checked with the content team.',
+        createdAt,
+      },
+    ];
+    const detailRow = (overrides: Record<string, unknown> = {}) => ({
+      id: 'feedback-1',
+      category: 'BROKEN_LINK',
+      section: 'RESOURCES',
+      careerId: 'career-1',
+      status: 'UNDER_REVIEW',
+      resolution: null,
+      description: 'Step 2 course link is dead.',
+      userEmail: 'ada@example.com',
+      platform: 'WEB',
+      targetType: 'CAREER',
+      targetId: 'career-1',
+      createdAt,
+      updatedAt: createdAt,
+      notes,
+      ...overrides,
+    });
+
+    beforeEach(() => {
+      mockPrismaService.career.findMany.mockResolvedValue([
+        { id: 'career-1', title: 'Software Engineer' },
+      ]);
+    });
+
+    it('reads the detail select, which is the only one that has notes', async () => {
+      mockPrismaService.contentFeedback.findUnique.mockResolvedValue(
+        detailRow(),
+      );
+
+      await service.getFeedbackDetail('feedback-1');
+
+      expect(mockPrismaService.contentFeedback.findUnique).toHaveBeenCalledWith(
+        { where: { id: 'feedback-1' }, select: FEEDBACK_DETAIL_SELECT },
+      );
+    });
+
+    it('returns the list item fields, the target title and the notes', async () => {
+      mockPrismaService.contentFeedback.findUnique.mockResolvedValue(
+        detailRow(),
+      );
+
+      const result = await service.getFeedbackDetail('feedback-1');
+
+      expect(result).toMatchObject({
+        id: 'feedback-1',
+        status: 'UNDER_REVIEW',
+        description: 'Step 2 course link is dead.',
+        userEmail: 'ada@example.com',
+        snippet: 'Step 2 course link is dead.',
+        target: { type: 'CAREER', id: 'career-1', label: 'Software Engineer' },
+        notes,
+      });
+    });
+
+    it('returns an empty notes list when there are none', async () => {
+      mockPrismaService.contentFeedback.findUnique.mockResolvedValue(
+        detailRow({ notes: [] }),
+      );
+
+      const result = await service.getFeedbackDetail('feedback-1');
+
+      expect(result.notes).toEqual([]);
+    });
+
+    it('does no label lookup for an OTHER report', async () => {
+      mockPrismaService.contentFeedback.findUnique.mockResolvedValue(
+        detailRow({ targetType: 'OTHER', targetId: null }),
+      );
+
+      const result = await service.getFeedbackDetail('feedback-1');
+
+      expect(result.target).toEqual({ type: 'OTHER', id: null, label: null });
+      expect(mockPrismaService.career.findMany).not.toHaveBeenCalled();
+    });
+
+    it('gives a null label when the target no longer exists', async () => {
+      mockPrismaService.career.findMany.mockResolvedValue([]);
+      mockPrismaService.contentFeedback.findUnique.mockResolvedValue(
+        detailRow(),
+      );
+
+      const result = await service.getFeedbackDetail('feedback-1');
+
+      expect(result.target.label).toBeNull();
+    });
+
+    it('throws NotFoundException when the feedback does not exist', async () => {
+      mockPrismaService.contentFeedback.findUnique.mockResolvedValue(null);
+
+      await expect(service.getFeedbackDetail('missing')).rejects.toThrow(
+        new NotFoundException('Feedback not found'),
+      );
+    });
+  });
+
+  describe('triageFeedback', () => {
+    const changed = {
+      id: 'feedback-1',
+      status: 'RESOLVED',
+      resolution: 'FIXED',
+      updatedAt: new Date('2026-11-12T10:00:00.000Z'),
+    };
+    const detail = {
+      id: 'feedback-1',
+      category: 'OTHER',
+      section: 'GENERAL',
+      careerId: null,
+      status: 'RESOLVED',
+      resolution: 'FIXED',
+      description: 'Typo on the home page.',
+      userEmail: null,
+      platform: null,
+      targetType: 'OTHER',
+      targetId: null,
+      createdAt: new Date('2026-11-12T09:00:00.000Z'),
+      updatedAt: changed.updatedAt,
+      notes: [],
+    };
+
+    it('updates status and resolution, then returns the detail', async () => {
+      mockPrismaService.contentFeedback.update.mockResolvedValue(changed);
+      mockPrismaService.contentFeedback.findUnique.mockResolvedValue(detail);
+
+      const result = await service.triageFeedback('feedback-1', 'admin-1', {
+        status: 'RESOLVED',
+        resolution: 'FIXED',
+      });
+
+      expect(mockPrismaService.contentFeedback.update).toHaveBeenCalledWith({
+        where: { id: 'feedback-1' },
+        data: { status: 'RESOLVED', resolution: 'FIXED' },
+        select: { id: true, status: true, resolution: true, updatedAt: true },
+      });
+      expect(result).toMatchObject({
+        status: 'RESOLVED',
+        resolution: 'FIXED',
+        notes: [],
+      });
+    });
+
+    it('clears the resolution when the report is reopened', async () => {
+      mockPrismaService.contentFeedback.update.mockResolvedValue({
+        ...changed,
+        status: 'NEW',
+        resolution: null,
+      });
+      mockPrismaService.contentFeedback.findUnique.mockResolvedValue({
+        ...detail,
+        status: 'NEW',
+        resolution: null,
+      });
+
+      await service.triageFeedback('feedback-1', 'admin-1', { status: 'NEW' });
+
+      expect(mockPrismaService.contentFeedback.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { status: 'NEW', resolution: null } }),
+      );
+    });
+
+    it('rejects RESOLVED without a resolution and reads nothing', async () => {
+      await expect(
+        service.triageFeedback('feedback-1', 'admin-1', { status: 'RESOLVED' }),
+      ).rejects.toMatchObject({ code: 'RESOLUTION_REQUIRED' });
+      expect(mockPrismaService.contentFeedback.update).not.toHaveBeenCalled();
+      expect(
+        mockPrismaService.contentFeedback.findUnique,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException when the feedback does not exist', async () => {
+      mockPrismaService.contentFeedback.update.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Record not found', {
+          code: 'P2025',
+          clientVersion: 'test',
+        }),
+      );
+
+      await expect(
+        service.triageFeedback('missing', 'admin-1', {
+          status: 'RESOLVED',
+          resolution: 'FIXED',
+        }),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 });
