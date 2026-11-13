@@ -8157,6 +8157,53 @@
           "folder",
           "uploadPreset"
         ]
+      },
+      "StageQuizStatusNotTaken": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "NOT_TAKEN"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "StageQuizScore": {
+        "type": "object",
+        "properties": {
+          "correct": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "correct",
+          "total"
+        ]
+      },
+      "StageQuizStatusTaken": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "TAKEN"
+            ]
+          },
+          "score": {
+            "$ref": "#/components/schemas/StageQuizScore"
+          }
+        },
+        "required": [
+          "status",
+          "score"
+        ]
       }
     }
   }
