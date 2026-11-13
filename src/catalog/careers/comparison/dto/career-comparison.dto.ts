@@ -209,3 +209,24 @@ export class SkillMatchDto {
   })
   niceToHaveSkills: NiceToHaveSkillMatchDto[];
 }
+
+export class CompareCareerItemDto extends ComparedCareerDto {
+  @ApiProperty({
+    type: SkillMatchDto,
+    nullable: true,
+    description:
+      'Compared with the skills the user listed; null for anonymous callers',
+  })
+  skillMatch: SkillMatchDto | null;
+}
+
+export class CompareCareersResponseDto {
+  @ApiProperty({
+    type: [CompareCareerItemDto],
+    description: 'The two careers, in the order of ids',
+  })
+  careers: CompareCareerItemDto[];
+
+  @ApiProperty({ type: ComparisonOutlookDto })
+  outlook: ComparisonOutlookDto;
+}

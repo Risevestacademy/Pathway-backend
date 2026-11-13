@@ -1,9 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import {
+  CareerStatus,
   OutlookType,
   Prisma,
   SkillImportance,
 } from '../../../generated/prisma/client';
+import { PrismaService } from '../../../prisma';
 import { CareerOverviewSkillDto } from '../dto/career-overview.dto';
 import { OutlookItemDto } from '../dto/career-projection.dto';
 import {
@@ -18,6 +20,7 @@ import {
   ComparisonDemandDto,
   ComparisonSalaryDto,
   ComparisonSourceDto,
+  CompareCareersResponseDto,
   OutlookComparabilityDto,
   OutlookMismatchReason,
   SkillMatchDto,
@@ -93,6 +96,37 @@ const pickDemand = (outlook: OutlookItemDto[]): OutlookItemDto | null =>
 
 @Injectable()
 export class CareerComparisonService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async compareCareers(
+    ids: string[],
+    userId?: string,
+  ): Promise<CompareCareersResponseDto> {
+    const [rows, userSkillIds] = await Promise.all([
+      this.prisma.career.findMany({
+        where: { id: { in: ids }, status: CareerStatus.PUBLISHED },
+        select: careerComparisonSelect,
+      }),
+      userId ? this.findUserSkillIds(userId) : null,
+    ]);
+
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    const [careerA, careerB] = ids.map((id) => byId.get(id));
+    if (!careerA || !careerB) throw new NotFoundException('Career not found');
+
+    const { careers, outlook } = this.buildComparison(careerA, careerB);
+
+    return {
+      careers: careers.map((career) => ({
+        ...career,
+        skillMatch: userSkillIds
+          ? this.computeSkillMatch(career, userSkillIds)
+          : null,
+      })),
+      outlook,
+    };
+  }
+
   buildComparison(
     careerA: CareerComparisonRow,
     careerB: CareerComparisonRow,
@@ -132,6 +166,14 @@ export class CareerComparisonService {
         .filter(({ importance }) => importance === SkillImportance.NICE_TO_HAVE)
         .map(({ id, name }) => ({ id, name, matched: owned.has(id) })),
     };
+  }
+
+  private async findUserSkillIds(userId: string): Promise<string[]> {
+    const skills = await this.prisma.userSkill.findMany({
+      where: { userId },
+      select: { skillId: true },
+    });
+    return skills.map(({ skillId }) => skillId);
   }
 
   private toComparedCareer(row: CareerComparisonRow): ComparedCareerDto {

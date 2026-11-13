@@ -11,6 +11,8 @@ import { PathwaysService } from './pathways/pathways.service';
 import type { CareerListResponseDto } from './dto/career-list-response.dto';
 import type { CareerDetailResponseDto } from './dto/career-detail-response.dto';
 import type { CareerCardDto } from './dto/career-card.dto';
+import { CareerComparisonService } from './comparison/career-comparison.service';
+import type { CompareCareersResponseDto } from './comparison/dto/career-comparison.dto';
 
 describe('CareersController', () => {
   let controller: CareersController;
@@ -30,6 +32,13 @@ describe('CareersController', () => {
   const mockPathwaysService = {
     getCareerPathway:
       jest.fn<(id: string) => Promise<CareerPathwayResponseDto>>(),
+  };
+
+  const mockCareerComparisonService = {
+    compareCareers:
+      jest.fn<
+        (ids: string[], userId?: string) => Promise<CompareCareersResponseDto>
+      >(),
   };
 
   const user: AuthenticatedUser = {
@@ -57,6 +66,10 @@ describe('CareersController', () => {
       providers: [
         { provide: CareersService, useValue: mockCareersService },
         { provide: PathwaysService, useValue: mockPathwaysService },
+        {
+          provide: CareerComparisonService,
+          useValue: mockCareerComparisonService,
+        },
       ],
     }).compile();
 
@@ -96,6 +109,40 @@ describe('CareersController', () => {
 
       expect(mockCareersService.getPublicCareers).toHaveBeenCalledWith({});
       expect(result.items).toEqual([]);
+    });
+  });
+
+  describe('compareCareers', () => {
+    const ids = ['career-1', 'career-2'];
+    const comparison = {
+      careers: [],
+      outlook: {
+        salary: { comparable: false, reasons: ['MISSING_VALUE'] },
+        demand: { comparable: false, reasons: ['MISSING_VALUE'] },
+      },
+    } satisfies CompareCareersResponseDto;
+
+    it('passes the ids and the signed-in user id through', async () => {
+      mockCareerComparisonService.compareCareers.mockResolvedValue(comparison);
+
+      const result = await controller.compareCareers({ ids }, user);
+
+      expect(mockCareerComparisonService.compareCareers).toHaveBeenCalledWith(
+        ids,
+        'user-1',
+      );
+      expect(result).toBe(comparison);
+    });
+
+    it('passes no user id for an anonymous caller', async () => {
+      mockCareerComparisonService.compareCareers.mockResolvedValue(comparison);
+
+      await controller.compareCareers({ ids }, undefined);
+
+      expect(mockCareerComparisonService.compareCareers).toHaveBeenCalledWith(
+        ids,
+        undefined,
+      );
     });
   });
 
