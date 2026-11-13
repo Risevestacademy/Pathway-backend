@@ -21,8 +21,12 @@ import {
   type AuthenticatedUser,
   CurrentUser,
   JwtAuthGuard,
+  OptionalJwtAuthGuard,
 } from '../../common';
 import { CareersService } from './careers.service';
+import { CareerComparisonService } from './comparison/career-comparison.service';
+import { CompareCareersResponseDto } from './comparison/dto/career-comparison.dto';
+import { CompareCareersQueryDto } from './comparison/dto/compare-careers-query.dto';
 import { SaveCareerResponseDto } from './dto/save-career-response.dto';
 import { GetCareersQueryDto } from './dto/get-careers-query.dto';
 import { TargetLevel } from '../../generated/prisma/client';
@@ -37,6 +41,7 @@ export class CareersController {
   constructor(
     private readonly careersService: CareersService,
     private readonly pathwaysService: PathwaysService,
+    private readonly careerComparisonService: CareerComparisonService,
   ) {}
 
   @Get()
@@ -61,6 +66,34 @@ export class CareersController {
     @Query() query: GetCareersQueryDto,
   ): Promise<CareerListResponseDto> {
     return this.careersService.getPublicCareers(query);
+  }
+
+  @Get('compare')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Compare two published careers side by side',
+    description:
+      'Public. A Bearer token is optional: with one, each career carries skillMatch against the skills the user listed; without one, skillMatch is null. Outlook values are flagged as comparable or not, with reasons, and are never compared. Careers come back in the order of ids.',
+  })
+  @ApiResponse({ status: 200, type: CompareCareersResponseDto })
+  @ApiResponse({
+    status: 400,
+    description: 'ids is not exactly two different career UUIDs',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'A token was sent but is missing, invalid or expired',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Either career does not exist or is not PUBLISHED',
+  })
+  @UseGuards(OptionalJwtAuthGuard)
+  async compareCareers(
+    @Query() query: CompareCareersQueryDto,
+    @CurrentUser() user: AuthenticatedUser | undefined,
+  ): Promise<CompareCareersResponseDto> {
+    return this.careerComparisonService.compareCareers(query.ids, user?.id);
   }
 
   @Get(':id')
