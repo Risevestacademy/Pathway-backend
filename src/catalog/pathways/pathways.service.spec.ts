@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { PathwaysService } from './pathways.service';
 import { PrismaService } from '../../prisma';
-import { CareerStatus } from '../../generated/prisma/client';
+import { CareerStatus, PathwayStepStatus } from '../../generated/prisma/client';
 import { AnalyticsService } from '../../analytics';
 
 describe('PathwaysService', () => {
@@ -26,13 +26,12 @@ describe('PathwaysService', () => {
     $queryRaw: jest.fn<(...args: unknown[]) => Promise<unknown>>(),
     pathway: {
       findFirst: jest.fn<(args: unknown) => Promise<unknown>>(),
-      findUnique: jest.fn<(args: unknown) => Promise<unknown>>(),
+      findUnique: jest.fn<(args: unknown) => Promise<unknown>>(), // RESTORED: used by setActivePathway
     },
     career: {
       findFirst: jest.fn<(args: unknown) => Promise<unknown>>(),
     },
     pathwayStep: {
-      // Only setStartingPoint / getPathwayProgress still use these.
       findFirst: jest.fn<(args: unknown) => Promise<unknown>>(),
       findMany: jest.fn<(args: unknown) => Promise<unknown>>(),
     },
@@ -42,9 +41,9 @@ describe('PathwaysService', () => {
       findFirst: jest.fn<(args: unknown) => Promise<unknown>>(),
       findMany: jest.fn<(args: unknown) => Promise<unknown>>(),
       update: jest.fn<(args: unknown) => Promise<unknown>>(),
+      findUnique: jest.fn<(args: unknown) => Promise<unknown>>(),
     },
     userPathwayStep: {
-      // Only getActivePathway / getSavedPathways / getPathwayProgress read.
       findMany: jest.fn<(args: unknown) => Promise<unknown>>(),
     },
     $transaction: jest.fn(async (callback: (tx: unknown) => unknown) => {
@@ -58,7 +57,7 @@ describe('PathwaysService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
-    capturesInsideTransaction = 0;
+    capturesInsideTransaction = 0; // RESTORED
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -75,98 +74,264 @@ describe('PathwaysService', () => {
     expect(service).toBeDefined();
   });
 
-  describe('getPathwayMetadata', () => {
-    it('returns pathway metadata with slim ordered steps and stepCount', async () => {
-      mockPrismaService.pathway.findFirst.mockResolvedValue({
-        id: 'p1',
-        careerId: 'c1',
-        title: 'Frontend Path',
-        description: 'Learn the frontend',
-        steps: [
-          { id: 's1', title: 'HTML', order: 1, description: 'Basics' },
-          { id: 's2', title: 'CSS', order: 2, description: null },
-        ],
-      });
+  // ───────────────────────────────────────────────────────────────────
+  // T9.3: New Pathway Read
+  // ───────────────────────────────────────────────────────────────────
 
-      const result = await service.getPathwayMetadata('p1');
-
-      expect(result).toEqual({
-        id: 'p1',
-        careerId: 'c1',
+  describe('getPathwayRead', () => {
+    const baseDbRow = {
+      id: 'p1',
+      _count: { steps: 2, stages: 1 },
+      career: {
+        id: 'c1',
         title: 'Frontend Path',
-        description: 'Learn the frontend',
-        stepCount: 2,
-        steps: [
-          { id: 's1', title: 'HTML', order: 1, description: 'Basics' },
-          { id: 's2', title: 'CSS', order: 2, description: null },
-        ],
-      });
+        description: 'Learn frontend',
+        status: CareerStatus.PUBLISHED,
+        _count: { resources: 12 },
+      },
+      stages: [
+        {
+          id: 'st1',
+          title: 'Foundations',
+          description: 'Basics',
+          order: 1,
+          quiz: { id: 'q1', attempts: [] },
+          steps: [
+            {
+              id: 's1',
+              title: 'HTML',
+              order: 1,
+              description: 'Markup',
+              learningObjective: 'Read HTML',
+              expectedActivity: 'Write a page',
+              skills: [{ skill: { name: 'HTML' } }],
+            },
+            {
+              id: 's2',
+              title: 'CSS',
+              order: 2,
+              description: 'Styles',
+              learningObjective: 'Read CSS',
+              expectedActivity: 'Style page',
+              skills: [{ skill: { name: 'CSS' } }],
+            },
+          ],
+        },
+      ],
+    };
+
+    // Heavy data that query 2 returns for a step id.
+    const heavyS1 = {
+      id: 's1',
+      resources: [
+        {
+          resource: {
+            id: 'r1',
+            title: 'MDN',
+            url: 'http...',
+            type: 'ARTICLE',
+            costStatus: 'FREE',
+            estimatedWeeks: null,
+            provider: 'MDN',
+          },
+        },
+      ],
+      tasks: [
+        {
+          id: 't1',
+          title: 'Build a form',
+          goal: 'Submit data',
+          estimatedWeeks: 1,
+          whatToMake: ['Form'],
+          hints: [],
+          checklistItems: [{ text: 'Input' }],
+        },
+      ],
+    };
+
+    const heavyS2 = {
+      id: 's2',
+      resources: [
+        {
+          resource: {
+            id: 'r2',
+            title: 'CSS Tricks',
+            url: 'http...',
+            type: 'ARTICLE',
+            costStatus: 'FREE',
+            estimatedWeeks: null,
+            provider: 'CSS Tricks',
+          },
+        },
+      ],
+      tasks: [],
+    };
+
+    // Query 2 returns only the step ids it was asked for.
+    beforeEach(() => {
+      mockPrismaService.pathwayStep.findMany.mockImplementation(
+        async (args: unknown) => {
+          const ids = (args as { where: { id: { in: string[] } } }).where.id.in;
+          return [heavyS1, heavyS2].filter((h) => ids.includes(h.id));
+        },
+      );
     });
 
-    it('filters by pathway id and PUBLISHED career', async () => {
-      mockPrismaService.pathway.findFirst.mockResolvedValue({
-        id: 'p1',
-        careerId: 'c1',
-        title: 't',
-        description: null,
-        steps: [],
-      });
+    const heavyIdsRequested = (): string[] =>
+      (
+        mockPrismaService.pathwayStep.findMany.mock.calls[0][0] as {
+          where: { id: { in: string[] } };
+        }
+      ).where.id.in;
 
-      await service.getPathwayMetadata('p1');
+    it('filters by pathway id and PUBLISHED or RETIRED careers only', async () => {
+      mockPrismaService.pathway.findFirst.mockResolvedValue(baseDbRow);
+      mockPrismaService.userPathwayStep.findMany.mockResolvedValue([]);
+
+      await service.getPathwayRead('p1', null);
 
       expect(mockPrismaService.pathway.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
           where: {
             id: 'p1',
-            career: { status: CareerStatus.PUBLISHED },
+            career: {
+              status: { in: [CareerStatus.PUBLISHED, CareerStatus.RETIRED] },
+            },
           },
         }),
       );
     });
 
-    it('returns empty steps and stepCount 0 for a pathway with no steps', async () => {
-      mockPrismaService.pathway.findFirst.mockResolvedValue({
-        id: 'p1',
-        careerId: 'c1',
-        title: 'Empty',
-        description: null,
-        steps: [],
-      });
-
-      const result = await service.getPathwayMetadata('p1');
-
-      expect(result.steps).toEqual([]);
-      expect(result.stepCount).toBe(0);
-    });
-
-    it('does not leak resources, skills, or full step detail', async () => {
-      mockPrismaService.pathway.findFirst.mockResolvedValue({
-        id: 'p1',
-        careerId: 'c1',
-        title: 't',
-        description: null,
-        steps: [{ id: 's1', title: 'HTML', order: 1, description: null }],
-      });
-
-      const result = await service.getPathwayMetadata('p1');
-
-      expect(Object.keys(result).sort()).toEqual(
-        ['careerId', 'description', 'id', 'stepCount', 'steps', 'title'].sort(),
-      );
-      expect(Object.keys(result.steps[0]).sort()).toEqual(
-        ['description', 'id', 'order', 'title'].sort(),
-      );
-    });
-
-    it('throws NotFoundException when the pathway is missing or its career is not PUBLISHED', async () => {
+    it('throws NotFoundException when the pathway is missing or a draft', async () => {
       mockPrismaService.pathway.findFirst.mockResolvedValue(null);
 
-      await expect(service.getPathwayMetadata('missing')).rejects.toThrow(
+      await expect(service.getPathwayRead('missing', null)).rejects.toThrow(
         NotFoundException,
       );
     });
+
+    it('anonymous: no progress or statuses, heavy data only for the first step', async () => {
+      mockPrismaService.pathway.findFirst.mockResolvedValue(baseDbRow);
+
+      const result = await service.getPathwayRead('p1', null);
+
+      expect(result.progress).toBeNull();
+      expect(result.stages[0].progress).toBeNull();
+      expect(result.stages[0].steps[0].status).toBeNull();
+
+      expect(heavyIdsRequested()).toEqual(['s1']);
+      expect(result.stages[0].steps[0].resources).toHaveLength(1);
+      expect(result.stages[0].steps[0].resources[0].title).toBe('MDN');
+      expect(result.stages[0].steps[0].tasks).toHaveLength(1);
+
+      expect(result.stages[0].steps[1].resources).toEqual([]);
+      expect(result.stages[0].steps[1].tasks).toEqual([]);
+    });
+
+    it('signed-in: progress, and heavy data for the NEXT incomplete step', async () => {
+      mockPrismaService.pathway.findFirst.mockResolvedValue(baseDbRow);
+      mockPrismaService.userPathwayStep.findMany.mockResolvedValue([
+        { pathwayStepId: 's1', status: PathwayStepStatus.COMPLETED },
+      ]);
+      mockPrismaService.userPathway.findUnique.mockResolvedValue({
+        startStepId: null,
+      });
+
+      const result = await service.getPathwayRead('p1', 'u1');
+
+      expect(result.progress?.completed).toBe(1);
+      expect(result.progress?.nextStepId).toBe('s2');
+      expect(heavyIdsRequested()).toEqual(['s2']);
+
+      expect(result.stages[0].steps[0].resources).toEqual([]);
+      expect(result.stages[0].steps[1].resources[0].title).toBe('CSS Tricks');
+    });
+
+    it('start step that is also the next step: heavy data is requested once', async () => {
+      mockPrismaService.pathway.findFirst.mockResolvedValue(baseDbRow);
+      mockPrismaService.userPathwayStep.findMany.mockResolvedValue([]);
+      mockPrismaService.userPathway.findUnique.mockResolvedValue({
+        startStepId: 's2',
+      });
+
+      const result = await service.getPathwayRead('p1', 'u1');
+
+      expect(result.progress?.nextStepId).toBe('s2');
+      expect(heavyIdsRequested()).toEqual(['s2']);
+      expect(result.stages[0].steps[0].resources).toEqual([]);
+      expect(result.stages[0].steps[1].resources).toHaveLength(1);
+    });
+
+    it('start step with work left after it: next step is the start step, and heavy data goes to both', async () => {
+      mockPrismaService.pathway.findFirst.mockResolvedValue(baseDbRow);
+      mockPrismaService.userPathwayStep.findMany.mockResolvedValue([
+        { pathwayStepId: 's2', status: PathwayStepStatus.COMPLETED },
+      ]);
+      mockPrismaService.userPathway.findUnique.mockResolvedValue({
+        startStepId: 's2',
+      });
+
+      const result = await service.getPathwayRead('p1', 'u1');
+
+      // s2 is complete and nothing after it is left, so next falls back to s1.
+      expect(result.progress?.nextStepId).toBe('s1');
+      expect(heavyIdsRequested().sort()).toEqual(['s1', 's2']);
+      expect(result.stages[0].steps[0].resources).toHaveLength(1);
+      expect(result.stages[0].steps[1].resources).toHaveLength(1);
+    });
+
+    it('quiz status: NOT_TAKEN with no attempt, TAKEN with a score after one', async () => {
+      mockPrismaService.userPathway.findUnique.mockResolvedValue({
+        startStepId: null,
+      });
+      mockPrismaService.userPathwayStep.findMany.mockResolvedValue([]);
+
+      mockPrismaService.pathway.findFirst.mockResolvedValueOnce(baseDbRow);
+      const notTaken = await service.getPathwayRead('p1', 'u1');
+      expect(notTaken.stages[0].quiz).toEqual({ status: 'NOT_TAKEN' });
+
+      mockPrismaService.pathway.findFirst.mockResolvedValueOnce({
+        ...baseDbRow,
+        stages: [
+          {
+            ...baseDbRow.stages[0],
+            quiz: {
+              id: 'q1',
+              attempts: [{ correct: 2, total: 3 }],
+            },
+          },
+        ],
+      });
+      const taken = await service.getPathwayRead('p1', 'u1');
+      expect(taken.stages[0].quiz).toEqual({
+        status: 'TAKEN',
+        score: { correct: 2, total: 3 },
+      });
+    });
+
+    it('career header: stage count, step count, resource count and retired flag', async () => {
+      mockPrismaService.pathway.findFirst.mockResolvedValue({
+        ...baseDbRow,
+        career: { ...baseDbRow.career, status: CareerStatus.RETIRED },
+      });
+
+      const result = await service.getPathwayRead('p1', null);
+
+      expect(result.career).toEqual({
+        id: 'c1',
+        title: 'Frontend Path',
+        description: 'Learn frontend',
+        retired: true,
+        stageCount: 1,
+        stepCount: 2,
+        resourceCount: 12,
+      });
+    });
   });
 
+  // ───────────────────────────────────────────────────────────────────
+  // T9.2-era test suites (unchanged)
+  // ───────────────────────────────────────────────────────────────────
   describe('setActivePathway', () => {
     it('throws NotFoundException for a draft, retired, or unknown career', async () => {
       mockPrismaService.career.findFirst.mockResolvedValue(null);
@@ -287,9 +452,6 @@ describe('PathwaysService', () => {
       });
     });
   });
-
-  // NOTE: setStepStatus lives on PathwayStepsService now.
-  // Its tests were moved to pathway-steps.service.spec.ts.
 
   describe('setStartingPoint', () => {
     beforeEach(() => {

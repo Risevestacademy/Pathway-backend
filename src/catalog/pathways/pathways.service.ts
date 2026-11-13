@@ -7,7 +7,6 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma';
 import { CareerStatus, PathwayStepStatus } from '../../generated/prisma/client';
-import { PathwayMetadataDto } from './dto/pathway-metadata.dto';
 import {
   ActivePathwayProgressDto,
   ActivePathwayResponseDto,
@@ -20,6 +19,13 @@ import {
 import { StartingPointResponseDto } from './dto/starting-point-response.dto';
 import { SavedPathwayDto } from './dto/saved-pathway.dto';
 import { AnalyticsService } from '../../analytics';
+import { PathwayReadDto } from './dto/pathway-read.dto';
+import {
+  toPathwayRead,
+  HeavyStepData,
+  resolveActiveStepIds,
+  toStagesForProgress,
+} from './mappers/pathway-read.mapper';
 
 @Injectable()
 export class PathwaysService {
@@ -30,24 +36,62 @@ export class PathwaysService {
     private readonly analytics: AnalyticsService,
   ) {}
 
-  async getPathwayMetadata(pathwayId: string): Promise<PathwayMetadataDto> {
+  async getPathwayRead(
+    pathwayId: string,
+    userId: string | null,
+  ): Promise<PathwayReadDto> {
+    // Query 1: outline, counts, and this caller's quiz attempts.
+    // No resources or tasks here.
     const pathway = await this.prisma.pathway.findFirst({
       where: {
         id: pathwayId,
-        career: { status: CareerStatus.PUBLISHED },
+        career: {
+          status: { in: [CareerStatus.PUBLISHED, CareerStatus.RETIRED] },
+        },
       },
       select: {
         id: true,
-        careerId: true,
-        title: true,
-        description: true,
-        steps: {
+        _count: { select: { steps: true, stages: true } },
+        career: {
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            status: true,
+            _count: { select: { resources: true } },
+          },
+        },
+        stages: {
           orderBy: { order: 'asc' },
           select: {
             id: true,
             title: true,
-            order: true,
             description: true,
+            order: true,
+            quiz: {
+              select: {
+                id: true,
+                attempts: {
+                  where: { userId: userId ?? '__anonymous__' },
+                  select: { correct: true, total: true },
+                  take: 1,
+                },
+              },
+            },
+            steps: {
+              orderBy: { order: 'asc' },
+              select: {
+                id: true,
+                title: true,
+                order: true,
+                description: true,
+                learningObjective: true,
+                expectedActivity: true,
+                skills: {
+                  select: { skill: { select: { name: true } } },
+                },
+              },
+            },
           },
         },
       },
@@ -57,14 +101,79 @@ export class PathwaysService {
       throw new NotFoundException('Pathway not found');
     }
 
-    return {
-      id: pathway.id,
-      careerId: pathway.careerId,
-      title: pathway.title,
-      description: pathway.description,
-      stepCount: pathway.steps.length,
-      steps: pathway.steps,
-    };
+    let userSteps: Array<{ pathwayStepId: string; status: PathwayStepStatus }> =
+      [];
+    let startStepId: string | null = null;
+
+    if (userId) {
+      const [marks, userPathway] = await Promise.all([
+        this.prisma.userPathwayStep.findMany({
+          where: { userId, pathwayStep: { pathwayId } },
+          select: { pathwayStepId: true, status: true },
+        }),
+        this.prisma.userPathway.findUnique({
+          where: {
+            userId_careerId: { userId, careerId: pathway.career.id },
+          },
+          select: { startStepId: true },
+        }),
+      ]);
+      userSteps = marks;
+      startStepId = userPathway?.startStepId ?? null;
+    }
+
+    const opts = { userId, startStepId };
+
+    // Decide which steps need heavy data before fetching it.
+    const { activeStepIds } = resolveActiveStepIds(
+      toStagesForProgress(pathway.stages),
+      userSteps,
+      opts,
+    );
+
+    // Query 2: resources and tasks for the active steps only (at most two).
+    const heavySteps =
+      activeStepIds.size === 0
+        ? []
+        : await this.prisma.pathwayStep.findMany({
+            where: { id: { in: [...activeStepIds] } },
+            select: {
+              id: true,
+              resources: {
+                select: {
+                  resource: {
+                    select: {
+                      id: true,
+                      title: true,
+                      url: true,
+                      type: true,
+                      costStatus: true,
+                      estimatedWeeks: true,
+                      provider: true,
+                    },
+                  },
+                },
+              },
+              tasks: {
+                orderBy: { order: 'asc' },
+                select: {
+                  id: true,
+                  title: true,
+                  goal: true,
+                  estimatedWeeks: true,
+                  whatToMake: true,
+                  hints: true,
+                  checklistItems: { select: { text: true } },
+                },
+              },
+            },
+          });
+
+    const heavyByStepId = new Map<string, HeavyStepData>(
+      heavySteps.map((s) => [s.id, { resources: s.resources, tasks: s.tasks }]),
+    );
+
+    return toPathwayRead(pathway, userSteps, opts, heavyByStepId);
   }
 
   async setActivePathway(

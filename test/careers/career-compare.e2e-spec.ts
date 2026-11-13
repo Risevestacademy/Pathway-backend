@@ -115,7 +115,7 @@ describe('Career comparison (e2e)', () => {
     ).toEqual([null, null]);
     expect(res.body.careers[0].pathway).toEqual({
       stepCount: 3,
-      stageCount: 0,
+      stageCount: 2,
       firstStep: { id: expect.any(String), title: 'Step 1' },
     });
     expect(res.body.outlook).toEqual({

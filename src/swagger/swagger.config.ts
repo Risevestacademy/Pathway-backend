@@ -1,5 +1,9 @@
 import { INestApplication } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule, OpenAPIObject } from '@nestjs/swagger';
+import {
+  StageQuizStatusNotTaken,
+  StageQuizStatusTaken,
+} from '../catalog/pathways/dto/stage-quiz-status.dto';
 
 const swaggerConfig = new DocumentBuilder()
   .setTitle('Pathways API')
@@ -17,7 +21,9 @@ const swaggerConfig = new DocumentBuilder()
   .build();
 
 export function buildSwaggerDocument(app: INestApplication): OpenAPIObject {
-  return SwaggerModule.createDocument(app, swaggerConfig);
+  return SwaggerModule.createDocument(app, swaggerConfig, {
+    extraModels: [StageQuizStatusNotTaken, StageQuizStatusTaken],
+  });
 }
 
 export function setupSwagger(app: INestApplication): void {
