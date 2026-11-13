@@ -77,3 +77,135 @@ export function findStepOrder(
 ): number | null {
   return steps.find((step) => step.id === stepId)?.order ?? null;
 }
+
+// ─── Stage-aware additions (T9.1) ────────────────────────────────────
+
+/**
+ * A stage with its steps, already ordered by `step.order` within the stage.
+ * Callers group steps by stage before invoking the stage-aware functions;
+ * the pure functions themselves stay unaware of `stageId` on steps.
+ */
+export interface StageForProgress {
+  id: string;
+  order: number;
+  steps: StepForProgress[];
+}
+
+export interface StageProgressSummary {
+  completed: number;
+  total: number;
+  percentage: number;
+}
+
+/**
+ * Completion for a single stage. Same math as `computeProgress` but
+ * scoped to one stage's steps — no next-step, no start pointer.
+ */
+export function computeStageProgress(
+  steps: StepForProgress[],
+  userSteps: UserStepProgress[],
+): StageProgressSummary {
+  const statuses = computeStepStatuses(steps, userSteps);
+  const total = steps.length;
+  const completed = steps.filter(
+    (step) => statuses.get(step.id) === PathwayStepStatus.COMPLETED,
+  ).length;
+
+  return {
+    completed,
+    total,
+    percentage: total === 0 ? 0 : Math.round((completed / total) * 100),
+  };
+}
+
+/**
+ * Pathway-level completion plus the next-step pointer, computed from the
+ * user's marks across all stages.
+ *
+ * Next-step resolution (per T9.1 scope):
+ *  - stages walked in `stage.order`
+ *  - complete stages skipped
+ *  - within a stage, steps walked in `step.order`
+ *  - with `startStepId`, anything strictly before the anchor's (stage, step)
+ *    position is ignored for *next-step*, but still counted in progress
+ *    (earlier steps stay incomplete, not skipped)
+ *  - returns the first incomplete step at-or-after the anchor, or null when
+ *    every step is complete
+ */
+export function computePathwayProgress(
+  stages: StageForProgress[],
+  userSteps: UserStepProgress[],
+  startStepId?: string | null,
+): ProgressSummary {
+  const allSteps = stages.flatMap((s) => s.steps);
+  const statuses = computeStepStatuses(allSteps, userSteps);
+  const total = allSteps.length;
+  const completed = allSteps.filter(
+    (step) => statuses.get(step.id) === PathwayStepStatus.COMPLETED,
+  ).length;
+
+  return {
+    completed,
+    total,
+    percentage: total === 0 ? 0 : Math.round((completed / total) * 100),
+    nextStepId: computeNextStep(stages, userSteps, startStepId),
+    selfReported: true,
+  };
+}
+
+/**
+ * The id of the first incomplete step in stage-then-step order, honouring
+ * an optional start pointer. Returns null when every step is complete or
+ * when there is nothing to walk.
+ */
+export function computeNextStep(
+  stages: StageForProgress[],
+  userSteps: UserStepProgress[],
+  startStepId?: string | null,
+): string | null {
+  const orderedStages = [...stages].sort((a, b) => a.order - b.order);
+  const statuses = computeStepStatuses(
+    orderedStages.flatMap((s) => s.steps),
+    userSteps,
+  );
+
+  const anchor = startStepId ? findAnchor(orderedStages, startStepId) : null;
+
+  for (const stage of orderedStages) {
+    const stageComplete = stage.steps.every(
+      (step) => statuses.get(step.id) === PathwayStepStatus.COMPLETED,
+    );
+    if (stageComplete) continue;
+
+    for (const step of [...stage.steps].sort((a, b) => a.order - b.order)) {
+      if (statuses.get(step.id) === PathwayStepStatus.COMPLETED) continue;
+
+      if (anchor) {
+        const beforeStage = stage.order < anchor.stageOrder;
+        const sameStageBeforeStep =
+          stage.order === anchor.stageOrder && step.order < anchor.stepOrder;
+        if (beforeStage || sameStageBeforeStep) continue;
+      }
+
+      return step.id;
+    }
+  }
+
+  return null;
+}
+
+interface AnchorPosition {
+  stageOrder: number;
+  stepOrder: number;
+}
+
+function findAnchor(
+  orderedStages: StageForProgress[],
+  stepId: string,
+): AnchorPosition | null {
+  for (const stage of orderedStages) {
+    const step = stage.steps.find((s) => s.id === stepId);
+    if (step) return { stageOrder: stage.order, stepOrder: step.order };
+  }
+  return null;
+}
