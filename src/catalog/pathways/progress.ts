@@ -154,10 +154,16 @@ export function computePathwayProgress(
 }
 
 /**
- * The id of the first incomplete step in stage-then-step order, honouring
- * an optional start pointer. Returns null when every step is complete or
- * when there is nothing to walk.
+ * The id of the next step for this user, in stage-then-step order.
+ *
+ * - Complete stages and complete steps are skipped.
+ * - With a start pointer, the walk begins at the start step (earlier steps are
+ *   not revisited, they stay incomplete in progress).
+ * - If nothing at or after the start step is incomplete, the walk falls back to
+ *   the earliest incomplete step overall.
+ * - Returns null only when every step is complete.
  */
+
 export function computeNextStep(
   stages: StageForProgress[],
   userSteps: UserStepProgress[],
@@ -168,30 +174,33 @@ export function computeNextStep(
     orderedStages.flatMap((s) => s.steps),
     userSteps,
   );
-
   const anchor = startStepId ? findAnchor(orderedStages, startStepId) : null;
 
-  for (const stage of orderedStages) {
-    const stageComplete = stage.steps.every(
-      (step) => statuses.get(step.id) === PathwayStepStatus.COMPLETED,
-    );
-    if (stageComplete) continue;
+  const walk = (fromAnchor: boolean): string | null => {
+    for (const stage of orderedStages) {
+      const stageComplete = stage.steps.every(
+        (step) => statuses.get(step.id) === PathwayStepStatus.COMPLETED,
+      );
+      if (stageComplete) continue;
 
-    for (const step of [...stage.steps].sort((a, b) => a.order - b.order)) {
-      if (statuses.get(step.id) === PathwayStepStatus.COMPLETED) continue;
+      for (const step of [...stage.steps].sort((a, b) => a.order - b.order)) {
+        if (statuses.get(step.id) === PathwayStepStatus.COMPLETED) continue;
 
-      if (anchor) {
-        const beforeStage = stage.order < anchor.stageOrder;
-        const sameStageBeforeStep =
-          stage.order === anchor.stageOrder && step.order < anchor.stepOrder;
-        if (beforeStage || sameStageBeforeStep) continue;
+        if (fromAnchor && anchor) {
+          const beforeStage = stage.order < anchor.stageOrder;
+          const sameStageBeforeStep =
+            stage.order === anchor.stageOrder && step.order < anchor.stepOrder;
+          if (beforeStage || sameStageBeforeStep) continue;
+        }
+
+        return step.id;
       }
-
-      return step.id;
     }
-  }
+    return null;
+  };
 
-  return null;
+  const fromStart = anchor ? walk(true) : null;
+  return fromStart ?? walk(false);
 }
 
 interface AnchorPosition {
