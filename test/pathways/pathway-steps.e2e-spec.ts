@@ -2,17 +2,17 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import request from 'supertest';
-import { AppModule } from '../src/app.module';
-import { PathwayStepsService } from '../src/catalog/pathway-steps';
-import { NotificationService } from '../src/notifications';
-import { apiPrefix as resolveApiPrefix, configureApp } from '../src/common';
-import { EnvironmentVariables } from '../src/config';
-import { PrismaService } from '../src/prisma';
+import { AppModule } from '../../src/app.module';
+import { PathwayStepsService } from '../../src/catalog/pathway-steps';
+import { NotificationService } from '../../src/notifications';
+import { apiPrefix as resolveApiPrefix, configureApp } from '../../src/common';
+import { EnvironmentVariables } from '../../src/config';
+import { PrismaService } from '../../src/prisma';
 import {
   notificationMock,
   registerAndVerify,
   wireNotificationMock,
-} from './utils/auth';
+} from '../utils/auth';
 
 describe('Pathway steps (e2e)', () => {
   let app: INestApplication;

@@ -3,24 +3,24 @@ import { ConfigService } from '@nestjs/config';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 
-import { AppModule } from '../src/app.module';
-import { apiPrefix as resolveApiPrefix, configureApp } from '../src/common';
-import { EnvironmentVariables } from '../src/config';
-import { NotificationService } from '../src/notifications';
-import { PrismaService } from '../src/prisma';
-import { AnalyticsService } from '../src/analytics';
+import { AppModule } from '../../src/app.module';
+import { apiPrefix as resolveApiPrefix, configureApp } from '../../src/common';
+import { EnvironmentVariables } from '../../src/config';
+import { NotificationService } from '../../src/notifications';
+import { PrismaService } from '../../src/prisma';
+import { AnalyticsService } from '../../src/analytics';
 import {
   cleanupCatalog,
   seedCatalog,
   stepsOf,
   type CatalogFixture,
-} from './utils/catalog';
+} from '../utils/catalog';
 import {
   notificationMock,
   registerAndVerify,
   wireNotificationMock,
   type RegisteredUser,
-} from './utils/auth';
+} from '../utils/auth';
 
 describe('Pathway step progress (e2e)', () => {
   let app: INestApplication;
