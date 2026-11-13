@@ -927,6 +927,54 @@
         ]
       }
     },
+    "/careers/compare": {
+      "get": {
+        "description": "Public. A Bearer token is optional: with one, each career carries skillMatch against the skills the user listed; without one, skillMatch is null. Outlook values are flagged as comparable or not, with reasons, and are never compared. Careers come back in the order of ids.",
+        "operationId": "CareersController_compareCareers",
+        "parameters": [
+          {
+            "name": "ids",
+            "required": true,
+            "in": "query",
+            "description": "Exactly two different career UUIDs, comma-separated",
+            "schema": {
+              "example": "5b1f3c2a-8d4e-4f6a-9b7c-1e2d3f4a5b6c,8c2d4e6f-1a3b-4c5d-9e7f-2a4b6c8d0e1f",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompareCareersResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "ids is not exactly two different career UUIDs"
+          },
+          "401": {
+            "description": "A token was sent but is missing, invalid or expired"
+          },
+          "404": {
+            "description": "Either career does not exist or is not PUBLISHED"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Compare two published careers side by side",
+        "tags": [
+          "Careers"
+        ]
+      }
+    },
     "/careers/{id}": {
       "get": {
         "description": "Returns overview, projection and requirements together, so the detail page renders all three tabs from a single request.",
@@ -1503,7 +1551,8 @@
     },
     "/pathways/{pathwayId}": {
       "get": {
-        "operationId": "PathwaysController_getPathwayMetadata",
+        "description": "Returns the career header, every stage with its steps, and progress. Resources and tasks are included only for the next step and the start step. Works for published and retired careers.",
+        "operationId": "PathwaysController_getPathwayRead",
         "parameters": [
           {
             "name": "pathwayId",
@@ -1517,11 +1566,11 @@
         ],
         "responses": {
           "200": {
-            "description": "Pathway metadata with slim ordered step summaries. Resources and full step detail are served by GET /pathway-steps/:stepId.",
+            "description": "",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PathwayMetadataDto"
+                  "$ref": "#/components/schemas/PathwayReadDto"
                 }
               }
             }
@@ -1530,10 +1579,10 @@
             "description": "pathwayId is not a valid UUID."
           },
           "404": {
-            "description": "Pathway does not exist, or belongs to a career that is not PUBLISHED."
+            "description": "Pathway not found, or its career is a draft."
           }
         },
-        "summary": "Get a published pathway's metadata and slim ordered steps (no resources or full step detail)",
+        "summary": "Get a pathway's overview, stage progress, and the next step's details",
         "tags": [
           "Pathways"
         ]
@@ -3690,6 +3739,27 @@
           "items"
         ]
       },
+      "ComparisonFieldDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "example": "Software Engineering"
+          },
+          "slug": {
+            "type": "string",
+            "example": "software-engineering"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug"
+        ]
+      },
       "CareerOverviewSkillDto": {
         "type": "object",
         "properties": {
@@ -3711,6 +3781,418 @@
           "id",
           "name",
           "importance"
+        ]
+      },
+      "ComparisonSourceDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "U.S. Bureau of Labor Statistics"
+          },
+          "url": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "name",
+          "url"
+        ]
+      },
+      "ComparisonSalaryDto": {
+        "type": "object",
+        "properties": {
+          "geography": {
+            "type": "string",
+            "example": "Lagos, Nigeria"
+          },
+          "period": {
+            "type": "string",
+            "example": "Q2 2025"
+          },
+          "experienceLevel": {
+            "type": "string",
+            "nullable": true,
+            "example": "entry-level"
+          },
+          "median": {
+            "type": "string",
+            "nullable": true,
+            "example": "4500000.00"
+          },
+          "percentile25": {
+            "type": "string",
+            "nullable": true,
+            "example": null
+          },
+          "percentile75": {
+            "type": "string",
+            "nullable": true,
+            "example": null
+          },
+          "currency": {
+            "type": "string",
+            "nullable": true,
+            "example": "NGN"
+          },
+          "payPeriod": {
+            "type": "string",
+            "nullable": true,
+            "example": "year"
+          },
+          "grossOrNet": {
+            "type": "string",
+            "nullable": true,
+            "example": "gross"
+          },
+          "source": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ComparisonSourceDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "geography",
+          "period",
+          "experienceLevel",
+          "median",
+          "percentile25",
+          "percentile75",
+          "currency",
+          "payPeriod",
+          "grossOrNet",
+          "source"
+        ]
+      },
+      "ComparisonDemandDto": {
+        "type": "object",
+        "properties": {
+          "geography": {
+            "type": "string",
+            "example": "Lagos, Nigeria"
+          },
+          "period": {
+            "type": "string",
+            "example": "2025"
+          },
+          "demandLevel": {
+            "type": "string",
+            "enum": [
+              "LOW",
+              "MEDIUM",
+              "HIGH"
+            ],
+            "nullable": true,
+            "example": "HIGH"
+          },
+          "source": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ComparisonSourceDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "geography",
+          "period",
+          "demandLevel",
+          "source"
+        ]
+      },
+      "ComparisonFirstStepDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "example": "Programming fundamentals"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ]
+      },
+      "ComparisonPathwayDto": {
+        "type": "object",
+        "properties": {
+          "stepCount": {
+            "type": "number",
+            "example": 8
+          },
+          "stageCount": {
+            "type": "number",
+            "example": 3
+          },
+          "firstStep": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ComparisonFirstStepDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "stepCount",
+          "stageCount",
+          "firstStep"
+        ]
+      },
+      "SkillMatchSkillDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "example": "TypeScript"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "NiceToHaveSkillMatchDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "example": "TypeScript"
+          },
+          "matched": {
+            "type": "boolean",
+            "example": false
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "matched"
+        ]
+      },
+      "SkillMatchDto": {
+        "type": "object",
+        "properties": {
+          "matchedRequiredSkills": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SkillMatchSkillDto"
+            }
+          },
+          "requiredSkillCount": {
+            "type": "number",
+            "example": 3
+          },
+          "percentage": {
+            "type": "number",
+            "nullable": true,
+            "example": 67,
+            "description": "Share of required skills the user listed, 0 to 100; null when the career has no required skills"
+          },
+          "niceToHaveSkills": {
+            "description": "Listed but not counted in the percentage",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NiceToHaveSkillMatchDto"
+            }
+          }
+        },
+        "required": [
+          "matchedRequiredSkills",
+          "requiredSkillCount",
+          "percentage",
+          "niceToHaveSkills"
+        ]
+      },
+      "CompareCareerItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string",
+            "example": "backend-engineer"
+          },
+          "title": {
+            "type": "string",
+            "example": "Backend Engineer"
+          },
+          "description": {
+            "type": "string"
+          },
+          "iconKey": {
+            "type": "string",
+            "nullable": true
+          },
+          "field": {
+            "$ref": "#/components/schemas/ComparisonFieldDto"
+          },
+          "roleSummary": {
+            "type": "string",
+            "nullable": true
+          },
+          "exampleActivities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "targetLevels": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "STUDENT",
+                "RECENT_GRAD",
+                "EARLY_CAREER"
+              ]
+            }
+          },
+          "typicalEducationNote": {
+            "type": "string",
+            "nullable": true
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CareerOverviewSkillDto"
+            }
+          },
+          "salary": {
+            "nullable": true,
+            "description": "The entry-level salary entry, else the earliest salary entry, else null",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ComparisonSalaryDto"
+              }
+            ]
+          },
+          "demand": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ComparisonDemandDto"
+              }
+            ]
+          },
+          "pathway": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ComparisonPathwayDto"
+              }
+            ]
+          },
+          "skillMatch": {
+            "nullable": true,
+            "description": "Compared with the skills the user listed; null for anonymous callers",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SkillMatchDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "title",
+          "description",
+          "iconKey",
+          "field",
+          "roleSummary",
+          "exampleActivities",
+          "targetLevels",
+          "typicalEducationNote",
+          "skills",
+          "salary",
+          "demand",
+          "pathway",
+          "skillMatch"
+        ]
+      },
+      "OutlookComparabilityDto": {
+        "type": "object",
+        "properties": {
+          "comparable": {
+            "type": "boolean",
+            "example": true
+          },
+          "reasons": {
+            "type": "array",
+            "example": [],
+            "description": "Why the two values cannot be compared; empty when comparable",
+            "items": {
+              "type": "string",
+              "enum": [
+                "MISSING_VALUE",
+                "GEOGRAPHY",
+                "PERIOD",
+                "CURRENCY",
+                "PAY_PERIOD"
+              ]
+            }
+          }
+        },
+        "required": [
+          "comparable",
+          "reasons"
+        ]
+      },
+      "ComparisonOutlookDto": {
+        "type": "object",
+        "properties": {
+          "salary": {
+            "$ref": "#/components/schemas/OutlookComparabilityDto"
+          },
+          "demand": {
+            "$ref": "#/components/schemas/OutlookComparabilityDto"
+          }
+        },
+        "required": [
+          "salary",
+          "demand"
+        ]
+      },
+      "CompareCareersResponseDto": {
+        "type": "object",
+        "properties": {
+          "careers": {
+            "description": "The two careers, in the order of ids",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CompareCareerItemDto"
+            }
+          },
+          "outlook": {
+            "$ref": "#/components/schemas/ComparisonOutlookDto"
+          }
+        },
+        "required": [
+          "careers",
+          "outlook"
         ]
       },
       "CareerOverviewDto": {
@@ -5222,7 +5704,186 @@
           "progress"
         ]
       },
-      "PathwayStepSummaryDto": {
+      "PathwayReadCareerDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "retired": {
+            "type": "boolean",
+            "example": false
+          },
+          "stageCount": {
+            "type": "number"
+          },
+          "stepCount": {
+            "type": "number"
+          },
+          "resourceCount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "description",
+          "retired",
+          "stageCount",
+          "stepCount",
+          "resourceCount"
+        ]
+      },
+      "PathwayReadProgressDto": {
+        "type": "object",
+        "properties": {
+          "completed": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number"
+          },
+          "percentage": {
+            "type": "number"
+          },
+          "nextStepId": {
+            "type": "string",
+            "nullable": true
+          },
+          "selfReported": {
+            "type": "boolean",
+            "example": true
+          }
+        },
+        "required": [
+          "completed",
+          "total",
+          "percentage",
+          "nextStepId",
+          "selfReported"
+        ]
+      },
+      "PathwayReadStageProgressDto": {
+        "type": "object",
+        "properties": {
+          "completed": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number"
+          },
+          "percentage": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "completed",
+          "total",
+          "percentage"
+        ]
+      },
+      "StepResourceDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "COURSE",
+              "CERTIFICATION",
+              "ARTICLE",
+              "VIDEO",
+              "BOOK"
+            ]
+          },
+          "costStatus": {
+            "type": "string",
+            "enum": [
+              "FREE",
+              "PAID",
+              "UNKNOWN"
+            ]
+          },
+          "estimatedWeeks": {
+            "type": "number",
+            "nullable": true
+          },
+          "provider": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "url",
+          "type",
+          "costStatus",
+          "estimatedWeeks",
+          "provider"
+        ]
+      },
+      "StepTaskDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "goal": {
+            "type": "string"
+          },
+          "estimatedWeeks": {
+            "type": "number",
+            "nullable": true
+          },
+          "whatToMake": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "hints": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "checklist": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "goal",
+          "estimatedWeeks",
+          "whatToMake",
+          "hints",
+          "checklist"
+        ]
+      },
+      "PathwayReadStepDto": {
         "type": "object",
         "properties": {
           "id": {
@@ -5232,57 +5893,144 @@
             "type": "string"
           },
           "order": {
-            "type": "number",
-            "description": "Position of the step within its pathway"
+            "type": "number"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "NOT_STARTED",
+              "IN_PROGRESS",
+              "COMPLETED"
+            ],
+            "nullable": true
           },
           "description": {
             "type": "string",
             "nullable": true
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "expectedActivity": {
+            "type": "string",
+            "nullable": true
+          },
+          "careerReadiness": {
+            "type": "string",
+            "nullable": true
+          },
+          "resources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StepResourceDto"
+            }
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StepTaskDto"
+            }
           }
         },
         "required": [
           "id",
           "title",
           "order",
-          "description"
+          "status",
+          "description",
+          "skills",
+          "expectedActivity",
+          "careerReadiness",
+          "resources",
+          "tasks"
         ]
       },
-      "PathwayMetadataDto": {
+      "PathwayReadStageDto": {
         "type": "object",
         "properties": {
           "id": {
             "type": "string"
           },
-          "careerId": {
-            "type": "string",
-            "description": "Career the pathway belongs to"
-          },
           "title": {
             "type": "string"
+          },
+          "order": {
+            "type": "number"
           },
           "description": {
             "type": "string",
             "nullable": true
           },
-          "stepCount": {
-            "type": "number",
-            "description": "Number of steps in this pathway"
+          "progress": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PathwayReadStageProgressDto"
+              }
+            ]
+          },
+          "quiz": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/StageQuizStatusNotTaken"
+              },
+              {
+                "$ref": "#/components/schemas/StageQuizStatusTaken"
+              }
+            ],
+            "nullable": true
           },
           "steps": {
-            "description": "Ordered slim step summaries. Resources and full step detail are served by GET /pathway-steps/:stepId.",
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/PathwayStepSummaryDto"
+              "$ref": "#/components/schemas/PathwayReadStepDto"
             }
           }
         },
         "required": [
           "id",
-          "careerId",
           "title",
+          "order",
           "description",
-          "stepCount",
+          "progress",
+          "quiz",
           "steps"
+        ]
+      },
+      "PathwayReadDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "career": {
+            "$ref": "#/components/schemas/PathwayReadCareerDto"
+          },
+          "progress": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PathwayReadProgressDto"
+              }
+            ]
+          },
+          "stages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PathwayReadStageDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "career",
+          "progress",
+          "stages"
         ]
       },
       "SetActivePathwayDto": {
