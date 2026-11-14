@@ -88,7 +88,7 @@ describe('GET /pathways/:pathwayId (e2e)', () => {
     apiPrefix = `/${resolveApiPrefix(
       app.get<ConfigService<EnvironmentVariables, true>>(ConfigService),
     )}`;
-    await app.init();
+    await app.listen(0, '127.0.0.1');
 
     wireNotificationMock();
 

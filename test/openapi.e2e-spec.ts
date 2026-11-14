@@ -29,7 +29,7 @@ describe('OpenAPI document (e2e)', () => {
 
     configureApp(app);
 
-    await app.init();
+    await app.listen(0, '127.0.0.1');
   });
 
   afterAll(async () => {
