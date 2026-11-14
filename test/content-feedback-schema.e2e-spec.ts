@@ -30,7 +30,7 @@ describe('ContentFeedback and Career schema (e2e)', () => {
       imports: [AppModule],
     }).compile();
     app = moduleFixture.createNestApplication();
-    await app.init();
+    await app.listen(0, '127.0.0.1');
     prisma = app.get(PrismaService);
 
     const field = await prisma.field.create({

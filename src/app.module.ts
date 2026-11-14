@@ -23,6 +23,7 @@ import { TeamsModule } from './teams';
 import { RevisionsModule } from './catalog/content-revisions/content-revisions.module';
 import { OpportunitiesModule } from './opportunities';
 import { CloudinaryModule } from './cloudinary/cloudinary.module';
+import { DashboardModule } from './dashboard';
 
 @Module({
   imports: [
@@ -51,6 +52,7 @@ import { CloudinaryModule } from './cloudinary/cloudinary.module';
     RevisionsModule,
     OpportunitiesModule,
     CloudinaryModule,
+    DashboardModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
