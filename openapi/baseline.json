@@ -941,6 +941,19 @@
               "example": "5b1f3c2a-8d4e-4f6a-9b7c-1e2d3f4a5b6c,8c2d4e6f-1a3b-4c5d-9e7f-2a4b6c8d0e1f",
               "type": "string"
             }
+          },
+          {
+            "name": "X-Auth-Status",
+            "in": "header",
+            "description": "Present only when an Authorization header was sent but rejected. The request is served as anonymous.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "expired",
+                "invalid"
+              ]
+            }
           }
         ],
         "responses": {
@@ -957,18 +970,10 @@
           "400": {
             "description": "ids is not exactly two different career UUIDs"
           },
-          "401": {
-            "description": "A token was sent but is missing, invalid or expired"
-          },
           "404": {
             "description": "Either career does not exist or is not PUBLISHED"
           }
         },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
         "summary": "Compare two published careers side by side",
         "tags": [
           "Careers"

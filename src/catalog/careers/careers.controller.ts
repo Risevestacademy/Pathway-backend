@@ -16,6 +16,7 @@ import {
   ApiTags,
   ApiQuery,
   ApiParam,
+  ApiHeader,
 } from '@nestjs/swagger';
 import {
   type AuthenticatedUser,
@@ -69,20 +70,22 @@ export class CareersController {
   }
 
   @Get('compare')
-  @ApiBearerAuth()
   @ApiOperation({
     summary: 'Compare two published careers side by side',
     description:
       'Public. A Bearer token is optional: with one, each career carries skillMatch against the skills the user listed; without one, skillMatch is null. Outlook values are flagged as comparable or not, with reasons, and are never compared. Careers come back in the order of ids.',
   })
+  @ApiHeader({
+    name: 'X-Auth-Status',
+    required: false,
+    enum: ['expired', 'invalid'],
+    description:
+      'Present only when an Authorization header was sent but rejected. The request is served as anonymous.',
+  })
   @ApiResponse({ status: 200, type: CompareCareersResponseDto })
   @ApiResponse({
     status: 400,
     description: 'ids is not exactly two different career UUIDs',
-  })
-  @ApiResponse({
-    status: 401,
-    description: 'A token was sent but is missing, invalid or expired',
   })
   @ApiResponse({
     status: 404,

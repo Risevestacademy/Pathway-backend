@@ -145,12 +145,22 @@ describe('Career comparison (e2e)', () => {
     });
   });
 
-  it('returns 401 for an invalid token', async () => {
-    await compare(
-      `${catalog.publishedCareerId},${catalog.secondPublishedCareerId}`,
-    )
-      .set('Authorization', 'Bearer not-a-token')
-      .expect(401);
+  it('serves the anonymous comparison and sets X-Auth-Status for an invalid token', async () => {
+    const response = await request(app.getHttpServer())
+      .get(`${apiPrefix}/careers/compare`)
+      .query({
+        ids: [catalog.publishedCareerId, catalog.secondPublishedCareerId],
+      }) // ← ADD THIS
+      .set('Authorization', 'Bearer not-a-real-jwt')
+      .expect(200);
+
+    expect(response.headers['x-auth-status']).toBe('invalid');
+
+    const careers = response.body.careers as Array<{ skillMatch: unknown }>;
+    expect(careers).toHaveLength(2);
+    for (const career of careers) {
+      expect(career.skillMatch).toBeNull();
+    }
   });
 
   it.each([
