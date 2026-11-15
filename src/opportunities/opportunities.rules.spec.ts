@@ -40,18 +40,19 @@ describe('Opportunity Rules', () => {
       expect(isVisible(opp, now)).toBe(false);
     });
 
-    it('is false if no deadline and deadlineUnknown is false', () => {
-      const opp = {
-        ...baseOpportunity,
-        deadline: null,
-        deadlineUnknown: false,
-      };
-      expect(isVisible(opp, now)).toBe(false);
-    });
-
-    it('is true if deadlineUnknown is true, even with no deadline', () => {
-      const opp = { ...baseOpportunity, deadlineUnknown: true, deadline: null };
-      expect(isVisible(opp, now)).toBe(true);
+    it('is true when there is no deadline, regardless of deadlineUnknown', () => {
+      expect(
+        isVisible(
+          { ...baseOpportunity, deadline: null, deadlineUnknown: false },
+          now,
+        ),
+      ).toBe(true);
+      expect(
+        isVisible(
+          { ...baseOpportunity, deadline: null, deadlineUnknown: true },
+          now,
+        ),
+      ).toBe(true);
     });
   });
 
@@ -80,18 +81,19 @@ describe('Opportunity Rules', () => {
       expect(deriveStatus(opp, now)).toBe('OPEN');
     });
 
-    it('returns ROLLING if deadlineUnknown is true', () => {
-      const opp = { ...baseOpportunity, deadlineUnknown: true, deadline: null };
-      expect(deriveStatus(opp, now)).toBe('ROLLING');
-    });
-
-    it('returns ROLLING if deadline is null but deadlineUnknown is false (fallback)', () => {
-      const opp = {
-        ...baseOpportunity,
-        deadline: null,
-        deadlineUnknown: false,
-      };
-      expect(deriveStatus(opp, now)).toBe('ROLLING');
+    it('returns OPEN when there is no deadline, regardless of deadlineUnknown', () => {
+      expect(
+        deriveStatus(
+          { ...baseOpportunity, deadline: null, deadlineUnknown: true },
+          now,
+        ),
+      ).toBe('OPEN');
+      expect(
+        deriveStatus(
+          { ...baseOpportunity, deadline: null, deadlineUnknown: false },
+          now,
+        ),
+      ).toBe('OPEN');
     });
   });
 });

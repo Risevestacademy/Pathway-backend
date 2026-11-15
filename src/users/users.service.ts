@@ -29,6 +29,9 @@ const profileFieldsSelect = {
   avatarUrl: true,
   careerStage: true,
   educationLevel: true,
+  institution: true,
+  yearFinished: true,
+  courseOfStudy: true,
   internshipCount: true,
   experienceYears: true,
   learningGoals: true,
@@ -75,6 +78,9 @@ export interface UserResponse {
   avatarUrl: string | null;
   careerStage: TargetLevel | null;
   educationLevel: EducationLevel | null;
+  institution: string | null;
+  yearFinished: number | null;
+  courseOfStudy: string | null;
   internshipCount: InternshipCount | null;
   experienceYears: ExperienceYears | null;
   learningGoals: string[];
@@ -156,12 +162,12 @@ export class UsersService {
 
     if (profile.avatarUrl) this.assertOwnAvatarUrl(id, profile.avatarUrl);
 
-    if (profile.careerInterests?.length)
-      await this.assertKnownFieldSlugs(id, profile.careerInterests);
-
     let flagChanged: boolean;
     try {
       flagChanged = await this.prisma.$transaction(async (tx) => {
+        if (profile.careerInterests?.length)
+          await this.assertKnownFieldSlugs(tx, id, profile.careerInterests);
+
         await tx.userProfile.upsert({
           where: { userId: id },
           create: { userId: id, ...profile },
@@ -223,6 +229,9 @@ export class UsersService {
       avatarUrl: profile?.avatarUrl ?? null,
       careerStage: profile?.careerStage ?? null,
       educationLevel: profile?.educationLevel ?? null,
+      institution: profile?.institution ?? null,
+      yearFinished: profile?.yearFinished ?? null,
+      courseOfStudy: profile?.courseOfStudy ?? null,
       internshipCount: profile?.internshipCount ?? null,
       experienceYears: profile?.experienceYears ?? null,
       learningGoals: profile?.learningGoals ?? [],
@@ -289,10 +298,11 @@ export class UsersService {
   }
 
   private async assertKnownFieldSlugs(
+    client: Prisma.TransactionClient,
     userId: string,
     slugs: string[],
   ): Promise<void> {
-    const known = await this.prisma.field.findMany({
+    const known = await client.field.findMany({
       where: { slug: { in: slugs } },
       select: { slug: true },
     });

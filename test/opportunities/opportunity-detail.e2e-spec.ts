@@ -25,7 +25,7 @@ describe('GET /opportunities/:id (e2e)', () => {
   const marker = `e2e-opp-detail-${timestamp}`;
   const unknownId = '00000000-0000-4000-8000-000000000000';
   const ids = {} as Record<
-    'visible' | 'closed' | 'rolling' | 'draft' | 'withdrawn',
+    'visible' | 'closed' | 'open' | 'draft' | 'withdrawn',
     string
   >;
 
@@ -83,7 +83,7 @@ describe('GET /opportunities/:id (e2e)', () => {
     const now = Date.now();
     await createOpportunity('visible', { deadline: new Date(now + 30 * DAY) });
     await createOpportunity('closed', { deadline: new Date(now - DAY) });
-    await createOpportunity('rolling', { deadlineUnknown: true });
+    await createOpportunity('open', { deadlineUnknown: true });
     await createOpportunity('draft', {
       verification: OpportunityVerification.DRAFT,
       deadline: new Date(now + 30 * DAY),
@@ -134,12 +134,12 @@ describe('GET /opportunities/:id (e2e)', () => {
     expect(body).toMatchObject({ id: ids.closed, status: 'CLOSED' });
   });
 
-  it('returns a rolling listing with a null deadline', async () => {
-    const { body } = await detail(ids.rolling).expect(200);
+  it('returns a open listing with a null deadline', async () => {
+    const { body } = await detail(ids.open).expect(200);
 
     expect(body).toMatchObject({
-      id: ids.rolling,
-      status: 'ROLLING',
+      id: ids.open,
+      status: 'OPEN',
       deadline: null,
     });
   });

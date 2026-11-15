@@ -36,6 +36,7 @@ describe('AuthController (e2e)', () => {
     'avatarUrl',
     'careerInterests',
     'careerStage',
+    'courseOfStudy',
     'createdAt',
     'educationLevel',
     'email',
@@ -44,11 +45,13 @@ describe('AuthController (e2e)', () => {
     'firstName',
     'fullName',
     'id',
+    'institution',
     'internshipCount',
     'lastName',
     'learningGoals',
     'role',
     'weeklyTimeCommitment',
+    'yearFinished',
   ];
 
   const testUser = {

@@ -16,12 +16,15 @@ describe('ActivityService', () => {
       aggregate: jest.fn<(args: unknown) => Promise<unknown>>(),
       deleteMany: jest.fn<(args: unknown) => Promise<unknown>>(),
     },
-    badge: { findMany: jest.fn<(args: unknown) => Promise<unknown[]>>() },
+    badge: {
+      findMany: jest.fn<(args: unknown) => Promise<unknown[]>>(),
+    },
     userBadge: {
       createManyAndReturn: jest.fn<(args: unknown) => Promise<unknown[]>>(),
       deleteMany: jest.fn<(args: unknown) => Promise<unknown>>(),
     },
   };
+
   const client = tx as unknown as Prisma.TransactionClient;
 
   const totalXp = (xp: number | null) =>
@@ -29,6 +32,7 @@ describe('ActivityService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+
     tx.$queryRaw.mockResolvedValue([]);
     tx.activityLedger.createMany.mockResolvedValue({ count: 1 });
     totalXp(0);
@@ -51,8 +55,13 @@ describe('ActivityService', () => {
     expect(service).toBeDefined();
   });
 
-  it('defines the XP for a completed step', () => {
-    expect(ACTIVITY_XP[ActivityType.STEP_COMPLETED]).toBe(50);
+  describe('ACTIVITY_XP', () => {
+    it('defines XP for every supported activity type', () => {
+      expect(ACTIVITY_XP[ActivityType.STEP_COMPLETED]).toBe(50);
+      expect(ACTIVITY_XP[ActivityType.TASK_COMPLETED]).toBeDefined();
+      expect(ACTIVITY_XP[ActivityType.RESOURCE_COMPLETED]).toBeDefined();
+      expect(ACTIVITY_XP[ActivityType.QUIZ_PASSED]).toBeDefined();
+    });
   });
 
   describe('recordStepCompleted', () => {
@@ -65,18 +74,23 @@ describe('ActivityService', () => {
             userId: 'user-1',
             type: ActivityType.STEP_COMPLETED,
             referenceId: 'step-1',
-            xp: 50,
+            xp: ACTIVITY_XP[ActivityType.STEP_COMPLETED],
           },
         ],
         skipDuplicates: true,
       });
+
       expect(logSpy).toHaveBeenCalledWith(
-        { userId: 'user-1', type: ActivityType.STEP_COMPLETED, xp: 50 },
+        {
+          userId: 'user-1',
+          type: ActivityType.STEP_COMPLETED,
+          xp: ACTIVITY_XP[ActivityType.STEP_COMPLETED],
+        },
         'XP awarded',
       );
     });
 
-    it('writes the ledger row for an opted-out user, since XP never depends on analytics', async () => {
+    it('writes the ledger row for an opted-out user', async () => {
       await service.recordStepCompleted('opted-out-user', 'step-1', client);
 
       expect(tx.activityLedger.createMany).toHaveBeenCalledWith(
@@ -98,10 +112,129 @@ describe('ActivityService', () => {
 
     it('never removes ledger rows', async () => {
       await service.recordStepCompleted('user-1', 'step-1', client);
+
       tx.activityLedger.createMany.mockResolvedValue({ count: 0 });
+
       await service.recordStepCompleted('user-1', 'step-1', client);
 
       expect(tx.activityLedger.deleteMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('recordTaskCompleted', () => {
+    it('inserts a task completion ledger row', async () => {
+      await service.recordTaskCompleted('user-1', 'task-1', client);
+
+      expect(tx.activityLedger.createMany).toHaveBeenCalledWith({
+        data: [
+          {
+            userId: 'user-1',
+            type: ActivityType.TASK_COMPLETED,
+            referenceId: 'task-1',
+            xp: ACTIVITY_XP[ActivityType.TASK_COMPLETED],
+          },
+        ],
+        skipDuplicates: true,
+      });
+    });
+
+    it('logs XP awarded for a completed task', async () => {
+      await service.recordTaskCompleted('user-1', 'task-1', client);
+
+      expect(logSpy).toHaveBeenCalledWith(
+        {
+          userId: 'user-1',
+          type: ActivityType.TASK_COMPLETED,
+          xp: ACTIVITY_XP[ActivityType.TASK_COMPLETED],
+        },
+        'XP awarded',
+      );
+    });
+
+    it('does not log XP when the task completion is a duplicate', async () => {
+      tx.activityLedger.createMany.mockResolvedValue({ count: 0 });
+
+      await service.recordTaskCompleted('user-1', 'task-1', client);
+
+      expect(logSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('recordResourceCompleted', () => {
+    it('inserts a resource completion ledger row', async () => {
+      await service.recordResourceCompleted('user-1', 'resource-1', client);
+
+      expect(tx.activityLedger.createMany).toHaveBeenCalledWith({
+        data: [
+          {
+            userId: 'user-1',
+            type: ActivityType.RESOURCE_COMPLETED,
+            referenceId: 'resource-1',
+            xp: ACTIVITY_XP[ActivityType.RESOURCE_COMPLETED],
+          },
+        ],
+        skipDuplicates: true,
+      });
+    });
+
+    it('logs XP awarded for a completed resource', async () => {
+      await service.recordResourceCompleted('user-1', 'resource-1', client);
+
+      expect(logSpy).toHaveBeenCalledWith(
+        {
+          userId: 'user-1',
+          type: ActivityType.RESOURCE_COMPLETED,
+          xp: ACTIVITY_XP[ActivityType.RESOURCE_COMPLETED],
+        },
+        'XP awarded',
+      );
+    });
+
+    it('does not log XP when the resource completion is a duplicate', async () => {
+      tx.activityLedger.createMany.mockResolvedValue({ count: 0 });
+
+      await service.recordResourceCompleted('user-1', 'resource-1', client);
+
+      expect(logSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('recordQuizPassed', () => {
+    it('inserts a quiz passed ledger row', async () => {
+      await service.recordQuizPassed('user-1', 'quiz-1', client);
+
+      expect(tx.activityLedger.createMany).toHaveBeenCalledWith({
+        data: [
+          {
+            userId: 'user-1',
+            type: ActivityType.QUIZ_PASSED,
+            referenceId: 'quiz-1',
+            xp: ACTIVITY_XP[ActivityType.QUIZ_PASSED],
+          },
+        ],
+        skipDuplicates: true,
+      });
+    });
+
+    it('logs XP awarded for a passed quiz', async () => {
+      await service.recordQuizPassed('user-1', 'quiz-1', client);
+
+      expect(logSpy).toHaveBeenCalledWith(
+        {
+          userId: 'user-1',
+          type: ActivityType.QUIZ_PASSED,
+          xp: ACTIVITY_XP[ActivityType.QUIZ_PASSED],
+        },
+        'XP awarded',
+      );
+    });
+
+    it('does not log XP when the quiz pass is a duplicate', async () => {
+      tx.activityLedger.createMany.mockResolvedValue({ count: 0 });
+
+      await service.recordQuizPassed('user-1', 'quiz-1', client);
+
+      expect(logSpy).not.toHaveBeenCalled();
     });
   });
 
@@ -113,8 +246,10 @@ describe('ActivityService', () => {
         TemplateStringsArray,
         string,
       ];
+
       expect(strings.join('?')).toContain('FOR NO KEY UPDATE');
       expect(userId).toBe('user-1');
+
       expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
         tx.activityLedger.aggregate.mock.invocationCallOrder[0],
       );
@@ -129,6 +264,7 @@ describe('ActivityService', () => {
         where: { userId: 'user-1' },
         _sum: { xp: true },
       });
+
       expect(tx.badge.findMany).toHaveBeenCalledWith({
         where: {
           xpThreshold: { lte: 100 },
@@ -145,14 +281,18 @@ describe('ActivityService', () => {
 
       expect(tx.badge.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ xpThreshold: { lte: 0 } }),
+          where: expect.objectContaining({
+            xpThreshold: { lte: 0 },
+          }),
         }),
       );
     });
 
     it('awards a badge once its threshold is met', async () => {
       totalXp(50);
+
       tx.badge.findMany.mockResolvedValue([{ id: 'badge-1' }]);
+
       tx.userBadge.createManyAndReturn.mockResolvedValue([
         { badgeId: 'badge-1' },
       ]);
@@ -164,6 +304,7 @@ describe('ActivityService', () => {
         skipDuplicates: true,
         select: { badgeId: true },
       });
+
       expect(logSpy).toHaveBeenCalledWith(
         { userId: 'user-1', badgeId: 'badge-1' },
         'Badge awarded',
@@ -181,7 +322,9 @@ describe('ActivityService', () => {
 
     it('does not re-award a badge on a repeated call', async () => {
       totalXp(50);
+
       tx.badge.findMany.mockResolvedValueOnce([{ id: 'badge-1' }]);
+
       tx.userBadge.createManyAndReturn.mockResolvedValueOnce([
         { badgeId: 'badge-1' },
       ]);
@@ -193,12 +336,14 @@ describe('ActivityService', () => {
       expect(logSpy).toHaveBeenCalledTimes(1);
     });
 
-    it('logs only the badges a concurrent award did not already insert', async () => {
+    it('logs only badges a concurrent award did not already insert', async () => {
       totalXp(250);
+
       tx.badge.findMany.mockResolvedValue([
         { id: 'badge-1' },
         { id: 'badge-2' },
       ]);
+
       tx.userBadge.createManyAndReturn.mockResolvedValue([
         { badgeId: 'badge-2' },
       ]);

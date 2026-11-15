@@ -165,6 +165,7 @@ enum ActivityType {
   STEP_COMPLETED
   TASK_COMPLETED
   QUIZ_PASSED
+  RESOURCE_COMPLETED
 }
 
 enum FeedbackTargetType {
@@ -241,6 +242,10 @@ model UserProfile {
   experienceYears      ExperienceYears?
   careerInterests      String[]         @default([])
   careerStage          TargetLevel?
+
+  institution          String?
+  yearFinished         Int?
+  courseOfStudy        String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

@@ -11,6 +11,9 @@ import {
   Length,
   MaxLength,
   ValidateIf,
+  Max,
+  Min,
+  IsInt,
 } from 'class-validator';
 import {
   EducationLevel,
@@ -86,6 +89,44 @@ export class UpdateUserDto {
   @IsOptional()
   @IsEnum(EducationLevel)
   educationLevel?: EducationLevel | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: 'University of Lagos',
+    description:
+      'Institution name, 1 to 200 characters. Null clears the field.',
+  })
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @Length(1, 200)
+  institution?: string | null;
+
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    example: 2026,
+    description:
+      'Year of completion (or expected completion), 1900 to 2100. Null clears the field.',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1900)
+  @Max(2100)
+  yearFinished?: number | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: 'Computer Science',
+    description: 'Course of study, 1 to 200 characters. Null clears the field.',
+  })
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @Length(1, 200)
+  courseOfStudy?: string | null;
 
   @ApiPropertyOptional({
     enum: InternshipCount,

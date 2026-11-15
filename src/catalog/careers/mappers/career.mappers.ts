@@ -65,6 +65,7 @@ export const careerOverviewSelect = {
   },
   pathway: {
     select: {
+      id: true,
       steps: { select: { id: true } },
     },
   },
@@ -82,8 +83,14 @@ export type CareerOverviewRow = Prisma.CareerGetPayload<{
   select: typeof careerOverviewSelect;
 }>;
 
+// What toCareerOverview actually reads. pathway.id is not required here;
+// only toCareerDetail needs it.
+export type CareerOverviewInput = Omit<CareerOverviewRow, 'pathway'> & {
+  pathway: { steps: { id: string }[] } | null;
+};
+
 export const toCareerOverview = (
-  career: CareerOverviewRow,
+  career: CareerOverviewInput,
 ): CareerOverviewDto => ({
   title: career.title,
   description: career.description,
@@ -222,6 +229,7 @@ export type CareerDetailRow = Prisma.CareerGetPayload<{
 export const toCareerDetail = (
   row: CareerDetailRow,
 ): CareerDetailResponseDto => ({
+  pathwayId: row.pathway?.id ?? null,
   overview: toCareerOverview(row),
   projection: toCareerProjection(row),
   requirements: toCareerRequirements(row),

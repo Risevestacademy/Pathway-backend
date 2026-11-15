@@ -3,6 +3,7 @@ import {
   Delete,
   Get,
   HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Put,
@@ -11,15 +12,25 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiHeader,
   ApiOperation,
   ApiParam,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { type AuthenticatedUser, CurrentUser, JwtAuthGuard } from '../common';
+import {
+  type AuthenticatedUser,
+  CurrentUser,
+  DomainException,
+  JwtAuthGuard,
+  OptionalJwtAuthGuard,
+} from '../common';
 import { GetOpportunitiesQueryDto } from './dto/get-opportunities-query.dto';
 import { OpportunityDetailDto } from './dto/opportunity-detail.dto';
-import { OpportunityListItemDto } from './dto/opportunity-list-item.dto';
+import {
+  OpportunityListItemDto,
+  SavedOpportunityListItemDto,
+} from './dto/opportunity-list-item.dto';
 import { SaveOpportunityResponseDto } from './dto/save-opportunity-response.dto';
 import { OpportunitiesService } from './opportunities.service';
 
@@ -31,19 +42,36 @@ export class OpportunitiesController {
   @ApiOperation({
     summary: 'List visible opportunities',
     description:
-      'Public. Only visible listings appear: VERIFIED, with a future deadline or an unknown (rolling) one. Draft, withdrawn and closed listings are never returned. Sorted by deadline, soonest first, with rolling listings last. "See more like this" and "See similar roles" use careerId with excludeId. An empty result is [].',
+      'Public. Only visible listings appear: VERIFIED, with a future deadline or no deadline. Draft and withdrawn listings are never returned. Sorted by deadline, soonest first, with no-deadline listings last. "See more like this" and "See similar roles" use careerId with excludeId. An empty result is []. A valid access token adds isSaved to each item; an invalid or expired token is treated as anonymous and sets the X-Auth-Status response header. saved=true filters to the caller\'s saved listings and requires authentication.',
+  })
+  @ApiHeader({
+    name: 'X-Auth-Status',
+    required: false,
+    enum: ['expired', 'invalid'],
+    description:
+      'Present only when an Authorization header was sent but rejected. The request is served as anonymous.',
   })
   @ApiResponse({ status: 200, type: [OpportunityListItemDto] })
   @ApiResponse({
     status: 400,
     description:
-      'type is not an OpportunityType, careerId or excludeId is not a UUID, or another query value is invalid (VALIDATION_ERROR)',
+      'type is not an OpportunityType, careerId or excludeId is not a UUID, saved is not a boolean, or another query value is invalid (VALIDATION_ERROR). Also SAVED_FILTER_REQUIRES_AUTH when saved=true is sent without authentication.',
   })
+  @UseGuards(OptionalJwtAuthGuard)
   @Get()
   async listOpportunities(
+    @CurrentUser() user: AuthenticatedUser | undefined,
     @Query() query: GetOpportunitiesQueryDto,
-  ): Promise<OpportunityListItemDto[]> {
-    return this.opportunitiesService.listOpportunities(query);
+  ): Promise<OpportunityListItemDto[] | SavedOpportunityListItemDto[]> {
+    if (query.saved && !user) {
+      throw new DomainException(
+        HttpStatus.BAD_REQUEST,
+        'SAVED_FILTER_REQUIRES_AUTH',
+        'saved=true requires authentication',
+      );
+    }
+
+    return this.opportunitiesService.listOpportunities(query, user?.id);
   }
 
   @ApiOperation({

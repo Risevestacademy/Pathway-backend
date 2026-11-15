@@ -3,8 +3,11 @@ import { PathwaysService } from '../catalog/pathways';
 import { PrismaService } from '../prisma';
 import type { MeOpportunityScope } from './dto/get-me-opportunities-query.dto';
 import { GetOpportunitiesQueryDto } from './dto/get-opportunities-query.dto';
+import type {
+  OpportunityListItemDto,
+  SavedOpportunityListItemDto,
+} from './dto/opportunity-list-item.dto';
 import { OpportunityDetailDto } from './dto/opportunity-detail.dto';
-import { OpportunityListItemDto } from './dto/opportunity-list-item.dto';
 import { SaveOpportunityResponseDto } from './dto/save-opportunity-response.dto';
 import { isVisible } from './opportunities.rules';
 import {
@@ -13,11 +16,13 @@ import {
   toOpportunityDetail,
 } from './opportunity-detail';
 import {
+  buildOpportunityListSelect,
   buildOpportunityListWhere,
   type OpportunityListFilter,
+  type OpportunityListWithSavesRow,
   OPPORTUNITY_LIST_ORDER_BY,
-  OPPORTUNITY_LIST_SELECT,
   toOpportunityListItem,
+  toOpportunityListItemWithSave,
 } from './opportunity-list';
 
 @Injectable()
@@ -31,11 +36,12 @@ export class OpportunitiesService {
 
   async listOpportunities(
     query: GetOpportunitiesQueryDto,
-  ): Promise<OpportunityListItemDto[]> {
-    return this.findListItems(query, {
-      skip: (query.page - 1) * query.limit,
-      take: query.limit,
-    });
+    userId?: string,
+  ): Promise<OpportunityListItemDto[] | SavedOpportunityListItemDto[]> {
+    return this.findListItems(
+      { ...query, userId },
+      { skip: (query.page - 1) * query.limit, take: query.limit },
+    );
   }
 
   async listMyOpportunities(
@@ -60,17 +66,26 @@ export class OpportunitiesService {
   private async findListItems(
     filter: OpportunityListFilter,
     page?: { skip: number; take: number },
-  ): Promise<OpportunityListItemDto[]> {
+  ): Promise<OpportunityListItemDto[] | SavedOpportunityListItemDto[]> {
     const now = new Date();
+
+    const select = buildOpportunityListSelect(filter.userId);
 
     const rows = await this.prisma.opportunity.findMany({
       where: buildOpportunityListWhere(filter, now),
       orderBy: OPPORTUNITY_LIST_ORDER_BY,
       ...page,
-      select: OPPORTUNITY_LIST_SELECT,
+      select,
     });
 
-    return rows.map((row) => toOpportunityListItem(row, now));
+    return filter.userId
+      ? rows.map((row) =>
+          toOpportunityListItemWithSave(
+            row as OpportunityListWithSavesRow,
+            now,
+          ),
+        )
+      : rows.map((row) => toOpportunityListItem(row, now));
   }
 
   async getOpportunityById(id: string): Promise<OpportunityDetailDto> {

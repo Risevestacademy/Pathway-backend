@@ -78,13 +78,12 @@ describe('opportunity detail', () => {
       expect(result.status).toBe('CLOSING_SOON');
     });
 
-    it('shows an unknown deadline as ROLLING with a null deadline', () => {
+    it('shows an unknown deadline as OPEN with a null deadline', () => {
       const result = toOpportunityDetail(
         row({ deadline: null, deadlineUnknown: true }),
         now,
       );
-
-      expect(result.status).toBe('ROLLING');
+      expect(result.status).toBe('OPEN');
       expect(result.deadline).toBeNull();
     });
 

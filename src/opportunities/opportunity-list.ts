@@ -3,7 +3,10 @@ import {
   type Prisma,
 } from '../generated/prisma/client';
 import type { GetOpportunitiesQueryDto } from './dto/get-opportunities-query.dto';
-import type { OpportunityListItemDto } from './dto/opportunity-list-item.dto';
+import type {
+  OpportunityListItemDto,
+  SavedOpportunityListItemDto,
+} from './dto/opportunity-list-item.dto';
 import { deriveStatus } from './opportunities.rules';
 
 export const SUMMARY_MAX_LENGTH = 160;
@@ -11,8 +14,10 @@ export const SUMMARY_MAX_LENGTH = 160;
 // Same condition as isVisible, run in the database
 export type OpportunityListFilter = Pick<
   GetOpportunitiesQueryDto,
-  'type' | 'careerId' | 'excludeId' | 'search'
->;
+  'type' | 'careerId' | 'excludeId' | 'search' | 'saved'
+> & {
+  userId?: string;
+};
 
 export const buildOpportunityListWhere = (
   query: OpportunityListFilter,
@@ -36,6 +41,10 @@ export const buildOpportunityListWhere = (
     ...(query.type && { type: query.type }),
     ...(query.careerId && { careers: { some: { careerId: query.careerId } } }),
     ...(query.excludeId && { id: { not: query.excludeId } }),
+    ...(query.saved &&
+      query.userId && {
+        saves: { some: { userId: query.userId } },
+      }),
   };
 };
 
@@ -59,9 +68,32 @@ export const OPPORTUNITY_LIST_SELECT = {
   deadlineUnknown: true,
 } satisfies Prisma.OpportunitySelect;
 
-type OpportunityListRow = Prisma.OpportunityGetPayload<{
+export type OpportunityListRow = Prisma.OpportunityGetPayload<{
   select: typeof OPPORTUNITY_LIST_SELECT;
 }>;
+
+const WITH_SAVES_SELECT = {
+  ...OPPORTUNITY_LIST_SELECT,
+  saves: { select: { userId: true } },
+} satisfies Prisma.OpportunitySelect;
+
+export type OpportunityListWithSavesRow = Prisma.OpportunityGetPayload<{
+  select: typeof WITH_SAVES_SELECT;
+}>;
+
+/**
+ * Two select shapes: the anonymous shape (no save data) and the signed-in
+ * shape, which carries a filtered `saves` relation so the mapper can set
+ * `isSaved` without a second query.
+ */
+export const buildOpportunityListSelect = (userId?: string) => {
+  if (!userId) return OPPORTUNITY_LIST_SELECT;
+
+  return {
+    ...OPPORTUNITY_LIST_SELECT,
+    saves: { where: { userId }, select: { userId: true } },
+  } satisfies Prisma.OpportunitySelect;
+};
 
 export const toSummary = (description: string): string => {
   const text = description.trim();
@@ -84,4 +116,12 @@ export const toOpportunityListItem = (
   status: deriveStatus(row, now),
   deadline: row.deadline,
   summary: toSummary(row.description),
+});
+
+export const toOpportunityListItemWithSave = (
+  row: OpportunityListWithSavesRow,
+  now: Date,
+): SavedOpportunityListItemDto => ({
+  ...toOpportunityListItem(row, now),
+  isSaved: row.saves.length > 0,
 });

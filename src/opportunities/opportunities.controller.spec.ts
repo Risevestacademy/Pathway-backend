@@ -1,13 +1,13 @@
 import { jest } from '@jest/globals';
 import { Test, TestingModule } from '@nestjs/testing';
-import type { AuthenticatedUser } from '../common';
-import { OpportunityType } from '../generated/prisma/client';
+import { DomainException, type AuthenticatedUser } from '../common';
 import type { GetOpportunitiesQueryDto } from './dto/get-opportunities-query.dto';
 import type { OpportunityDetailDto } from './dto/opportunity-detail.dto';
 import type { OpportunityListItemDto } from './dto/opportunity-list-item.dto';
 import type { SaveOpportunityResponseDto } from './dto/save-opportunity-response.dto';
 import { OpportunitiesController } from './opportunities.controller';
 import { OpportunitiesService } from './opportunities.service';
+import { Role } from '../generated/prisma/enums';
 
 describe('OpportunitiesController', () => {
   let controller: OpportunitiesController;
@@ -55,20 +55,47 @@ describe('OpportunitiesController', () => {
 
   describe('listOpportunities', () => {
     it('passes the query to the service and returns its result', async () => {
-      const query: GetOpportunitiesQueryDto = {
-        type: OpportunityType.JOB,
+      const query = { page: 1, limit: 20 } as GetOpportunitiesQueryDto;
+      const result = [] as OpportunityListItemDto[];
+      mockOpportunitiesService.listOpportunities.mockResolvedValue(result);
+
+      await expect(
+        controller.listOpportunities(undefined, query),
+      ).resolves.toBe(result);
+      expect(mockOpportunitiesService.listOpportunities).toHaveBeenCalledWith(
+        query,
+        undefined,
+      );
+    });
+
+    it('rejects saved=true without a signed-in user', async () => {
+      const query = {
         page: 1,
         limit: 20,
-      };
-      const items: OpportunityListItemDto[] = [];
-      mockOpportunitiesService.listOpportunities.mockResolvedValue(items);
+        saved: true,
+      } as GetOpportunitiesQueryDto;
 
-      const result = await controller.listOpportunities(query);
+      const error = await controller
+        .listOpportunities(undefined, query)
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(DomainException);
+      expect(error).toMatchObject({ code: 'SAVED_FILTER_REQUIRES_AUTH' });
+      expect((error as DomainException).getStatus()).toBe(400);
+      expect(mockOpportunitiesService.listOpportunities).not.toHaveBeenCalled();
+    });
+
+    it('forwards the caller id when signed in', async () => {
+      const query = { page: 1, limit: 20 } as GetOpportunitiesQueryDto;
+      const user = { id: 'user-1', email: 'dev@example.com', role: Role.USER };
+      mockOpportunitiesService.listOpportunities.mockResolvedValue([]);
+
+      await controller.listOpportunities(user, query);
 
       expect(mockOpportunitiesService.listOpportunities).toHaveBeenCalledWith(
         query,
+        'user-1',
       );
-      expect(result).toBe(items);
     });
   });
 
