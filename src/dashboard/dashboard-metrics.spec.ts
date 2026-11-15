@@ -1,6 +1,7 @@
 import {
   buildDateWindow,
   buildHeatmap,
+  buildWeekStrip,
   computeStreak,
   DEFAULT_HEATMAP_DAYS,
   shiftUtcDay,
@@ -154,5 +155,64 @@ describe('buildHeatmap', () => {
     expect(buildHeatmap([], window).every(({ count }) => count === 0)).toBe(
       true,
     );
+  });
+});
+
+describe('buildWeekStrip', () => {
+  // 2026-11-14 is a Saturday. Its week runs Mon 2026-11-09 to Sun 2026-11-15.
+  const saturday = at('2026-11-14T08:00:00.000Z');
+
+  it('returns the seven days of the week containing today, Monday first', () => {
+    const { days } = buildWeekStrip([], saturday, 0);
+
+    expect(days.map((d) => d.date)).toEqual([
+      '2026-11-09',
+      '2026-11-10',
+      '2026-11-11',
+      '2026-11-12',
+      '2026-11-13',
+      '2026-11-14',
+      '2026-11-15',
+    ]);
+  });
+
+  it('anchors on Monday when today is Sunday', () => {
+    const sunday = at('2026-11-15T08:00:00.000Z');
+    const { days } = buildWeekStrip([], sunday, 0);
+
+    expect(days[0].date).toBe('2026-11-09');
+    expect(days[6].date).toBe('2026-11-15');
+  });
+
+  it('anchors on Monday when today is Monday', () => {
+    const monday = at('2026-11-09T08:00:00.000Z');
+    const { days } = buildWeekStrip([], monday, 0);
+
+    expect(days[0].date).toBe('2026-11-09');
+    expect(days[6].date).toBe('2026-11-15');
+  });
+
+  it('marks a day active only when its count is above zero', () => {
+    const { days } = buildWeekStrip(
+      [
+        { date: '2026-11-10', count: 2 },
+        { date: '2026-11-13', count: 0 },
+      ],
+      saturday,
+      0,
+    );
+
+    const active = days.filter((d) => d.active).map((d) => d.date);
+    expect(active).toEqual(['2026-11-10']);
+  });
+
+  it('returns every day inactive for a user with no activity', () => {
+    const { days } = buildWeekStrip([], saturday, 0);
+
+    expect(days.every((d) => !d.active)).toBe(true);
+  });
+
+  it('passes the streak through unchanged', () => {
+    expect(buildWeekStrip([], saturday, 4).currentStreak).toBe(4);
   });
 });

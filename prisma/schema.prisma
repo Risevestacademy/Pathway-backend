@@ -165,6 +165,7 @@ enum ActivityType {
   STEP_COMPLETED
   TASK_COMPLETED
   QUIZ_PASSED
+  RESOURCE_COMPLETED
 }
 
 enum FeedbackTargetType {
