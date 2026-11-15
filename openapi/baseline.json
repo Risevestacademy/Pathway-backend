@@ -3012,6 +3012,24 @@
             "nullable": true,
             "example": "BACHELOR_IN_PROGRESS"
           },
+          "institution": {
+            "type": "string",
+            "nullable": true,
+            "example": "University of Lagos",
+            "description": "Institution name, 1 to 200 characters. Null clears the field."
+          },
+          "yearFinished": {
+            "type": "number",
+            "nullable": true,
+            "example": 2026,
+            "description": "Year of completion (or expected completion), 1900 to 2100. Null clears the field."
+          },
+          "courseOfStudy": {
+            "type": "string",
+            "nullable": true,
+            "example": "Computer Science",
+            "description": "Course of study, 1 to 200 characters. Null clears the field."
+          },
           "internshipCount": {
             "type": "string",
             "enum": [
@@ -3136,6 +3154,21 @@
             "nullable": true,
             "example": null
           },
+          "institution": {
+            "type": "string",
+            "nullable": true,
+            "example": "University of Lagos"
+          },
+          "yearFinished": {
+            "type": "number",
+            "nullable": true,
+            "example": 2026
+          },
+          "courseOfStudy": {
+            "type": "string",
+            "nullable": true,
+            "example": "Computer Science"
+          },
           "internshipCount": {
             "type": "string",
             "enum": [
@@ -3196,6 +3229,9 @@
           "avatarUrl",
           "careerStage",
           "educationLevel",
+          "institution",
+          "yearFinished",
+          "courseOfStudy",
           "internshipCount",
           "experienceYears",
           "learningGoals",
