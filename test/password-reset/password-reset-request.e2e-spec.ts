@@ -53,7 +53,7 @@ describe('Password reset request (e2e)', () => {
     apiPrefix = `/${resolveApiPrefix(config)}`;
     passwordResetUrl = config.get('PASSWORD_RESET_URL', { infer: true });
 
-    await app.init();
+    await app.listen(0, '127.0.0.1');
 
     prisma = app.get(PrismaService);
 

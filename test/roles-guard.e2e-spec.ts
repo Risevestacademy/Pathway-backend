@@ -96,7 +96,7 @@ describe('RolesGuard (e2e)', () => {
     apiPrefix = `/${resolveApiPrefix(config)}`;
     prisma = app.get(PrismaService);
 
-    await app.init();
+    await app.listen(0, '127.0.0.1');
 
     wireNotificationMock();
 
