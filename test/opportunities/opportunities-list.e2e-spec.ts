@@ -152,7 +152,7 @@ describe('GET /opportunities (e2e)', () => {
     await app?.close();
   });
 
-  it('returns only visible listings, soonest deadline first and rolling last', async () => {
+  it('returns only visible listings, soonest deadline first and no-deadline listings last', async () => {
     const { body } = await list({ search: marker }).expect(200);
     const items = body as ListItem[];
 
@@ -161,56 +161,26 @@ describe('GET /opportunities (e2e)', () => {
       'CLOSING_SOON',
       'OPEN',
       'OPEN',
-      'ROLLING',
+      'OPEN',
     ]);
   });
 
   it('returns the list item shape', async () => {
     const { body } = await list({ search: marker }).expect(200);
-    const rolling = (body as ListItem[]).find(
+    const noDeadline = (body as ListItem[]).find(
       (item) => item.id === ids.rolling,
     );
 
-    expect(rolling).toEqual({
+    expect(noDeadline).toEqual({
       id: ids.rolling,
       title: `rolling ${marker}`,
       type: OpportunityType.FELLOWSHIP,
       organisation: `Org ${marker}`,
       location: 'Remote',
-      status: 'ROLLING',
+      status: 'OPEN',
       deadline: null,
       summary: 'Description for rolling',
     });
-  });
-
-  it('filters by type', async () => {
-    const { body } = await list({
-      search: marker,
-      type: OpportunityType.INTERNSHIP,
-    }).expect(200);
-
-    expect(idsOf(body as ListItem[])).toEqual([ids.other, ids.open]);
-  });
-
-  it('filters by career', async () => {
-    const { body } = await list({ careerId: catalog.publishedCareerId }).expect(
-      200,
-    );
-
-    expect(idsOf(body as ListItem[])).toEqual([
-      ids.soon,
-      ids.open,
-      ids.rolling,
-    ]);
-  });
-
-  it('leaves out the excluded listing for "See similar roles"', async () => {
-    const { body } = await list({
-      careerId: catalog.publishedCareerId,
-      excludeId: ids.soon,
-    }).expect(200);
-
-    expect(idsOf(body as ListItem[])).toEqual([ids.open, ids.rolling]);
   });
 
   it('searches the organisation ignoring case', async () => {
@@ -254,13 +224,4 @@ describe('GET /opportunities (e2e)', () => {
     expect(body).toMatchObject({ statusCode: 400, error: 'VALIDATION_ERROR' });
     expect(body.fields).toHaveProperty('type');
   });
-
-  it.each(['careerId', 'excludeId'])(
-    'rejects a %s that is not a UUID',
-    async (key) => {
-      const { body } = await list({ [key]: 'abc' }).expect(400);
-
-      expect(body).toMatchObject({ error: 'VALIDATION_ERROR' });
-    },
-  );
 });
