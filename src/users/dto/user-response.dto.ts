@@ -45,6 +45,15 @@ export class UserResponseDto {
   @ApiProperty({ enum: EducationLevel, nullable: true, example: null })
   educationLevel: EducationLevel | null;
 
+  @ApiProperty({ type: String, nullable: true, example: 'University of Lagos' })
+  institution: string | null;
+
+  @ApiProperty({ type: Number, nullable: true, example: 2026 })
+  yearFinished: number | null;
+
+  @ApiProperty({ type: String, nullable: true, example: 'Computer Science' })
+  courseOfStudy: string | null;
+
   @ApiProperty({ enum: InternshipCount, nullable: true, example: null })
   internshipCount: InternshipCount | null;
 
