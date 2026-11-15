@@ -47,3 +47,11 @@ export class OpportunityListItemDto {
   })
   summary: string;
 }
+
+export class SavedOpportunityListItemDto extends OpportunityListItemDto {
+  @ApiProperty({
+    example: true,
+    description: 'Whether the signed-in caller has saved this listing.',
+  })
+  isSaved: boolean;
+}

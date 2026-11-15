@@ -1,6 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import {
+  IsBoolean,
   IsEnum,
   IsInt,
   IsOptional,
@@ -78,4 +79,20 @@ export class GetOpportunitiesQueryDto {
   @IsInt()
   @Min(1)
   limit: number = OPPORTUNITIES_DEFAULT_LIMIT;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      'When true, returns only listings the caller has saved. Requires authentication.',
+  })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    value === 'true' || value === true
+      ? true
+      : value === 'false' || value === false
+        ? false
+        : value,
+  )
+  @IsBoolean()
+  saved?: boolean;
 }

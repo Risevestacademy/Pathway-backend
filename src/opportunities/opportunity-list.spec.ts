@@ -3,10 +3,13 @@ import {
   OpportunityVerification,
 } from '../generated/prisma/client';
 import {
+  buildOpportunityListSelect,
   buildOpportunityListWhere,
   OPPORTUNITY_LIST_ORDER_BY,
+  OPPORTUNITY_LIST_SELECT,
   SUMMARY_MAX_LENGTH,
   toOpportunityListItem,
+  toOpportunityListItemWithSave,
   toSummary,
 } from './opportunity-list';
 
@@ -132,12 +135,77 @@ describe('toOpportunityListItem', () => {
     });
   });
 
-  it('shows a rolling listing as ROLLING', () => {
+  it('shows a listing with no deadline as OPEN', () => {
     expect(
       toOpportunityListItem(
         { ...row, deadline: null, deadlineUnknown: true },
         now,
       ).status,
-    ).toBe('ROLLING');
+    ).toBe('OPEN');
+  });
+});
+
+describe('buildOpportunityListWhere with saved', () => {
+  it('filters to the caller’s saves when saved=true', () => {
+    expect(
+      buildOpportunityListWhere({ saved: true, userId: 'user-1' }, now),
+    ).toMatchObject({ saves: { some: { userId: 'user-1' } } });
+  });
+
+  it('ignores saved when no userId is present', () => {
+    expect(buildOpportunityListWhere({ saved: true }, now)).not.toHaveProperty(
+      'saves',
+    );
+  });
+
+  it('does not filter by saves when saved is false or omitted', () => {
+    expect(
+      buildOpportunityListWhere({ userId: 'user-1' }, now),
+    ).not.toHaveProperty('saves');
+    expect(
+      buildOpportunityListWhere({ saved: false, userId: 'user-1' }, now),
+    ).not.toHaveProperty('saves');
+  });
+});
+
+describe('buildOpportunityListSelect', () => {
+  it('returns the anonymous shape when no user id is given', () => {
+    expect(buildOpportunityListSelect()).toBe(OPPORTUNITY_LIST_SELECT);
+  });
+
+  it('adds a user-scoped saves relation when a user id is given', () => {
+    expect(buildOpportunityListSelect('user-1')).toMatchObject({
+      saves: { where: { userId: 'user-1' }, select: { userId: true } },
+    });
+  });
+});
+
+describe('toOpportunityListItemWithSave', () => {
+  const now = new Date('2026-11-06T12:00:00.000Z');
+  const base = {
+    id: 'opp-1',
+    title: 'Intern',
+    type: OpportunityType.INTERNSHIP,
+    organisation: 'Org',
+    location: 'Remote',
+    description: 'Short.',
+    verification: OpportunityVerification.VERIFIED,
+    deadline: new Date('2026-12-06T12:00:00.000Z'),
+    deadlineUnknown: false,
+  };
+
+  it('sets isSaved true when the caller’s save is present', () => {
+    expect(
+      toOpportunityListItemWithSave(
+        { ...base, saves: [{ userId: 'u-1' }] },
+        now,
+      ),
+    ).toMatchObject({ isSaved: true, id: 'opp-1' });
+  });
+
+  it('sets isSaved false when the caller has not saved it', () => {
+    expect(
+      toOpportunityListItemWithSave({ ...base, saves: [] }, now),
+    ).toMatchObject({ isSaved: false });
   });
 });
