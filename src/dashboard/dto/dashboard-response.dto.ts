@@ -1,111 +1,161 @@
 import { ApiProperty } from '@nestjs/swagger';
-import {
-  PathwayReadCareerDto,
-  PathwayReadProgressDto,
-  StepResourceDto,
-  StepTaskDto,
-} from '../../catalog/pathways';
+import { PathwayStepStatus } from '../../generated/prisma/client';
 
 export class DashboardTotalsDto {
-  @ApiProperty()
+  @ApiProperty({
+    description:
+      'Pathways the user has saved, for PUBLISHED or RETIRED careers.',
+  })
   savedPathways: number;
-  @ApiProperty()
+
+  @ApiProperty({
+    description:
+      'Steps the user has marked COMPLETED, across every pathway. A lifetime ' +
+      'counter, not scoped to the active pathway — see activePathway.progress.',
+  })
   completedSteps: number;
-  @ApiProperty()
+
+  @ApiProperty({ description: 'Total XP from the activity ledger.' })
   xp: number;
-  @ApiProperty()
-  badgesEarned: number;
-  @ApiProperty({ description: 'Badges in the catalogue, earned or not.' })
-  badgesTotal: number;
+
+  @ApiProperty() badgesEarned: number;
+  @ApiProperty() badgesTotal: number;
 }
 
 export class DashboardStreakDto {
+  @ApiProperty() current: number;
+  @ApiProperty() longest: number;
+}
+
+export class DashboardWeekDayDto {
+  @ApiProperty({ example: '2026-11-10' }) date: string;
+  @ApiProperty({ example: true }) active: boolean;
+}
+
+export class DashboardWeekStripDto {
   @ApiProperty({
-    description: 'Consecutive UTC days ending today or yesterday.',
+    type: [DashboardWeekDayDto],
+    description: 'Monday to Sunday of the current week, UTC.',
   })
-  current: number;
-  @ApiProperty()
-  longest: number;
+  days: DashboardWeekDayDto[];
+
+  @ApiProperty({ description: 'Same value as streak.current.' })
+  currentStreak: number;
 }
 
 export class DashboardHeatmapDayDto {
-  @ApiProperty({ example: '2026-11-14' })
-  date: string;
-  @ApiProperty()
-  count: number;
+  @ApiProperty() date: string;
+  @ApiProperty() count: number;
 }
 
 export class DashboardHeatmapDto {
-  @ApiProperty({ example: '2025-11-15' })
-  from: string;
-  @ApiProperty({ example: '2026-11-14' })
-  to: string;
-  @ApiProperty({
-    type: [DashboardHeatmapDayDto],
-    description:
-      'One entry per UTC day in the window, days without activity included as zero.',
-  })
+  @ApiProperty() from: string;
+  @ApiProperty() to: string;
+  @ApiProperty({ type: [DashboardHeatmapDayDto] })
   days: DashboardHeatmapDayDto[];
 }
 
 export class DashboardBadgeDto {
-  @ApiProperty()
-  id: string;
-  @ApiProperty()
-  name: string;
-  @ApiProperty()
-  description: string;
-  @ApiProperty({ type: String, nullable: true })
-  iconKey: string | null;
-  @ApiProperty()
-  xpThreshold: number;
-  @ApiProperty()
-  awardedAt: Date;
+  @ApiProperty() id: string;
+  @ApiProperty() name: string;
+  @ApiProperty() description: string;
+  @ApiProperty({ type: String, nullable: true }) iconKey: string | null;
+  @ApiProperty() xpThreshold: number;
+  @ApiProperty({ type: Date }) awardedAt: Date;
 }
 
-export class DashboardGoalStepDto {
-  @ApiProperty()
-  id: string;
-  @ApiProperty()
-  title: string;
-  @ApiProperty()
-  order: number;
+export class DashboardPathwayCareerDto {
+  @ApiProperty() id: string;
+  @ApiProperty() title: string;
+  @ApiProperty({ type: String, nullable: true }) description: string | null;
+  @ApiProperty() retired: boolean;
 }
 
-export class DashboardGoalsDto {
-  @ApiProperty({ type: DashboardGoalStepDto, nullable: true })
-  step: DashboardGoalStepDto | null;
-  @ApiProperty({ type: [StepTaskDto] })
-  tasks: StepTaskDto[];
-  @ApiProperty({ type: [StepResourceDto] })
-  resources: StepResourceDto[];
+export class DashboardProgressDto {
+  @ApiProperty() completed: number;
+  @ApiProperty() total: number;
+  @ApiProperty() percentage: number;
+  @ApiProperty({ type: String, nullable: true }) nextStepId: string | null;
+  @ApiProperty({ example: true }) selfReported: true;
 }
 
 export class DashboardActivePathwayDto {
-  @ApiProperty()
-  pathwayId: string;
-  @ApiProperty({ type: PathwayReadCareerDto })
-  career: PathwayReadCareerDto;
-  @ApiProperty({ type: PathwayReadProgressDto, nullable: true })
-  progress: PathwayReadProgressDto | null;
+  @ApiProperty() pathwayId: string;
+  @ApiProperty({ type: DashboardPathwayCareerDto })
+  career: DashboardPathwayCareerDto;
+  @ApiProperty({ type: DashboardProgressDto }) progress: DashboardProgressDto;
+}
+
+export type DashboardGoalKind = 'STEP' | 'TASK' | 'RESOURCE' | 'CHECKLIST';
+
+export class DashboardGoalDto {
+  @ApiProperty({ enum: ['STEP', 'TASK', 'RESOURCE', 'CHECKLIST'] })
+  kind: DashboardGoalKind;
+
+  @ApiProperty() id: string;
+  @ApiProperty() title: string;
+
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description:
+      'XP the goal is worth. Null for checklist items, which have no XP.',
+  })
+  xp: number | null;
+
+  @ApiProperty() done: boolean;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'Secondary line for the goal row. Task goal, resource URL, parent task ' +
+      'title for a checklist item, or null for a step.',
+  })
+  goalDescription: string | null;
+}
+
+export class DashboardCurrentProjectStepDto {
+  @ApiProperty() id: string;
+  @ApiProperty() title: string;
+  @ApiProperty() order: number;
+  @ApiProperty({ enum: PathwayStepStatus }) status: PathwayStepStatus;
+}
+
+export class DashboardCurrentProjectDto {
+  @ApiProperty() stageId: string;
+  @ApiProperty() stageTitle: string;
+  @ApiProperty({ type: String, nullable: true })
+  stageDescription: string | null;
+  @ApiProperty() stageOrder: number;
+  @ApiProperty() completed: number;
+  @ApiProperty() total: number;
+  @ApiProperty({
+    description: 'Stage completion: completed steps / total steps.',
+  })
+  percentage: number;
+
+  @ApiProperty({
+    type: [String],
+    description:
+      'Distinct skills across this stage’s steps. Rendered as the card’s tags.',
+  })
+  skills: string[];
+
+  @ApiProperty({ type: [DashboardCurrentProjectStepDto] })
+  steps: DashboardCurrentProjectStepDto[];
 }
 
 export class DashboardDto {
-  @ApiProperty({ type: DashboardTotalsDto })
-  totals: DashboardTotalsDto;
-  @ApiProperty({ type: DashboardStreakDto })
-  streak: DashboardStreakDto;
-  @ApiProperty({ type: DashboardHeatmapDto })
-  heatmap: DashboardHeatmapDto;
-  @ApiProperty({ type: [DashboardBadgeDto] })
-  badges: DashboardBadgeDto[];
-  @ApiProperty({
-    type: DashboardActivePathwayDto,
-    nullable: true,
-    description:
-      'Progress and next step come from the same stage-aware read as GET /pathways/:id. Null when no pathway is active.',
-  })
+  @ApiProperty({ type: DashboardTotalsDto }) totals: DashboardTotalsDto;
+  @ApiProperty({ type: DashboardStreakDto }) streak: DashboardStreakDto;
+  @ApiProperty({ type: DashboardWeekStripDto })
+  weekStrip: DashboardWeekStripDto;
+  @ApiProperty({ type: DashboardHeatmapDto }) heatmap: DashboardHeatmapDto;
+  @ApiProperty({ type: [DashboardBadgeDto] }) badges: DashboardBadgeDto[];
+  @ApiProperty({ type: DashboardActivePathwayDto, nullable: true })
   activePathway: DashboardActivePathwayDto | null;
-  @ApiProperty({ type: DashboardGoalsDto })
-  todaysGoals: DashboardGoalsDto;
+  @ApiProperty({ type: DashboardCurrentProjectDto, nullable: true })
+  currentProject: DashboardCurrentProjectDto | null;
+  @ApiProperty({ type: [DashboardGoalDto] }) goals: DashboardGoalDto[];
 }

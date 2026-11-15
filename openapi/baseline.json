@@ -2621,7 +2621,7 @@
     },
     "/opportunities": {
       "get": {
-        "description": "Public. Only visible listings appear: VERIFIED, with a future deadline or an unknown (rolling) one. Draft, withdrawn and closed listings are never returned. Sorted by deadline, soonest first, with rolling listings last. \"See more like this\" and \"See similar roles\" use careerId with excludeId. An empty result is [].",
+        "description": "Public. Only visible listings appear: VERIFIED, with a future deadline or no deadline. Draft and withdrawn listings are never returned. Sorted by deadline, soonest first, with no-deadline listings last. \"See more like this\" and \"See similar roles\" use careerId with excludeId. An empty result is []. A valid access token adds isSaved to each item; an invalid or expired token is treated as anonymous and sets the X-Auth-Status response header. saved=true filters to the caller's saved listings and requires authentication.",
         "operationId": "OpportunitiesController_listOpportunities",
         "parameters": [
           {
@@ -2693,6 +2693,28 @@
               "default": 20,
               "type": "number"
             }
+          },
+          {
+            "name": "saved",
+            "required": false,
+            "in": "query",
+            "description": "When true, returns only listings the caller has saved. Requires authentication.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "X-Auth-Status",
+            "in": "header",
+            "description": "Present only when an Authorization header was sent but rejected. The request is served as anonymous.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "expired",
+                "invalid"
+              ]
+            }
           }
         ],
         "responses": {
@@ -2710,7 +2732,7 @@
             }
           },
           "400": {
-            "description": "type is not an OpportunityType, careerId or excludeId is not a UUID, or another query value is invalid (VALIDATION_ERROR)"
+            "description": "type is not an OpportunityType, careerId or excludeId is not a UUID, saved is not a boolean, or another query value is invalid (VALIDATION_ERROR). Also SAVED_FILTER_REQUIRES_AUTH when saved=true is sent without authentication."
           }
         },
         "summary": "List visible opportunities",
@@ -4491,6 +4513,12 @@
       "CareerDetailResponseDto": {
         "type": "object",
         "properties": {
+          "pathwayId": {
+            "type": "string",
+            "nullable": true,
+            "example": "3f6c1e2a-8b4d-4c7e-9a1f-2d5b6c7e8f90",
+            "description": "The id of the career’s pathway, or null when the career has no pathway."
+          },
           "overview": {
             "$ref": "#/components/schemas/CareerOverviewDto"
           },
@@ -4506,6 +4534,7 @@
           }
         },
         "required": [
+          "pathwayId",
           "overview",
           "projection",
           "requirements"
@@ -8229,20 +8258,22 @@
         "type": "object",
         "properties": {
           "savedPathways": {
-            "type": "number"
+            "type": "number",
+            "description": "Pathways the user has saved, for PUBLISHED or RETIRED careers."
           },
           "completedSteps": {
-            "type": "number"
+            "type": "number",
+            "description": "Steps the user has marked COMPLETED, across every pathway. A lifetime counter, not scoped to the active pathway — see activePathway.progress."
           },
           "xp": {
-            "type": "number"
+            "type": "number",
+            "description": "Total XP from the activity ledger."
           },
           "badgesEarned": {
             "type": "number"
           },
           "badgesTotal": {
-            "type": "number",
-            "description": "Badges in the catalogue, earned or not."
+            "type": "number"
           }
         },
         "required": [
@@ -8257,8 +8288,7 @@
         "type": "object",
         "properties": {
           "current": {
-            "type": "number",
-            "description": "Consecutive UTC days ending today or yesterday."
+            "type": "number"
           },
           "longest": {
             "type": "number"
@@ -8269,12 +8299,48 @@
           "longest"
         ]
       },
-      "DashboardHeatmapDayDto": {
+      "DashboardWeekDayDto": {
         "type": "object",
         "properties": {
           "date": {
             "type": "string",
-            "example": "2026-11-14"
+            "example": "2026-11-10"
+          },
+          "active": {
+            "type": "boolean",
+            "example": true
+          }
+        },
+        "required": [
+          "date",
+          "active"
+        ]
+      },
+      "DashboardWeekStripDto": {
+        "type": "object",
+        "properties": {
+          "days": {
+            "description": "Monday to Sunday of the current week, UTC.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DashboardWeekDayDto"
+            }
+          },
+          "currentStreak": {
+            "type": "number",
+            "description": "Same value as streak.current."
+          }
+        },
+        "required": [
+          "days",
+          "currentStreak"
+        ]
+      },
+      "DashboardHeatmapDayDto": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string"
           },
           "count": {
             "type": "number"
@@ -8289,15 +8355,12 @@
         "type": "object",
         "properties": {
           "from": {
-            "type": "string",
-            "example": "2025-11-15"
+            "type": "string"
           },
           "to": {
-            "type": "string",
-            "example": "2026-11-14"
+            "type": "string"
           },
           "days": {
-            "description": "One entry per UTC day in the window, days without activity included as zero.",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/DashboardHeatmapDayDto"
@@ -8343,6 +8406,59 @@
           "awardedAt"
         ]
       },
+      "DashboardPathwayCareerDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "retired": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "description",
+          "retired"
+        ]
+      },
+      "DashboardProgressDto": {
+        "type": "object",
+        "properties": {
+          "completed": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number"
+          },
+          "percentage": {
+            "type": "number"
+          },
+          "nextStepId": {
+            "type": "string",
+            "nullable": true
+          },
+          "selfReported": {
+            "type": "boolean",
+            "example": true
+          }
+        },
+        "required": [
+          "completed",
+          "total",
+          "percentage",
+          "nextStepId",
+          "selfReported"
+        ]
+      },
       "DashboardActivePathwayDto": {
         "type": "object",
         "properties": {
@@ -8350,16 +8466,10 @@
             "type": "string"
           },
           "career": {
-            "$ref": "#/components/schemas/PathwayReadCareerDto"
+            "$ref": "#/components/schemas/DashboardPathwayCareerDto"
           },
           "progress": {
-            "nullable": true,
-            "type": "object",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/PathwayReadProgressDto"
-              }
-            ]
+            "$ref": "#/components/schemas/DashboardProgressDto"
           }
         },
         "required": [
@@ -8368,7 +8478,7 @@
           "progress"
         ]
       },
-      "DashboardGoalStepDto": {
+      "DashboardCurrentProjectStepDto": {
         "type": "object",
         "properties": {
           "id": {
@@ -8379,43 +8489,114 @@
           },
           "order": {
             "type": "number"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "NOT_STARTED",
+              "IN_PROGRESS",
+              "COMPLETED"
+            ]
           }
         },
         "required": [
           "id",
           "title",
-          "order"
+          "order",
+          "status"
         ]
       },
-      "DashboardGoalsDto": {
+      "DashboardCurrentProjectDto": {
         "type": "object",
         "properties": {
-          "step": {
-            "nullable": true,
-            "type": "object",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/DashboardGoalStepDto"
-              }
-            ]
+          "stageId": {
+            "type": "string"
           },
-          "tasks": {
+          "stageTitle": {
+            "type": "string"
+          },
+          "stageDescription": {
+            "type": "string",
+            "nullable": true
+          },
+          "stageOrder": {
+            "type": "number"
+          },
+          "completed": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number"
+          },
+          "percentage": {
+            "type": "number",
+            "description": "Stage completion: completed steps / total steps."
+          },
+          "skills": {
+            "description": "Distinct skills across this stage’s steps. Rendered as the card’s tags.",
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/StepTaskDto"
+              "type": "string"
             }
           },
-          "resources": {
+          "steps": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/StepResourceDto"
+              "$ref": "#/components/schemas/DashboardCurrentProjectStepDto"
             }
           }
         },
         "required": [
-          "step",
-          "tasks",
-          "resources"
+          "stageId",
+          "stageTitle",
+          "stageDescription",
+          "stageOrder",
+          "completed",
+          "total",
+          "percentage",
+          "skills",
+          "steps"
+        ]
+      },
+      "DashboardGoalDto": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "STEP",
+              "TASK",
+              "RESOURCE",
+              "CHECKLIST"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "xp": {
+            "type": "number",
+            "nullable": true,
+            "description": "XP the goal is worth. Null for checklist items, which have no XP."
+          },
+          "done": {
+            "type": "boolean"
+          },
+          "goalDescription": {
+            "type": "string",
+            "nullable": true,
+            "description": "Secondary line for the goal row. Task goal, resource URL, parent task title for a checklist item, or null for a step."
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "title",
+          "xp",
+          "done",
+          "goalDescription"
         ]
       },
       "DashboardDto": {
@@ -8426,6 +8607,9 @@
           },
           "streak": {
             "$ref": "#/components/schemas/DashboardStreakDto"
+          },
+          "weekStrip": {
+            "$ref": "#/components/schemas/DashboardWeekStripDto"
           },
           "heatmap": {
             "$ref": "#/components/schemas/DashboardHeatmapDto"
@@ -8438,7 +8622,6 @@
           },
           "activePathway": {
             "nullable": true,
-            "description": "Progress and next step come from the same stage-aware read as GET /pathways/:id. Null when no pathway is active.",
             "type": "object",
             "allOf": [
               {
@@ -8446,17 +8629,31 @@
               }
             ]
           },
-          "todaysGoals": {
-            "$ref": "#/components/schemas/DashboardGoalsDto"
+          "currentProject": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DashboardCurrentProjectDto"
+              }
+            ]
+          },
+          "goals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DashboardGoalDto"
+            }
           }
         },
         "required": [
           "totals",
           "streak",
+          "weekStrip",
           "heatmap",
           "badges",
           "activePathway",
-          "todaysGoals"
+          "currentProject",
+          "goals"
         ]
       },
       "StageQuizStatusNotTaken": {

@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PathwaysService } from '../catalog/pathways';
+import type { PathwayReadStageDto } from '../catalog/pathways/dto/pathway-read.dto';
+import { ACTIVITY_XP } from '../activity/activity-xp';
 import {
   ActivityType,
   CareerStatus,
@@ -10,24 +12,33 @@ import { PrismaService } from '../prisma';
 import {
   buildDateWindow,
   buildHeatmap,
+  buildWeekStrip,
   computeStreak,
   DEFAULT_HEATMAP_DAYS,
   type DayCount,
 } from './dashboard-metrics';
 import {
   DashboardActivePathwayDto,
+  DashboardCurrentProjectDto,
   DashboardDto,
-  DashboardGoalsDto,
+  DashboardGoalDto,
+  DashboardProgressDto,
   DashboardTotalsDto,
 } from './dto/dashboard-response.dto';
 
 const VISIBLE_CAREER_STATUSES = [CareerStatus.PUBLISHED, CareerStatus.RETIRED];
 
-const emptyGoals = (): DashboardGoalsDto => ({
-  step: null,
-  tasks: [],
-  resources: [],
-});
+const TRACKED_ACTIVITY_TYPES: ActivityType[] = [
+  ActivityType.STEP_COMPLETED,
+  ActivityType.TASK_COMPLETED,
+  ActivityType.QUIZ_PASSED,
+  ActivityType.RESOURCE_COMPLETED,
+];
+
+interface ActivePathwayResult {
+  dto: DashboardActivePathwayDto;
+  stages: PathwayReadStageDto[];
+}
 
 @Injectable()
 export class DashboardService {
@@ -43,31 +54,35 @@ export class DashboardService {
     const now = new Date();
     const window = buildDateWindow(now, windowDays);
 
-    const [totals, badges, stepCompletionDays, activePathway] =
+    const [totals, badges, activityDays, activePathwayResult] =
       await Promise.all([
         this.getTotals(userId),
         this.getBadges(userId),
-        this.getStepCompletionDays(userId),
+        this.getActivityDays(userId),
         this.getActivePathway(userId),
       ]);
 
-    const todaysGoals = await this.getTodaysGoals(
-      activePathway?.progress?.nextStepId ?? null,
+    const streak = computeStreak(activityDays, now);
+    const goals = await this.getGoals(
+      userId,
+      activePathwayResult?.dto.progress.nextStepId ?? null,
     );
 
     return {
       totals: { ...totals, badgesEarned: badges.length },
-      streak: computeStreak(stepCompletionDays, now),
-      heatmap: { ...window, days: buildHeatmap(stepCompletionDays, window) },
+      streak,
+      weekStrip: buildWeekStrip(activityDays, now, streak.current),
+      heatmap: { ...window, days: buildHeatmap(activityDays, window) },
       badges,
-      activePathway,
-      todaysGoals,
+      activePathway: activePathwayResult?.dto ?? null,
+      currentProject: this.pickCurrentProject(activePathwayResult),
+      goals,
     };
   }
 
   private async getActivePathway(
     userId: string,
-  ): Promise<DashboardActivePathwayDto | null> {
+  ): Promise<ActivePathwayResult | null> {
     const active = await this.prisma.userPathway.findFirst({
       where: {
         userId,
@@ -78,20 +93,72 @@ export class DashboardService {
     });
 
     const pathwayId = active?.career.pathway?.id;
-
-    if (!pathwayId) {
-      return null;
-    }
+    if (!pathwayId) return null;
 
     const pathway = await this.pathwaysService.getPathwayRead(
       pathwayId,
       userId,
     );
 
+    if (!pathway.progress) return null;
+
     return {
-      pathwayId: pathway.id,
-      career: pathway.career,
-      progress: pathway.progress,
+      dto: {
+        pathwayId: pathway.id,
+        career: {
+          id: pathway.career.id,
+          title: pathway.career.title,
+          description: pathway.career.description,
+          retired: pathway.career.retired,
+        },
+        progress: {
+          completed: pathway.progress.completed,
+          total: pathway.progress.total,
+          percentage: pathway.progress.percentage,
+          nextStepId: pathway.progress.nextStepId,
+          selfReported: pathway.progress.selfReported,
+        },
+      },
+      stages: pathway.stages,
+    };
+  }
+
+  private pickCurrentProject(
+    activePathway: ActivePathwayResult | null,
+  ): DashboardCurrentProjectDto | null {
+    if (!activePathway) return null;
+
+    const stage = activePathway.stages.find((s) =>
+      s.steps.some(
+        (step) =>
+          (step.status ?? PathwayStepStatus.NOT_STARTED) !==
+          PathwayStepStatus.COMPLETED,
+      ),
+    );
+    if (!stage) return null;
+
+    const steps = stage.steps.map((step) => ({
+      id: step.id,
+      title: step.title,
+      order: step.order,
+      status: step.status ?? PathwayStepStatus.NOT_STARTED,
+    }));
+
+    const completed = steps.filter(
+      (s) => s.status === PathwayStepStatus.COMPLETED,
+    ).length;
+    const total = steps.length;
+
+    return {
+      stageId: stage.id,
+      stageTitle: stage.title,
+      stageDescription: stage.description ?? null,
+      stageOrder: stage.order,
+      completed,
+      total,
+      percentage: total === 0 ? 0 : Math.round((completed / total) * 100),
+      skills: [...new Set(stage.steps.flatMap((s) => s.skills))],
+      steps,
     };
   }
 
@@ -141,59 +208,70 @@ export class DashboardService {
     return earned.map(({ awardedAt, badge }) => ({ ...badge, awardedAt }));
   }
 
-  private async getStepCompletionDays(userId: string): Promise<DayCount[]> {
+  private async getActivityDays(userId: string): Promise<DayCount[]> {
     return this.prisma.$queryRaw<DayCount[]>`
       SELECT to_char("createdAt"::date, 'YYYY-MM-DD') AS date,
              COUNT(*)::int AS count
       FROM "ActivityLedger"
       WHERE "userId" = ${userId}
-        AND "type" = ${ActivityType.STEP_COMPLETED}::"ActivityType"
+        AND "type" = ANY(${TRACKED_ACTIVITY_TYPES}::"ActivityType"[])
       GROUP BY 1
       ORDER BY 1
     `;
   }
 
-  private async getTodaysGoals(
+  private async getGoals(
+    userId: string,
     nextStepId: string | null,
-  ): Promise<DashboardGoalsDto> {
-    if (!nextStepId) {
-      return emptyGoals();
-    }
+  ): Promise<DashboardGoalDto[]> {
+    if (!nextStepId) return [];
 
     const step = await this.prisma.pathwayStep.findUnique({
       where: { id: nextStepId },
       select: {
         id: true,
         title: true,
-        order: true,
+        progress: {
+          where: { userId },
+          select: { status: true },
+        },
         tasks: {
           orderBy: { order: 'asc' },
           select: {
             id: true,
             title: true,
             goal: true,
-            estimatedWeeks: true,
-            whatToMake: true,
-            hints: true,
+            completions: {
+              where: { userId },
+              select: { completedAt: true },
+            },
             checklistItems: {
               orderBy: { order: 'asc' },
-              select: { text: true },
+              select: {
+                id: true,
+                text: true,
+                userChecks: {
+                  where: { userId },
+                  select: { checkedAt: true },
+                },
+              },
             },
           },
         },
         resources: {
           where: { resource: { status: ResourceStatus.ACTIVE } },
           orderBy: { resource: { title: 'asc' } },
+          take: 1,
           select: {
             resource: {
               select: {
                 id: true,
                 title: true,
                 url: true,
-                type: true,
-                costStatus: true,
-                estimatedWeeks: true,
-                provider: true,
+                completions: {
+                  where: { userId },
+                  select: { completedAt: true },
+                },
               },
             },
           },
@@ -201,17 +279,53 @@ export class DashboardService {
       },
     });
 
-    if (!step) {
-      return emptyGoals();
+    if (!step) return [];
+
+    const goals: DashboardGoalDto[] = [
+      {
+        kind: 'STEP',
+        id: step.id,
+        title: step.title,
+        xp: ACTIVITY_XP[ActivityType.STEP_COMPLETED],
+        done: step.progress[0]?.status === PathwayStepStatus.COMPLETED,
+        goalDescription: null,
+      },
+    ];
+
+    for (const task of step.tasks) {
+      goals.push({
+        kind: 'TASK',
+        id: task.id,
+        title: task.title,
+        xp: ACTIVITY_XP[ActivityType.TASK_COMPLETED],
+        done: task.completions.length > 0,
+        goalDescription: task.goal,
+      });
+
+      for (const item of task.checklistItems) {
+        goals.push({
+          kind: 'CHECKLIST',
+          id: item.id,
+          title: item.text,
+          xp: null,
+          done: item.userChecks.length > 0,
+          goalDescription: task.title,
+        });
+      }
     }
 
-    return {
-      step: { id: step.id, title: step.title, order: step.order },
-      tasks: step.tasks.map(({ checklistItems, ...task }) => ({
-        ...task,
-        checklist: checklistItems.map(({ text }) => text),
-      })),
-      resources: step.resources.map(({ resource }) => resource),
-    };
+    const firstResource = step.resources[0]?.resource;
+    if (firstResource) {
+      goals.push({
+        kind: 'RESOURCE',
+        id: firstResource.id,
+        title: firstResource.title,
+        xp: ACTIVITY_XP[ActivityType.RESOURCE_COMPLETED],
+        done: firstResource.completions.length > 0,
+        goalDescription: firstResource.url,
+      });
+    }
+
+    return goals;
   }
 }

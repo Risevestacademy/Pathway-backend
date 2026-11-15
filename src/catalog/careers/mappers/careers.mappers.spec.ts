@@ -435,7 +435,7 @@ describe('toCareerRequirements', () => {
         select: { resources: true },
       });
       expect(careerDetailSelect.pathway).toEqual({
-        select: { steps: { select: { id: true } } },
+        select: { id: true, steps: { select: { id: true } } },
       });
     });
   });
