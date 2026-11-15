@@ -242,6 +242,10 @@ model UserProfile {
   careerInterests      String[]         @default([])
   careerStage          TargetLevel?
 
+  institution          String?
+  yearFinished         Int?
+  courseOfStudy        String?
+
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
