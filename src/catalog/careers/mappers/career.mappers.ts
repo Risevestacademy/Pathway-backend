@@ -65,6 +65,7 @@ export const careerOverviewSelect = {
   },
   pathway: {
     select: {
+      id: true,
       steps: { select: { id: true } },
     },
   },
@@ -222,6 +223,7 @@ export type CareerDetailRow = Prisma.CareerGetPayload<{
 export const toCareerDetail = (
   row: CareerDetailRow,
 ): CareerDetailResponseDto => ({
+  pathwayId: row.pathway?.id ?? null,
   overview: toCareerOverview(row),
   projection: toCareerProjection(row),
   requirements: toCareerRequirements(row),
