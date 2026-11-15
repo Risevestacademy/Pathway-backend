@@ -176,7 +176,7 @@ describe('GET /me/opportunities?scope=pathway (e2e)', () => {
     expect(body).toEqual([]);
   });
 
-  it("returns only the active career's visible listings, soonest first and rolling last", async () => {
+  it("returns only the active career's visible listings, soonest first and no-deadline listings last", async () => {
     await setActivePathway(userA.accessToken, catalog.publishedCareerId);
 
     const { body } = await list(userA.accessToken, { scope: 'pathway' }).expect(
@@ -192,7 +192,7 @@ describe('GET /me/opportunities?scope=pathway (e2e)', () => {
     expect(items.map((item) => item.status)).toEqual([
       'CLOSING_SOON',
       'OPEN',
-      'ROLLING',
+      'OPEN',
     ]);
   });
 
