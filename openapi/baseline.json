@@ -2621,7 +2621,7 @@
     },
     "/opportunities": {
       "get": {
-        "description": "Public. Only visible listings appear: VERIFIED, with a future deadline or an unknown (rolling) one. Draft, withdrawn and closed listings are never returned. Sorted by deadline, soonest first, with rolling listings last. \"See more like this\" and \"See similar roles\" use careerId with excludeId. An empty result is [].",
+        "description": "Public. Only visible listings appear: VERIFIED, with a future deadline or no deadline. Draft and withdrawn listings are never returned. Sorted by deadline, soonest first, with no-deadline listings last. \"See more like this\" and \"See similar roles\" use careerId with excludeId. An empty result is []. A valid access token adds isSaved to each item; an invalid or expired token is treated as anonymous and sets the X-Auth-Status response header. saved=true filters to the caller's saved listings and requires authentication.",
         "operationId": "OpportunitiesController_listOpportunities",
         "parameters": [
           {
@@ -2693,6 +2693,28 @@
               "default": 20,
               "type": "number"
             }
+          },
+          {
+            "name": "saved",
+            "required": false,
+            "in": "query",
+            "description": "When true, returns only listings the caller has saved. Requires authentication.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "X-Auth-Status",
+            "in": "header",
+            "description": "Present only when an Authorization header was sent but rejected. The request is served as anonymous.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "expired",
+                "invalid"
+              ]
+            }
           }
         ],
         "responses": {
@@ -2710,7 +2732,7 @@
             }
           },
           "400": {
-            "description": "type is not an OpportunityType, careerId or excludeId is not a UUID, or another query value is invalid (VALIDATION_ERROR)"
+            "description": "type is not an OpportunityType, careerId or excludeId is not a UUID, saved is not a boolean, or another query value is invalid (VALIDATION_ERROR). Also SAVED_FILTER_REQUIRES_AUTH when saved=true is sent without authentication."
           }
         },
         "summary": "List visible opportunities",
@@ -4491,6 +4513,12 @@
       "CareerDetailResponseDto": {
         "type": "object",
         "properties": {
+          "pathwayId": {
+            "type": "string",
+            "nullable": true,
+            "example": "3f6c1e2a-8b4d-4c7e-9a1f-2d5b6c7e8f90",
+            "description": "The id of the career’s pathway, or null when the career has no pathway."
+          },
           "overview": {
             "$ref": "#/components/schemas/CareerOverviewDto"
           },
@@ -4506,6 +4534,7 @@
           }
         },
         "required": [
+          "pathwayId",
           "overview",
           "projection",
           "requirements"

@@ -83,8 +83,14 @@ export type CareerOverviewRow = Prisma.CareerGetPayload<{
   select: typeof careerOverviewSelect;
 }>;
 
+// What toCareerOverview actually reads. pathway.id is not required here;
+// only toCareerDetail needs it.
+export type CareerOverviewInput = Omit<CareerOverviewRow, 'pathway'> & {
+  pathway: { steps: { id: string }[] } | null;
+};
+
 export const toCareerOverview = (
-  career: CareerOverviewRow,
+  career: CareerOverviewInput,
 ): CareerOverviewDto => ({
   title: career.title,
   description: career.description,
