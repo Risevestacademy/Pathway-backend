@@ -91,7 +91,7 @@ describe('Step completion XP (e2e)', () => {
     )}`;
     prisma = app.get(PrismaService);
     activity = app.get(ActivityService);
-    await app.init();
+    await app.listen(0, '127.0.0.1');
 
     wireNotificationMock();
 

@@ -115,7 +115,7 @@ describe('Saved pathway starting point (e2e)', () => {
       app.get<ConfigService<EnvironmentVariables, true>>(ConfigService),
     )}`;
 
-    await app.init();
+    await app.listen(0, '127.0.0.1');
     prisma = app.get(PrismaService);
     wireNotificationMock();
 

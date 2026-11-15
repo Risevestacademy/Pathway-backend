@@ -74,7 +74,7 @@ describe('GET /opportunities/:id (e2e)', () => {
       app.get<ConfigService<EnvironmentVariables, true>>(ConfigService),
     )}`;
     prisma = app.get(PrismaService);
-    await app.init();
+    await app.listen(0, '127.0.0.1');
 
     catalog = await seedCatalog(prisma, { suffix: marker });
     skillId = (await prisma.skill.create({ data: { name: `${marker} skill` } }))

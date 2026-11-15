@@ -52,7 +52,7 @@ describe('Feedback (e2e)', () => {
     const moduleFixture: TestingModule = await builder.compile();
     const created = moduleFixture.createNestApplication();
     configureApp(created);
-    await created.init();
+    await created.listen(0, '127.0.0.1');
     return created;
   };
 

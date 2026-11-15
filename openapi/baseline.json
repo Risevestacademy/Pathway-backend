@@ -2918,6 +2918,37 @@
           "Media"
         ]
       }
+    },
+    "/me/dashboard": {
+      "get": {
+        "description": "Totals, streak, a 365-day activity heatmap, earned badges, the active pathway with its progress and next step, and today's goals. A new user gets zeros and empty lists. Values are the same whether or not the user has opted out of analytics.",
+        "operationId": "DashboardController_getDashboard",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Everything the signed-in user's dashboard renders",
+        "tags": [
+          "Me"
+        ]
+      }
     }
   },
   "info": {
@@ -8156,6 +8187,240 @@
           "signature",
           "folder",
           "uploadPreset"
+        ]
+      },
+      "DashboardTotalsDto": {
+        "type": "object",
+        "properties": {
+          "savedPathways": {
+            "type": "number"
+          },
+          "completedSteps": {
+            "type": "number"
+          },
+          "xp": {
+            "type": "number"
+          },
+          "badgesEarned": {
+            "type": "number"
+          },
+          "badgesTotal": {
+            "type": "number",
+            "description": "Badges in the catalogue, earned or not."
+          }
+        },
+        "required": [
+          "savedPathways",
+          "completedSteps",
+          "xp",
+          "badgesEarned",
+          "badgesTotal"
+        ]
+      },
+      "DashboardStreakDto": {
+        "type": "object",
+        "properties": {
+          "current": {
+            "type": "number",
+            "description": "Consecutive UTC days ending today or yesterday."
+          },
+          "longest": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "current",
+          "longest"
+        ]
+      },
+      "DashboardHeatmapDayDto": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "example": "2026-11-14"
+          },
+          "count": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "date",
+          "count"
+        ]
+      },
+      "DashboardHeatmapDto": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "example": "2025-11-15"
+          },
+          "to": {
+            "type": "string",
+            "example": "2026-11-14"
+          },
+          "days": {
+            "description": "One entry per UTC day in the window, days without activity included as zero.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DashboardHeatmapDayDto"
+            }
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "days"
+        ]
+      },
+      "DashboardBadgeDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "iconKey": {
+            "type": "string",
+            "nullable": true
+          },
+          "xpThreshold": {
+            "type": "number"
+          },
+          "awardedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "iconKey",
+          "xpThreshold",
+          "awardedAt"
+        ]
+      },
+      "DashboardActivePathwayDto": {
+        "type": "object",
+        "properties": {
+          "pathwayId": {
+            "type": "string"
+          },
+          "career": {
+            "$ref": "#/components/schemas/PathwayReadCareerDto"
+          },
+          "progress": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PathwayReadProgressDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "pathwayId",
+          "career",
+          "progress"
+        ]
+      },
+      "DashboardGoalStepDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "order": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "order"
+        ]
+      },
+      "DashboardGoalsDto": {
+        "type": "object",
+        "properties": {
+          "step": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DashboardGoalStepDto"
+              }
+            ]
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StepTaskDto"
+            }
+          },
+          "resources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StepResourceDto"
+            }
+          }
+        },
+        "required": [
+          "step",
+          "tasks",
+          "resources"
+        ]
+      },
+      "DashboardDto": {
+        "type": "object",
+        "properties": {
+          "totals": {
+            "$ref": "#/components/schemas/DashboardTotalsDto"
+          },
+          "streak": {
+            "$ref": "#/components/schemas/DashboardStreakDto"
+          },
+          "heatmap": {
+            "$ref": "#/components/schemas/DashboardHeatmapDto"
+          },
+          "badges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DashboardBadgeDto"
+            }
+          },
+          "activePathway": {
+            "nullable": true,
+            "description": "Progress and next step come from the same stage-aware read as GET /pathways/:id. Null when no pathway is active.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DashboardActivePathwayDto"
+              }
+            ]
+          },
+          "todaysGoals": {
+            "$ref": "#/components/schemas/DashboardGoalsDto"
+          }
+        },
+        "required": [
+          "totals",
+          "streak",
+          "heatmap",
+          "badges",
+          "activePathway",
+          "todaysGoals"
         ]
       },
       "StageQuizStatusNotTaken": {
