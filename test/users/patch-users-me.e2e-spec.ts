@@ -88,6 +88,7 @@ describe('Users (e2e)', () => {
       'avatarUrl',
       'careerInterests',
       'careerStage',
+      'courseOfStudy',
       'createdAt',
       'educationLevel',
       'email',
@@ -96,11 +97,13 @@ describe('Users (e2e)', () => {
       'firstName',
       'fullName',
       'id',
+      'institution',
       'internshipCount',
       'lastName',
       'learningGoals',
       'role',
       'weeklyTimeCommitment',
+      'yearFinished',
     ]);
     expect(response.body).toMatchObject({
       id: userId,
@@ -370,6 +373,120 @@ describe('Users (e2e)', () => {
 
         expect(invalidateUser).not.toHaveBeenCalled();
       });
+    });
+  });
+
+  describe('education fields', () => {
+    const fullEducation = {
+      institution: 'University of Lagos',
+      yearFinished: 2026,
+      courseOfStudy: 'Computer Science',
+    };
+
+    const patchEducation = () => patchMe().send(fullEducation).expect(200);
+
+    afterEach(async () => {
+      await prisma.userProfile.updateMany({
+        where: { userId },
+        data: {
+          institution: null,
+          yearFinished: null,
+          courseOfStudy: null,
+        },
+      });
+    });
+
+    it('saves and returns the three education fields', async () => {
+      const response = await patchEducation();
+
+      expect(response.body).toMatchObject(fullEducation);
+
+      const stored = await prisma.userProfile.findUnique({
+        where: { userId },
+      });
+      expect(stored).toMatchObject(fullEducation);
+    });
+
+    it('does not clear institution on a partial patch', async () => {
+      await patchEducation();
+
+      const response = await patchMe().send({ yearFinished: 2027 }).expect(200);
+
+      expect(response.body).toMatchObject({
+        institution: 'University of Lagos',
+        yearFinished: 2027,
+        courseOfStudy: 'Computer Science',
+      });
+
+      const stored = await prisma.userProfile.findUnique({
+        where: { userId },
+      });
+      expect(stored).toMatchObject({
+        institution: 'University of Lagos',
+        yearFinished: 2027,
+        courseOfStudy: 'Computer Science',
+      });
+    });
+
+    it('clears each field sent as null', async () => {
+      await patchEducation();
+
+      const response = await patchMe()
+        .send({ institution: null, yearFinished: null, courseOfStudy: null })
+        .expect(200);
+
+      expect(response.body).toMatchObject({
+        institution: null,
+        yearFinished: null,
+        courseOfStudy: null,
+      });
+
+      const stored = await prisma.userProfile.findUnique({
+        where: { userId },
+      });
+      expect(stored).toMatchObject({
+        institution: null,
+        yearFinished: null,
+        courseOfStudy: null,
+      });
+    });
+
+    it.each([
+      ['a blank institution', { institution: '   ' }, 'institution'],
+      [
+        'an over-long course',
+        { courseOfStudy: 'a'.repeat(201) },
+        'courseOfStudy',
+      ],
+      ['a non-integer year', { yearFinished: 2026.5 }, 'yearFinished'],
+      ['a year below 1900', { yearFinished: 1899 }, 'yearFinished'],
+      ['a year above 2100', { yearFinished: 2101 }, 'yearFinished'],
+      ['a string year', { yearFinished: '2026' }, 'yearFinished'],
+    ])('rejects %s with 400 and saves nothing', async (_label, body, field) => {
+      await patchEducation();
+
+      const before = await prisma.userProfile.findUnique({
+        where: { userId },
+      });
+
+      const response = await patchMe()
+        .send({ institution: 'changed', ...body })
+        .expect(400);
+
+      expect(response.body.error).toBe('VALIDATION_ERROR');
+      expect(response.body.fields).toHaveProperty(field);
+
+      const after = await prisma.userProfile.findUnique({
+        where: { userId },
+      });
+      expect(after).toEqual(before);
+    });
+
+    it('returns 401 without an access token', async () => {
+      await request(app.getHttpServer())
+        .patch(`${apiPrefix}/users/me`)
+        .send(fullEducation)
+        .expect(401);
     });
   });
 

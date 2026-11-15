@@ -36,6 +36,9 @@ describe('UsersService', () => {
     avatarUrl: null,
     careerStage: null,
     educationLevel: null,
+    institution: null,
+    yearFinished: null,
+    courseOfStudy: null,
     internshipCount: null,
     experienceYears: null,
     learningGoals: [],
@@ -84,6 +87,7 @@ describe('UsersService', () => {
     const tx = {
       userProfile: { upsert: upsertProfile },
       user: { updateMany: updateManyUser },
+      field: { findMany: findManyFields },
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -156,6 +160,9 @@ describe('UsersService', () => {
             avatarUrl: true,
             careerStage: true,
             educationLevel: true,
+            institution: true,
+            yearFinished: true,
+            courseOfStudy: true,
             internshipCount: true,
             experienceYears: true,
             learningGoals: true,
@@ -281,6 +288,9 @@ describe('UsersService', () => {
         avatarUrl: avatarFor('user-1'),
         careerStage: TargetLevel.RECENT_GRAD,
         educationLevel: EducationLevel.BACHELOR,
+        institution: 'University of Lagos',
+        yearFinished: 2026,
+        courseOfStudy: 'Computer Science',
         internshipCount: InternshipCount.TWO,
         experienceYears: ExperienceYears.ONE_TO_TWO,
         learningGoals: ['Land an internship'],
@@ -294,6 +304,9 @@ describe('UsersService', () => {
             avatarUrl: avatarFor('user-1'),
             careerStage: TargetLevel.RECENT_GRAD,
             educationLevel: EducationLevel.BACHELOR,
+            institution: 'University of Lagos',
+            yearFinished: 2026,
+            courseOfStudy: 'Computer Science',
             internshipCount: InternshipCount.TWO,
             experienceYears: ExperienceYears.ONE_TO_TWO,
             learningGoals: ['Land an internship'],
@@ -323,6 +336,9 @@ describe('UsersService', () => {
         avatarUrl: null,
         careerStage: null,
         educationLevel: null,
+        institution: null,
+        yearFinished: null,
+        courseOfStudy: null,
         internshipCount: null,
         experienceYears: null,
         learningGoals: null,
@@ -337,6 +353,9 @@ describe('UsersService', () => {
             avatarUrl: null,
             careerStage: null,
             educationLevel: null,
+            institution: null,
+            yearFinished: null,
+            courseOfStudy: null,
             internshipCount: null,
             experienceYears: null,
             learningGoals: [],
@@ -346,6 +365,22 @@ describe('UsersService', () => {
         }),
       );
       expect(findManyFields).not.toHaveBeenCalled();
+    });
+
+    it('clears the education fields independently when only some are sent', async () => {
+      await service.updateProfile('user-1', {
+        institution: 'University of Lagos',
+        yearFinished: 2026,
+        courseOfStudy: 'Computer Science',
+      });
+
+      await service.updateProfile('user-1', { institution: null });
+
+      expect(upsertProfile).toHaveBeenLastCalledWith({
+        where: { userId: 'user-1' },
+        create: { userId: 'user-1', institution: null },
+        update: { institution: null },
+      });
     });
 
     it('accepts known field slugs as career interests', async () => {
@@ -563,6 +598,7 @@ describe('UsersService', () => {
         'avatarUrl',
         'careerInterests',
         'careerStage',
+        'courseOfStudy',
         'createdAt',
         'educationLevel',
         'email',
@@ -571,11 +607,13 @@ describe('UsersService', () => {
         'firstName',
         'fullName',
         'id',
+        'institution',
         'internshipCount',
         'lastName',
         'learningGoals',
         'role',
         'weeklyTimeCommitment',
+        'yearFinished',
       ]);
     });
   });
