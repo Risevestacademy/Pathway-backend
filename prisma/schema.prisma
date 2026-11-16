@@ -185,6 +185,12 @@ enum FeedbackResolution {
   NOT_AN_ISSUE
 }
 
+enum UserSkillStatus {
+  HAVE
+  DONT_HAVE
+  NOT_SURE
+}
+
 model User {
   id               String    @id @default(uuid())
   email            String    @unique
@@ -661,6 +667,7 @@ model UserSkill {
   id        String   @id @default(uuid())
   userId    String
   skillId   String
+  status    UserSkillStatus @default(NOT_SURE)
   rating    Int?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
