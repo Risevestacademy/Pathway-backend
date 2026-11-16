@@ -1752,6 +1752,83 @@
         ]
       }
     },
+    "/me/skills/assessment": {
+      "get": {
+        "operationId": "MeSkillsController_getAssessment",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssessmentResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "404": {
+            "description": "No active pathway for this user"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get the caller's skill assessment grouped by stage",
+        "tags": [
+          "Me — Skills"
+        ]
+      },
+      "put": {
+        "operationId": "MeSkillsController_saveAssessment",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveAssessmentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SaveAssessmentResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error or unknown skillId"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "404": {
+            "description": "No active pathway for this user"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Save the caller's skill assessment (only the skills sent)",
+        "tags": [
+          "Me — Skills"
+        ]
+      }
+    },
     "/onboarding/options": {
       "get": {
         "operationId": "ReferenceController_getOptions",
@@ -6385,6 +6462,143 @@
           "id",
           "name",
           "description"
+        ]
+      },
+      "AssessmentSkillDto": {
+        "type": "object",
+        "properties": {
+          "skillId": {
+            "type": "string"
+          },
+          "skillName": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "HAVE",
+              "DONT_HAVE",
+              "NOT_SURE"
+            ]
+          },
+          "rating": {
+            "type": "number",
+            "nullable": true
+          }
+        },
+        "required": [
+          "skillId",
+          "skillName",
+          "status",
+          "rating"
+        ]
+      },
+      "AssessmentStageDto": {
+        "type": "object",
+        "properties": {
+          "stageId": {
+            "type": "string"
+          },
+          "stageTitle": {
+            "type": "string"
+          },
+          "stageOrder": {
+            "type": "number"
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssessmentSkillDto"
+            }
+          }
+        },
+        "required": [
+          "stageId",
+          "stageTitle",
+          "stageOrder",
+          "skills"
+        ]
+      },
+      "AssessmentResponseDto": {
+        "type": "object",
+        "properties": {
+          "careerId": {
+            "type": "string"
+          },
+          "pathwayId": {
+            "type": "string"
+          },
+          "stages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssessmentStageDto"
+            }
+          }
+        },
+        "required": [
+          "careerId",
+          "pathwayId",
+          "stages"
+        ]
+      },
+      "AssessmentSkillSaveDto": {
+        "type": "object",
+        "properties": {
+          "skillId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "HAVE",
+              "DONT_HAVE",
+              "NOT_SURE"
+            ]
+          },
+          "rating": {
+            "type": "number",
+            "nullable": true,
+            "description": "Only allowed when status = HAVE (1–5)."
+          }
+        },
+        "required": [
+          "skillId",
+          "status"
+        ]
+      },
+      "SaveAssessmentDto": {
+        "type": "object",
+        "properties": {
+          "skills": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssessmentSkillSaveDto"
+            }
+          }
+        },
+        "required": [
+          "skills"
+        ]
+      },
+      "SaveAssessmentResponseDto": {
+        "type": "object",
+        "properties": {
+          "updated": {
+            "type": "number"
+          },
+          "allGapsClosed": {
+            "type": "boolean"
+          },
+          "startStepId": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "updated",
+          "allGapsClosed",
+          "startStepId"
         ]
       },
       "OptionDto": {
