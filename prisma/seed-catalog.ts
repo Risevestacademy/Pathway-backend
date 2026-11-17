@@ -42,6 +42,18 @@ interface StepSeed {
   resources: string[];
 }
 
+interface QuizQuestionSeed {
+  prompt: string;
+  options: [string, string, string, string];
+  correctIndex: number;
+  step?: number;
+}
+
+interface StageQuizSeed {
+  stage: string;
+  questions: QuizQuestionSeed[];
+}
+
 interface CertificationSeed {
   // e.g. 'Frontend Expert'. The three levels are titled "<title>: Level 1" to 3.
   title: string;
@@ -72,6 +84,7 @@ interface CareerSeed {
     title: string;
     description: string;
     steps: StepSeed[];
+    quizzes?: StageQuizSeed[];
   };
 }
 
@@ -1674,6 +1687,58 @@ const CAREERS: CareerSeed[] = [
           ],
         },
       ],
+      quizzes: [
+        {
+          stage: 'Web foundations',
+          questions: [
+            {
+              prompt: 'Which element best marks up the main navigation links?',
+              options: ['<div>', '<nav>', '<section>', '<header>'],
+              correctIndex: 1,
+              step: 1,
+            },
+            {
+              prompt:
+                'Which CSS property turns a container into a flexbox layout?',
+              options: [
+                'position: flex',
+                'float: flex',
+                'display: flex',
+                'layout: flex',
+              ],
+              correctIndex: 2,
+              step: 1,
+            },
+            {
+              prompt:
+                'What does fetch() return before the response has arrived?',
+              options: [
+                'The response body',
+                'A Promise',
+                'A callback',
+                'undefined',
+              ],
+              correctIndex: 1,
+              step: 2,
+            },
+            {
+              prompt: 'Which method attaches a click handler to an element?',
+              options: [
+                'element.onEvent()',
+                'element.listen()',
+                'element.addEventListener()',
+                'element.bind()',
+              ],
+              correctIndex: 2,
+            },
+            {
+              prompt: 'Which Git command records staged changes?',
+              options: ['git add', 'git push', 'git commit', 'git stash'],
+              correctIndex: 2,
+            },
+          ],
+        },
+      ],
     },
   },
   {
@@ -2309,7 +2374,7 @@ async function backfillPathwayStages(
   prisma: PrismaClient,
   pathwayId: string,
   steps: StepSeed[],
-): Promise<void> {
+): Promise<Map<string, string>> {
   const stageIds = await upsertStages(prisma, pathwayId, steps);
 
   for (const [index, { stage }] of steps.entries()) {
@@ -2318,12 +2383,19 @@ async function backfillPathwayStages(
       data: { stageId: idOf(stageIds, stage) },
     });
   }
+
+  return stageIds;
 }
 
 async function upsertPathway(
   prisma: PrismaClient,
   careerId: string,
-  { title, description, steps }: NonNullable<CareerSeed['pathway']>,
+  {
+    title,
+    description,
+    steps,
+    quizzes = [],
+  }: NonNullable<CareerSeed['pathway']>,
   skillIds: Map<string, string>,
 ): Promise<void> {
   const pathway = await prisma.pathway.upsert({
@@ -2364,6 +2436,57 @@ async function upsertPathway(
   await prisma.pathwayStage.deleteMany({
     where: { pathwayId: pathway.id, order: { gt: stageIds.size } },
   });
+
+  await upsertStageQuizzes(prisma, pathway.id, stageIds, quizzes);
+}
+
+async function upsertStageQuizzes(
+  prisma: PrismaClient,
+  pathwayId: string,
+  stageIds: Map<string, string>,
+  quizzes: StageQuizSeed[],
+): Promise<void> {
+  for (const { stage, questions } of quizzes) {
+    const stageId = idOf(stageIds, stage);
+
+    const existing = await prisma.stageQuiz.findUnique({
+      where: { stageId },
+      select: { id: true },
+    });
+
+    if (existing && !REFRESH) {
+      continue;
+    }
+
+    const steps = await prisma.pathwayStep.findMany({
+      where: { pathwayId },
+      select: { id: true, order: true },
+    });
+    const stepIds = new Map(steps.map(({ id, order }) => [String(order), id]));
+
+    const create = questions.map(
+      ({ prompt, options, correctIndex, step }, index) => ({
+        prompt,
+        order: index + 1,
+        correctIndex,
+        stepId: step === undefined ? null : idOf(stepIds, String(step)),
+        options: {
+          create: options.map((text, order) => ({ text, order })),
+        },
+      }),
+    );
+
+    if (existing) {
+      await prisma.stageQuiz.update({
+        where: { id: existing.id },
+        data: { questions: { deleteMany: {}, create } },
+      });
+    } else {
+      await prisma.stageQuiz.create({
+        data: { stageId, questions: { create } },
+      });
+    }
+  }
 }
 
 async function linkCareerResources(
@@ -2383,11 +2506,11 @@ async function backfillCareer(
   prisma: PrismaClient,
   careerId: string,
   resourceIds: string[],
-  steps: StepSeed[] | undefined,
+  pathwaySeed: CareerSeed['pathway'],
 ): Promise<void> {
   await linkCareerResources(prisma, careerId, resourceIds);
 
-  if (!steps) {
+  if (!pathwaySeed) {
     return;
   }
 
@@ -2397,7 +2520,17 @@ async function backfillCareer(
   });
 
   if (pathway) {
-    await backfillPathwayStages(prisma, pathway.id, steps);
+    const stageIds = await backfillPathwayStages(
+      prisma,
+      pathway.id,
+      pathwaySeed.steps,
+    );
+    await upsertStageQuizzes(
+      prisma,
+      pathway.id,
+      stageIds,
+      pathwaySeed.quizzes ?? [],
+    );
   }
 }
 
@@ -2456,7 +2589,7 @@ async function upsertCareer(
 
     if (existing) {
       console.log(`Career "${slug}" already exists, adding missing links only`);
-      await backfillCareer(prisma, existing.id, resourceIds, pathway?.steps);
+      await backfillCareer(prisma, existing.id, resourceIds, pathway);
       return;
     }
   }
