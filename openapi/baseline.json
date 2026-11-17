@@ -1554,6 +1554,70 @@
         ]
       }
     },
+    "/pathways/{pathwayId}/steps/{stepId}/completion": {
+      "put": {
+        "description": "Idempotent. Completing awards step XP and any badges it earns, once per step. Undoing keeps XP and badges.",
+        "operationId": "PathwayCompletionController_setStepCompletion",
+        "parameters": [
+          {
+            "name": "pathwayId",
+            "required": true,
+            "in": "path",
+            "description": "Pathway UUID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "stepId",
+            "required": true,
+            "in": "path",
+            "description": "Pathway step UUID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetStepCompletionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StepCompletionResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "pathwayId or stepId is not a valid UUID, or the body is invalid."
+          },
+          "401": {
+            "description": "Access token missing or invalid."
+          },
+          "404": {
+            "description": "The step isn't in this pathway, or the pathway's career is neither PUBLISHED nor a RETIRED career the user saved."
+          },
+          "409": {
+            "description": "The user hasn't saved this pathway's career."
+          }
+        },
+        "summary": "Mark or unmark a pathway step as complete",
+        "tags": [
+          "Pathways"
+        ]
+      }
+    },
     "/pathways/{pathwayId}": {
       "get": {
         "description": "Returns the career header, every stage with its steps, and progress. Resources and tasks are included only for the next step and the start step. Works for published and retired careers.",
@@ -5982,6 +6046,119 @@
           "progress"
         ]
       },
+      "SetStepCompletionDto": {
+        "type": "object",
+        "properties": {
+          "completed": {
+            "type": "boolean",
+            "description": "true marks the step complete; false undoes the mark."
+          }
+        },
+        "required": [
+          "completed"
+        ]
+      },
+      "PathwayReadProgressDto": {
+        "type": "object",
+        "properties": {
+          "completed": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number"
+          },
+          "percentage": {
+            "type": "number"
+          },
+          "nextStepId": {
+            "type": "string",
+            "nullable": true
+          },
+          "selfReported": {
+            "type": "boolean",
+            "example": true
+          }
+        },
+        "required": [
+          "completed",
+          "total",
+          "percentage",
+          "nextStepId",
+          "selfReported"
+        ]
+      },
+      "StepCompletionStageProgressDto": {
+        "type": "object",
+        "properties": {
+          "completed": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number"
+          },
+          "percentage": {
+            "type": "number"
+          },
+          "stageId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "completed",
+          "total",
+          "percentage",
+          "stageId"
+        ]
+      },
+      "StepCompletionResponseDto": {
+        "type": "object",
+        "properties": {
+          "stepId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "COMPLETED",
+              "NOT_STARTED"
+            ]
+          },
+          "completedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "progress": {
+            "$ref": "#/components/schemas/PathwayReadProgressDto"
+          },
+          "stageProgress": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/StepCompletionStageProgressDto"
+              }
+            ]
+          },
+          "nextStepId": {
+            "type": "string",
+            "nullable": true
+          },
+          "xpAwarded": {
+            "type": "number",
+            "description": "XP this request awarded. 0 on a repeat or an undo."
+          }
+        },
+        "required": [
+          "stepId",
+          "status",
+          "completedAt",
+          "progress",
+          "stageProgress",
+          "nextStepId",
+          "xpAwarded"
+        ]
+      },
       "PathwayReadCareerDto": {
         "type": "object",
         "properties": {
@@ -6017,35 +6194,6 @@
           "stageCount",
           "stepCount",
           "resourceCount"
-        ]
-      },
-      "PathwayReadProgressDto": {
-        "type": "object",
-        "properties": {
-          "completed": {
-            "type": "number"
-          },
-          "total": {
-            "type": "number"
-          },
-          "percentage": {
-            "type": "number"
-          },
-          "nextStepId": {
-            "type": "string",
-            "nullable": true
-          },
-          "selfReported": {
-            "type": "boolean",
-            "example": true
-          }
-        },
-        "required": [
-          "completed",
-          "total",
-          "percentage",
-          "nextStepId",
-          "selfReported"
         ]
       },
       "PathwayReadStageProgressDto": {

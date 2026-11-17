@@ -215,7 +215,7 @@ describe('Pathway step progress (e2e)', () => {
           'step_completion_changed',
           user.id,
           {
-            careerId: catalog.publishedCareerId,
+            pathwayId: catalog.publishedPathwayId,
             stepId: first.id,
             status: 'COMPLETED',
           },
