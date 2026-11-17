@@ -1618,6 +1618,207 @@
         ]
       }
     },
+    "/pathways/{pathwayId}/resources/{resourceId}/completion": {
+      "put": {
+        "description": "Idempotent. Completion is per user and shared across steps. Completing awards resource XP once. It never completes a step.",
+        "operationId": "PathwayCompletionController_setResourceCompletion",
+        "parameters": [
+          {
+            "name": "pathwayId",
+            "required": true,
+            "in": "path",
+            "description": "Pathway UUID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "resourceId",
+            "required": true,
+            "in": "path",
+            "description": "Resource UUID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetItemCompletionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceCompletionResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "An id is not a valid UUID, or the body is invalid."
+          },
+          "401": {
+            "description": "Access token missing or invalid."
+          },
+          "404": {
+            "description": "The pathway isn't readable, the resource isn't linked to this pathway, or it's withdrawn and the request completes it."
+          },
+          "409": {
+            "description": "The user hasn't saved this pathway's career."
+          }
+        },
+        "summary": "Mark or unmark a pathway resource as complete",
+        "tags": [
+          "Pathways"
+        ]
+      }
+    },
+    "/pathways/{pathwayId}/tasks/{taskId}/completion": {
+      "put": {
+        "description": "Idempotent. Completing awards task XP once. It never completes a step.",
+        "operationId": "PathwayCompletionController_setTaskCompletion",
+        "parameters": [
+          {
+            "name": "pathwayId",
+            "required": true,
+            "in": "path",
+            "description": "Pathway UUID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "taskId",
+            "required": true,
+            "in": "path",
+            "description": "Practice task UUID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetItemCompletionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskCompletionResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "An id is not a valid UUID, or the body is invalid."
+          },
+          "401": {
+            "description": "Access token missing or invalid."
+          },
+          "404": {
+            "description": "The pathway isn't readable, or the task isn't in it."
+          },
+          "409": {
+            "description": "The user hasn't saved this pathway's career."
+          }
+        },
+        "summary": "Mark or unmark a practice task as complete",
+        "tags": [
+          "Pathways"
+        ]
+      }
+    },
+    "/pathways/{pathwayId}/tasks/{taskId}/checklist/{itemId}": {
+      "put": {
+        "description": "Idempotent. Awards no XP and never completes the task.",
+        "operationId": "PathwayCompletionController_setChecklistItem",
+        "parameters": [
+          {
+            "name": "pathwayId",
+            "required": true,
+            "in": "path",
+            "description": "Pathway UUID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "taskId",
+            "required": true,
+            "in": "path",
+            "description": "Practice task UUID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "itemId",
+            "required": true,
+            "in": "path",
+            "description": "Checklist item UUID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetChecklistItemDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChecklistItemResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "An id is not a valid UUID, or the body is invalid."
+          },
+          "401": {
+            "description": "Access token missing or invalid."
+          },
+          "404": {
+            "description": "The pathway isn't readable, the task isn't in it, or the item isn't on the task."
+          },
+          "409": {
+            "description": "The user hasn't saved this pathway's career."
+          }
+        },
+        "summary": "Tick or untick an item on a practice task's checklist",
+        "tags": [
+          "Pathways"
+        ]
+      }
+    },
     "/pathways/{pathwayId}": {
       "get": {
         "description": "Returns the career header, every stage with its steps, and progress. Resources and tasks are included only for the next step and the start step. Works for published and retired careers.",
@@ -6157,6 +6358,123 @@
           "stageProgress",
           "nextStepId",
           "xpAwarded"
+        ]
+      },
+      "SetItemCompletionDto": {
+        "type": "object",
+        "properties": {
+          "completed": {
+            "type": "boolean",
+            "description": "true marks the item complete; false undoes the mark."
+          }
+        },
+        "required": [
+          "completed"
+        ]
+      },
+      "ResourceCompletionResponseDto": {
+        "type": "object",
+        "properties": {
+          "resourceId": {
+            "type": "string"
+          },
+          "completed": {
+            "type": "boolean"
+          },
+          "completedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "xpAwarded": {
+            "type": "number",
+            "description": "XP this request awarded. 0 on a repeat or an undo."
+          }
+        },
+        "required": [
+          "resourceId",
+          "completed",
+          "completedAt",
+          "xpAwarded"
+        ]
+      },
+      "TaskCompletionResponseDto": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string"
+          },
+          "completed": {
+            "type": "boolean"
+          },
+          "completedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "xpAwarded": {
+            "type": "number",
+            "description": "XP this request awarded. 0 on a repeat or an undo."
+          },
+          "checklistChecked": {
+            "type": "number"
+          },
+          "checklistTotal": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "taskId",
+          "completed",
+          "completedAt",
+          "xpAwarded",
+          "checklistChecked",
+          "checklistTotal"
+        ]
+      },
+      "SetChecklistItemDto": {
+        "type": "object",
+        "properties": {
+          "checked": {
+            "type": "boolean",
+            "description": "true ticks the item; false unticks it."
+          }
+        },
+        "required": [
+          "checked"
+        ]
+      },
+      "ChecklistItemResponseDto": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string"
+          },
+          "taskId": {
+            "type": "string"
+          },
+          "checked": {
+            "type": "boolean"
+          },
+          "checkedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "checklistChecked": {
+            "type": "number"
+          },
+          "checklistTotal": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "itemId",
+          "taskId",
+          "checked",
+          "checkedAt",
+          "checklistChecked",
+          "checklistTotal"
         ]
       },
       "PathwayReadCareerDto": {
