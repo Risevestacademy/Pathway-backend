@@ -22,18 +22,12 @@ import {
   DashboardCurrentProjectDto,
   DashboardDto,
   DashboardGoalDto,
-  DashboardProgressDto,
   DashboardTotalsDto,
 } from './dto/dashboard-response.dto';
+import { TRACKED_ACTIVITY_TYPES } from '../activity';
+import { ActivityService } from '../activity/activity.service';
 
 const VISIBLE_CAREER_STATUSES = [CareerStatus.PUBLISHED, CareerStatus.RETIRED];
-
-const TRACKED_ACTIVITY_TYPES: ActivityType[] = [
-  ActivityType.STEP_COMPLETED,
-  ActivityType.TASK_COMPLETED,
-  ActivityType.QUIZ_PASSED,
-  ActivityType.RESOURCE_COMPLETED,
-];
 
 interface ActivePathwayResult {
   dto: DashboardActivePathwayDto;
@@ -45,6 +39,7 @@ export class DashboardService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly pathwaysService: PathwaysService,
+    private readonly activityService: ActivityService,
   ) {}
 
   async getDashboard(
@@ -54,15 +49,14 @@ export class DashboardService {
     const now = new Date();
     const window = buildDateWindow(now, windowDays);
 
-    const [totals, badges, activityDays, activePathwayResult] =
-      await Promise.all([
-        this.getTotals(userId),
-        this.getBadges(userId),
-        this.getActivityDays(userId),
-        this.getActivePathway(userId),
-      ]);
+    const stats = await this.activityService.getUserStats(userId);
 
-    const streak = computeStreak(activityDays, now);
+    const [totals, badges, activePathwayResult] = await Promise.all([
+      this.getTotals(userId, stats.xp),
+      this.getBadges(userId),
+      this.getActivePathway(userId),
+    ]);
+
     const goals = await this.getGoals(
       userId,
       activePathwayResult?.dto.progress.nextStepId ?? null,
@@ -70,9 +64,9 @@ export class DashboardService {
 
     return {
       totals: { ...totals, badgesEarned: badges.length },
-      streak,
-      weekStrip: buildWeekStrip(activityDays, now, streak.current),
-      heatmap: { ...window, days: buildHeatmap(activityDays, window) },
+      streak: stats.streak,
+      weekStrip: buildWeekStrip(stats.activityDays, now, stats.streak.current),
+      heatmap: { ...window, days: buildHeatmap(stats.activityDays, window) },
       badges,
       activePathway: activePathwayResult?.dto ?? null,
       currentProject: this.pickCurrentProject(activePathwayResult),
@@ -164,17 +158,14 @@ export class DashboardService {
 
   private async getTotals(
     userId: string,
+    xp: number,
   ): Promise<Omit<DashboardTotalsDto, 'badgesEarned'>> {
-    const [savedPathways, completedSteps, xp, badgesTotal] = await Promise.all([
+    const [savedPathways, completedSteps, badgesTotal] = await Promise.all([
       this.prisma.userPathway.count({
         where: { userId, career: { status: { in: VISIBLE_CAREER_STATUSES } } },
       }),
       this.prisma.userPathwayStep.count({
         where: { userId, status: PathwayStepStatus.COMPLETED },
-      }),
-      this.prisma.activityLedger.aggregate({
-        where: { userId },
-        _sum: { xp: true },
       }),
       this.prisma.badge.count(),
     ]);
@@ -182,7 +173,7 @@ export class DashboardService {
     return {
       savedPathways,
       completedSteps,
-      xp: xp._sum.xp ?? 0,
+      xp,
       badgesTotal,
     };
   }

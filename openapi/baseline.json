@@ -1809,7 +1809,7 @@
             }
           },
           "400": {
-            "description": "Validation error or unknown skillId"
+            "description": "Validation error, unknown skillId, or rating on non-HAVE"
           },
           "401": {
             "description": "Access token missing or invalid"
@@ -1823,7 +1823,67 @@
             "bearer": []
           }
         ],
-        "summary": "Save the caller's skill assessment (only the skills sent)",
+        "summary": "Save the caller's skill assessment and return the results page",
+        "tags": [
+          "Me — Skills"
+        ]
+      },
+      "delete": {
+        "operationId": "MeSkillsController_resetAssessment",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": "Assessment cleared."
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "404": {
+            "description": "No active pathway for this user"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Reset the caller's skill assessment",
+        "tags": [
+          "Me — Skills"
+        ]
+      }
+    },
+    "/me/skills": {
+      "put": {
+        "operationId": "MeSkillsController_updateMySkills",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMySkillsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Skills updated."
+          },
+          "400": {
+            "description": "Validation error or unknown skill IDs"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Replace the caller's profile skills",
         "tags": [
           "Me — Skills"
         ]
@@ -3192,6 +3252,40 @@
           }
         }
       },
+      "UserSkillSummaryDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "FieldSummaryDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug"
+        ]
+      },
       "UserResponseDto": {
         "type": "object",
         "properties": {
@@ -3232,8 +3326,7 @@
           },
           "avatarUrl": {
             "type": "string",
-            "nullable": true,
-            "example": "https://res.cloudinary.com/pathway/image/upload/v1/avatars/123e4567-e89b-12d3-a456-426614174000/photo.jpg"
+            "nullable": true
           },
           "careerStage": {
             "type": "string",
@@ -3242,8 +3335,7 @@
               "RECENT_GRAD",
               "EARLY_CAREER"
             ],
-            "nullable": true,
-            "example": null
+            "nullable": true
           },
           "educationLevel": {
             "type": "string",
@@ -3255,23 +3347,19 @@
               "MASTERS",
               "OTHER"
             ],
-            "nullable": true,
-            "example": null
+            "nullable": true
           },
           "institution": {
             "type": "string",
-            "nullable": true,
-            "example": "University of Lagos"
+            "nullable": true
           },
           "yearFinished": {
             "type": "number",
-            "nullable": true,
-            "example": 2026
+            "nullable": true
           },
           "courseOfStudy": {
             "type": "string",
-            "nullable": true,
-            "example": "Computer Science"
+            "nullable": true
           },
           "internshipCount": {
             "type": "string",
@@ -3281,8 +3369,7 @@
               "TWO",
               "THREE_PLUS"
             ],
-            "nullable": true,
-            "example": null
+            "nullable": true
           },
           "experienceYears": {
             "type": "string",
@@ -3292,11 +3379,9 @@
               "ONE_TO_TWO",
               "THREE_PLUS"
             ],
-            "nullable": true,
-            "example": null
+            "nullable": true
           },
           "learningGoals": {
-            "example": [],
             "type": "array",
             "items": {
               "type": "string"
@@ -3304,21 +3389,33 @@
           },
           "weeklyTimeCommitment": {
             "type": "string",
-            "nullable": true,
-            "example": null
-          },
-          "careerInterests": {
-            "example": [
-              "software-engineering"
-            ],
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
+            "nullable": true
           },
           "analyticsEnabled": {
             "type": "boolean",
             "example": true
+          },
+          "totalXp": {
+            "type": "number",
+            "example": 120,
+            "description": "Total XP earned"
+          },
+          "currentStreak": {
+            "type": "number",
+            "example": 3,
+            "description": "Current daily streak"
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserSkillSummaryDto"
+            }
+          },
+          "careerInterests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FieldSummaryDto"
+            }
           }
         },
         "required": [
@@ -3340,8 +3437,11 @@
           "experienceYears",
           "learningGoals",
           "weeklyTimeCommitment",
-          "careerInterests",
-          "analyticsEnabled"
+          "analyticsEnabled",
+          "totalXp",
+          "currentStreak",
+          "skills",
+          "careerInterests"
         ]
       },
       "RegisterDto": {
@@ -6581,6 +6681,54 @@
           "skills"
         ]
       },
+      "AssessmentStatsDto": {
+        "type": "object",
+        "properties": {
+          "have": {
+            "type": "number"
+          },
+          "dontHave": {
+            "type": "number"
+          },
+          "notSure": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "have",
+          "dontHave",
+          "notSure"
+        ]
+      },
+      "SkillGapDto": {
+        "type": "object",
+        "properties": {
+          "skillId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "skillName": {
+            "type": "string"
+          },
+          "stepId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "stepTitle": {
+            "type": "string"
+          },
+          "stepOrder": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "skillId",
+          "skillName",
+          "stepId",
+          "stepTitle",
+          "stepOrder"
+        ]
+      },
       "SaveAssessmentResponseDto": {
         "type": "object",
         "properties": {
@@ -6593,12 +6741,49 @@
           "startStepId": {
             "type": "string",
             "nullable": true
+          },
+          "startStepTitle": {
+            "type": "string",
+            "nullable": true
+          },
+          "startStepDescription": {
+            "type": "string",
+            "nullable": true
+          },
+          "stats": {
+            "$ref": "#/components/schemas/AssessmentStatsDto"
+          },
+          "gaps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SkillGapDto"
+            }
           }
         },
         "required": [
           "updated",
           "allGapsClosed",
-          "startStepId"
+          "startStepId",
+          "startStepTitle",
+          "startStepDescription",
+          "stats",
+          "gaps"
+        ]
+      },
+      "UpdateMySkillsDto": {
+        "type": "object",
+        "properties": {
+          "skillIds": {
+            "description": "The full list of skill IDs the user has. Replaces the existing set.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        },
+        "required": [
+          "skillIds"
         ]
       },
       "OptionDto": {

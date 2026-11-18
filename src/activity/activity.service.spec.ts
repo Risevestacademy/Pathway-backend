@@ -4,6 +4,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ActivityType, Prisma } from '../generated/prisma/client';
 import { ActivityService } from './activity.service';
 import { ACTIVITY_XP } from './activity-xp';
+import { PrismaService } from '../prisma';
 
 describe('ActivityService', () => {
   let service: ActivityService;
@@ -25,6 +26,13 @@ describe('ActivityService', () => {
     },
   };
 
+  const mockPrismaService = {
+    activityLedger: {
+      aggregate: jest.fn<() => Promise<{ _sum: { xp: number | null } }>>(),
+    },
+    $queryRaw: jest.fn<() => Promise<unknown[]>>(),
+  };
+
   const client = tx as unknown as Prisma.TransactionClient;
 
   const totalXp = (xp: number | null) =>
@@ -40,7 +48,10 @@ describe('ActivityService', () => {
     tx.userBadge.createManyAndReturn.mockResolvedValue([]);
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [ActivityService],
+      providers: [
+        ActivityService,
+        { provide: PrismaService, useValue: mockPrismaService },
+      ],
     }).compile();
 
     service = module.get(ActivityService);
@@ -361,6 +372,39 @@ describe('ActivityService', () => {
       await service.awardEarnedBadges('user-1', client);
 
       expect(tx.userBadge.deleteMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getUserStats', () => {
+    it('returns xp, streak, and activityDays', async () => {
+      mockPrismaService.activityLedger.aggregate.mockResolvedValue({
+        _sum: { xp: 100 },
+      });
+      mockPrismaService.$queryRaw.mockResolvedValue([
+        { date: '2026-11-14', count: 1 },
+      ]);
+
+      const result = await service.getUserStats(
+        'user-1',
+        new Date('2026-11-14T08:00:00.000Z'),
+      );
+
+      expect(result.xp).toBe(100);
+      expect(result.streak.current).toBe(1);
+      expect(result.activityDays).toEqual([{ date: '2026-11-14', count: 1 }]);
+    });
+
+    it('returns 0 xp and no streak for a fresh user', async () => {
+      mockPrismaService.activityLedger.aggregate.mockResolvedValue({
+        _sum: { xp: null },
+      });
+      mockPrismaService.$queryRaw.mockResolvedValue([]);
+
+      const result = await service.getUserStats('user-1');
+
+      expect(result.xp).toBe(0);
+      expect(result.streak.current).toBe(0);
+      expect(result.activityDays).toEqual([]);
     });
   });
 });

@@ -38,6 +38,7 @@ describe('AuthController (e2e)', () => {
     'careerStage',
     'courseOfStudy',
     'createdAt',
+    'currentStreak',
     'educationLevel',
     'email',
     'emailVerified',
@@ -50,9 +51,11 @@ describe('AuthController (e2e)', () => {
     'lastName',
     'learningGoals',
     'role',
+    'skills',
+    'totalXp',
     'weeklyTimeCommitment',
     'yearFinished',
-  ];
+  ].sort();
 
   const testUser = {
     email: `e2e-${Date.now()}@test.com`,

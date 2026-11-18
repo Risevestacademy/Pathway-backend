@@ -21,6 +21,7 @@ import { GoogleOAuthService } from './oauth/google-oauth.service';
 import { AnalyticsService } from '../analytics';
 import { TeamsService, type InviteClaim } from '../teams';
 import { DomainException } from '../common';
+import { ActivityService } from '../activity';
 
 const sha256 = (value: string) =>
   createHash('sha256').update(value).digest('hex');
@@ -36,8 +37,11 @@ const PROFILE_SHAPE_DEFAULTS = {
   experienceYears: null,
   learningGoals: [],
   weeklyTimeCommitment: null,
-  careerInterests: [],
   analyticsEnabled: true,
+  totalXp: 0,
+  currentStreak: 0,
+  skills: [],
+  careerInterests: [],
 };
 
 describe('AuthService', () => {
@@ -65,6 +69,10 @@ describe('AuthService', () => {
       jest.fn<
         (event: string, distinctId: string, properties?: unknown) => void
       >(),
+  };
+
+  const mockActivityService = {
+    getUserStats: jest.fn<() => Promise<unknown>>(),
   };
 
   let capturesInsideTransaction = 0;
@@ -147,7 +155,17 @@ describe('AuthService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
-    capturesInsideTransaction = 0;
+    mockUsersService.findById.mockReset();
+    mockUsersService.findById.mockResolvedValue({
+      id: 'user-1',
+      email: 'test@test.com',
+      role: Role.USER,
+      emailVerifiedAt: createdAt,
+      createdAt,
+      updatedAt: createdAt,
+      analyticsEnabled: true,
+      profile: { fullName: 'Ada Obi', firstName: 'Ada', lastName: 'Obi' },
+    });
 
     mockPrismaService.emailVerificationOtp.updateMany.mockResolvedValue({
       count: 0,
@@ -156,6 +174,12 @@ describe('AuthService', () => {
       id: 'otp-1',
     });
     mockNotificationService.send.mockResolvedValue(undefined);
+
+    mockActivityService.getUserStats.mockResolvedValue({
+      xp: 0,
+      streak: { current: 0, longest: 0 },
+      activityDays: [],
+    });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -168,6 +192,7 @@ describe('AuthService', () => {
         { provide: GoogleOAuthService, useValue: mockGoogleOAuthService },
         { provide: AnalyticsService, useValue: mockAnalyticsService },
         { provide: TeamsService, useValue: mockTeamsService },
+        { provide: ActivityService, useValue: mockActivityService },
       ],
     }).compile();
 
@@ -516,6 +541,7 @@ describe('AuthService', () => {
       };
 
       mockUsersService.findByEmail.mockResolvedValue(mockUser);
+      mockUsersService.findById.mockResolvedValue(mockUser);
 
       const result = await service.login({
         email: 'test@test.com',
@@ -586,6 +612,7 @@ describe('AuthService', () => {
       'returns the user and tokens for a verified %s',
       async (role) => {
         mockUsersService.findByEmail.mockResolvedValue(staffRecord(role));
+        mockUsersService.findById.mockResolvedValue(staffRecord(role));
 
         const result = await service.adminLogin({
           email: 'staff@test.com',
@@ -989,6 +1016,8 @@ describe('AuthService', () => {
         updatedAt: createdAt,
         analyticsEnabled: true,
         profile: { fullName: 'Ada Obi', firstName: 'Ada', lastName: 'Obi' },
+        userSkills: [],
+        fields: [],
       });
 
       await expect(service.findCurrentUser('user-1')).resolves.toEqual({
@@ -1001,6 +1030,10 @@ describe('AuthService', () => {
         emailVerified: false,
         createdAt,
         ...PROFILE_SHAPE_DEFAULTS,
+        totalXp: 0,
+        currentStreak: 0,
+        skills: [],
+        careerInterests: [],
       });
       expect(mockUsersService.findById).toHaveBeenCalledWith('user-1');
     });
@@ -1020,6 +1053,30 @@ describe('AuthService', () => {
       mockUsersService.findById.mockRejectedValue(failure);
 
       await expect(service.findCurrentUser('user-1')).rejects.toBe(failure);
+    });
+
+    it('includes XP and streak from ActivityService', async () => {
+      mockUsersService.findById.mockResolvedValue({
+        id: 'user-1',
+        email: 'test@test.com',
+        role: Role.USER,
+        emailVerifiedAt: null,
+        createdAt,
+        updatedAt: createdAt,
+        analyticsEnabled: true,
+        profile: null,
+        userSkills: [],
+        fields: [],
+      });
+      mockActivityService.getUserStats.mockResolvedValue({
+        xp: 100,
+        streak: { current: 5, longest: 10 },
+        activityDays: [],
+      });
+
+      const result = await service.findCurrentUser('user-1');
+      expect(result.totalXp).toBe(100);
+      expect(result.currentStreak).toBe(5);
     });
   });
 

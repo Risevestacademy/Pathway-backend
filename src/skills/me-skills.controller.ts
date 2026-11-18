@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Put, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Put,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -14,6 +23,8 @@ import {
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { type AuthenticatedUser } from '../common/interfaces/authenticated-user.interface';
+import { UpdateMySkillsDto } from './dto/update-my-skills.dto';
+import { SkillsService } from './skills.service';
 
 @ApiTags('Me — Skills')
 @ApiBearerAuth()
@@ -22,6 +33,7 @@ import { type AuthenticatedUser } from '../common/interfaces/authenticated-user.
 export class MeSkillsController {
   constructor(
     private readonly skillsAssessmentService: SkillsAssessmentService,
+    private readonly skillsService: SkillsService,
   ) {}
 
   @Get('assessment')
@@ -39,12 +51,12 @@ export class MeSkillsController {
 
   @Put('assessment')
   @ApiOperation({
-    summary: "Save the caller's skill assessment (only the skills sent)",
+    summary: "Save the caller's skill assessment and return the results page",
   })
   @ApiResponse({ status: 200, type: SaveAssessmentResponseDto })
   @ApiResponse({
     status: 400,
-    description: 'Validation error or unknown skillId',
+    description: 'Validation error, unknown skillId, or rating on non-HAVE',
   })
   @ApiResponse({ status: 401, description: 'Access token missing or invalid' })
   @ApiResponse({ status: 404, description: 'No active pathway for this user' })
@@ -53,5 +65,31 @@ export class MeSkillsController {
     @Body() dto: SaveAssessmentDto,
   ): Promise<SaveAssessmentResponseDto> {
     return this.skillsAssessmentService.saveAssessment(user.id, dto);
+  }
+
+  @Delete('assessment')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: "Reset the caller's skill assessment" })
+  @ApiResponse({ status: 204, description: 'Assessment cleared.' })
+  @ApiResponse({ status: 401, description: 'Access token missing or invalid' })
+  @ApiResponse({ status: 404, description: 'No active pathway for this user' })
+  async resetAssessment(@CurrentUser() user: AuthenticatedUser): Promise<void> {
+    return this.skillsAssessmentService.resetAssessment(user.id);
+  }
+
+  @Put()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: "Replace the caller's profile skills" })
+  @ApiResponse({ status: 204, description: 'Skills updated.' })
+  @ApiResponse({
+    status: 400,
+    description: 'Validation error or unknown skill IDs',
+  })
+  @ApiResponse({ status: 401, description: 'Access token missing or invalid' })
+  async updateMySkills(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateMySkillsDto,
+  ): Promise<void> {
+    return this.skillsService.updateMySkills(user.id, dto.skillIds);
   }
 }

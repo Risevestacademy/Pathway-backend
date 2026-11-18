@@ -55,6 +55,8 @@ describe('UsersService', () => {
     createdAt: new Date('2026-09-18T10:00:00.000Z'),
     updatedAt: new Date('2026-09-18T10:00:00.000Z'),
     profile: { firstName: 'Ada', lastName: 'Obi', ...emptyProfile },
+    userSkills: [],
+    fields: [],
   };
 
   const sharedShape = {
@@ -68,6 +70,9 @@ describe('UsersService', () => {
     createdAt: publicUser.createdAt,
     ...emptyProfile,
     analyticsEnabled: true,
+    totalXp: 0,
+    currentStreak: 0,
+    skills: [],
   };
 
   beforeEach(async () => {
@@ -529,14 +534,14 @@ describe('UsersService', () => {
           ...publicUser.profile,
           careerStage: TargetLevel.STUDENT,
           learningGoals: ['Ship a portfolio'],
-          careerInterests: ['design'],
         },
+        fields: [{ id: 'field-1', name: 'Design', slug: 'design' }],
       });
 
       expect(result).toMatchObject({
         careerStage: TargetLevel.STUDENT,
         learningGoals: ['Ship a portfolio'],
-        careerInterests: ['design'],
+        careerInterests: [{ id: 'field-1', name: 'Design', slug: 'design' }],
         analyticsEnabled: false,
       });
     });
@@ -600,6 +605,7 @@ describe('UsersService', () => {
         'careerStage',
         'courseOfStudy',
         'createdAt',
+        'currentStreak',
         'educationLevel',
         'email',
         'emailVerified',
@@ -612,9 +618,30 @@ describe('UsersService', () => {
         'lastName',
         'learningGoals',
         'role',
+        'skills',
+        'totalXp',
         'weeklyTimeCommitment',
         'yearFinished',
       ]);
+    });
+
+    it('passes stats to the response when provided', () => {
+      const result = service.toUserResponse(
+        { ...publicUser, userSkills: [], fields: [] },
+        { totalXp: 50, currentStreak: 3 },
+      );
+      expect(result.totalXp).toBe(50);
+      expect(result.currentStreak).toBe(3);
+    });
+
+    it('defaults stats to zero when not provided', () => {
+      const result = service.toUserResponse({
+        ...publicUser,
+        userSkills: [],
+        fields: [],
+      });
+      expect(result.totalXp).toBe(0);
+      expect(result.currentStreak).toBe(0);
     });
   });
 

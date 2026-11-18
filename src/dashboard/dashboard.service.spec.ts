@@ -8,6 +8,7 @@ import {
 } from '../generated/prisma/client';
 import { PrismaService } from '../prisma';
 import { DashboardService } from './dashboard.service';
+import { ActivityService } from '../activity';
 
 type DayRow = { date: string; count: number };
 
@@ -25,11 +26,6 @@ describe('DashboardService', () => {
     userPathwayStep: { count: jest.fn<(args: unknown) => Promise<number>>() },
     badge: { count: jest.fn<() => Promise<number>>() },
     userBadge: { findMany: jest.fn<(args: unknown) => Promise<unknown[]>>() },
-    activityLedger: {
-      aggregate:
-        jest.fn<(args: unknown) => Promise<{ _sum: { xp: number | null } }>>(),
-    },
-    $queryRaw: jest.fn<(...args: unknown[]) => Promise<DayRow[]>>(),
     pathwayStep: {
       findUnique: jest.fn<(args: unknown) => Promise<unknown>>(),
     },
@@ -38,6 +34,16 @@ describe('DashboardService', () => {
   const mockPathwaysService = {
     getPathwayRead:
       jest.fn<(pathwayId: string, userId: string | null) => Promise<unknown>>(),
+  };
+
+  const mockActivityService = {
+    getUserStats: jest.fn<
+      () => Promise<{
+        xp: number;
+        streak: { current: number; longest: number };
+        activityDays: DayRow[];
+      }>
+    >(),
   };
 
   const savedPathwayRow = {
@@ -120,11 +126,18 @@ describe('DashboardService', () => {
     jest.clearAllMocks();
     jest.useFakeTimers({ now, doNotFake: ['nextTick', 'setImmediate'] });
 
+    mockActivityService.getUserStats.mockResolvedValue({
+      xp: 0,
+      streak: { current: 0, longest: 0 },
+      activityDays: [],
+    });
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         DashboardService,
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: PathwaysService, useValue: mockPathwaysService },
+        { provide: ActivityService, useValue: mockActivityService },
       ],
     }).compile();
 
@@ -134,10 +147,6 @@ describe('DashboardService', () => {
     mockPrismaService.userPathwayStep.count.mockResolvedValue(0);
     mockPrismaService.badge.count.mockResolvedValue(4);
     mockPrismaService.userBadge.findMany.mockResolvedValue([]);
-    mockPrismaService.activityLedger.aggregate.mockResolvedValue({
-      _sum: { xp: null },
-    });
-    mockPrismaService.$queryRaw.mockResolvedValue([]);
     mockPrismaService.pathwayStep.findUnique.mockResolvedValue(null);
     mockPrismaService.userPathway.findFirst.mockResolvedValue(null);
     mockPathwaysService.getPathwayRead.mockResolvedValue(pathwayRead(null));
@@ -198,12 +207,13 @@ describe('DashboardService', () => {
     });
 
     it('sums XP from the whole ledger', async () => {
-      mockPrismaService.activityLedger.aggregate.mockResolvedValue({
-        _sum: { xp: 150 },
+      mockActivityService.getUserStats.mockResolvedValue({
+        xp: 150,
+        streak: { current: 0, longest: 0 },
+        activityDays: [],
       });
 
       const dashboard = await service.getDashboard(userId);
-
       expect(dashboard.totals.xp).toBe(150);
     });
 
@@ -241,9 +251,11 @@ describe('DashboardService', () => {
 
   describe('streak and heatmap', () => {
     it('counts consecutive days of activity', async () => {
-      mockPrismaService.$queryRaw.mockResolvedValue(
-        stepCompletedOn('2026-11-12', '2026-11-13', '2026-11-14'),
-      );
+      mockActivityService.getUserStats.mockResolvedValue({
+        xp: 0,
+        streak: { current: 3, longest: 3 },
+        activityDays: [],
+      });
 
       const dashboard = await service.getDashboard(userId);
 
@@ -251,10 +263,11 @@ describe('DashboardService', () => {
     });
 
     it('reads the streak and the heatmap from the same activity rows', async () => {
-      mockPrismaService.$queryRaw.mockResolvedValue([
-        { date: '2026-11-13', count: 2 },
-        { date: '2026-11-14', count: 1 },
-      ]);
+      mockActivityService.getUserStats.mockResolvedValue({
+        xp: 0,
+        streak: { current: 2, longest: 2 },
+        activityDays: [{ date: '2026-11-13', count: 2 }],
+      });
 
       const dashboard = await service.getDashboard(userId, 7);
 
@@ -263,18 +276,6 @@ describe('DashboardService', () => {
         date: '2026-11-13',
         count: 2,
       });
-    });
-
-    it('takes the UTC day from the column, not the session timezone', async () => {
-      await service.getDashboard(userId);
-
-      const [fragments] = mockPrismaService.$queryRaw.mock.calls[0] as [
-        TemplateStringsArray,
-      ];
-      const sql = fragments.join('');
-
-      expect(sql).toContain('"createdAt"::date');
-      expect(sql).not.toContain('AT TIME ZONE');
     });
 
     it('spans the requested window, ending today', async () => {
@@ -292,9 +293,11 @@ describe('DashboardService', () => {
     });
 
     it('keeps activity older than the window out of the heatmap but in the longest streak', async () => {
-      mockPrismaService.$queryRaw.mockResolvedValue(
-        stepCompletedOn('2026-11-01', '2026-11-02', '2026-11-03'),
-      );
+      mockActivityService.getUserStats.mockResolvedValue({
+        xp: 0,
+        streak: { current: 0, longest: 3 },
+        activityDays: [],
+      });
 
       const dashboard = await service.getDashboard(userId, 7);
 
@@ -303,33 +306,15 @@ describe('DashboardService', () => {
       );
       expect(dashboard.streak.longest).toBe(3);
     });
-
-    it('queries the ledger across every tracked activity type', async () => {
-      await service.getDashboard(userId);
-
-      const [, ...params] = mockPrismaService.$queryRaw.mock.calls[0] as [
-        TemplateStringsArray,
-        ...unknown[],
-      ];
-      // The tracked types are passed as one array parameter.
-      const types = params.find((p) => Array.isArray(p)) as string[];
-
-      expect(types).toEqual(
-        expect.arrayContaining([
-          'STEP_COMPLETED',
-          'TASK_COMPLETED',
-          'QUIZ_PASSED',
-          'RESOURCE_COMPLETED',
-        ]),
-      );
-    });
   });
 
   describe('weekStrip', () => {
     it('shares the current streak with the streak summary', async () => {
-      mockPrismaService.$queryRaw.mockResolvedValue(
-        stepCompletedOn('2026-11-13', '2026-11-14'),
-      );
+      mockActivityService.getUserStats.mockResolvedValue({
+        xp: 0,
+        streak: { current: 3, longest: 3 },
+        activityDays: [],
+      });
 
       const dashboard = await service.getDashboard(userId);
 
@@ -337,9 +322,11 @@ describe('DashboardService', () => {
     });
 
     it('marks a day active when the ledger has activity that day', async () => {
-      mockPrismaService.$queryRaw.mockResolvedValue([
-        { date: '2026-11-10', count: 1 },
-      ]);
+      mockActivityService.getUserStats.mockResolvedValue({
+        xp: 0,
+        streak: { current: 3, longest: 3 },
+        activityDays: [{ date: '2026-11-10', count: 1 }],
+      });
 
       const dashboard = await service.getDashboard(userId);
 

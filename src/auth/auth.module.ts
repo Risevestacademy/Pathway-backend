@@ -10,6 +10,7 @@ import { NotificationsModule } from '../notifications';
 import { TeamsModule } from '../teams';
 import { GoogleOAuthService } from './oauth/google-oauth.service';
 import { StringValue } from 'ms';
+import { ActivityModule } from '../activity';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { StringValue } from 'ms';
     UsersModule,
     NotificationsModule,
     TeamsModule,
+    ActivityModule,
   ],
 
   controllers: [AuthController],

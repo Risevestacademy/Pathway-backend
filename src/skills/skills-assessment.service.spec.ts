@@ -41,12 +41,17 @@ describe('SkillsAssessmentService', () => {
     pathwayStep: {
       findMany: jest.fn<() => Promise<unknown>>(),
     },
+    pathwayStepSkill: {
+      findMany: jest.fn<() => Promise<unknown>>(),
+    },
     userSkill: {
       findMany: jest.fn<() => Promise<unknown>>(),
       upsert: jest.fn<() => Promise<unknown>>(),
+      deleteMany: jest.fn<() => Promise<unknown>>(),
     },
     userSkillProgress: {
       createMany: jest.fn<() => Promise<unknown>>(),
+      deleteMany: jest.fn<() => Promise<unknown>>(),
     },
     userPathwayStep: {
       create: jest.fn<() => Promise<unknown>>(),
@@ -224,14 +229,15 @@ describe('SkillsAssessmentService', () => {
       career: { pathway: { id: 'pathway-1' } },
     });
 
-    const buildStep = (
-      id: string,
-      order: number,
-      skillIds: string[],
-    ): { id: string; order: number; skills: Array<{ skillId: string }> } => ({
+    const buildStep = (id: string, order: number, skillIds: string[]) => ({
       id,
+      title: `Step ${order}`,
+      description: `Description for step ${order}`,
       order,
-      skills: skillIds.map((skillId) => ({ skillId })),
+      skills: skillIds.map((skillId) => ({
+        skillId,
+        skill: { name: `Name of ${skillId}` },
+      })),
     });
 
     it('throws UNKNOWN_SKILL_IN_PATHWAY before any write when a skillId is invalid', async () => {
@@ -387,6 +393,82 @@ describe('SkillsAssessmentService', () => {
       expect(mockPrisma.userPathwayStep.createMany).not.toHaveBeenCalled();
       expect(mockPrisma.userPathwayStep.upsert).not.toHaveBeenCalled();
       expect(mockPrisma.userPathwayStep.update).not.toHaveBeenCalled();
+      expect(mockPrisma.userPathwayStep.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('returns stats and gaps in the response', async () => {
+      mockPrisma.userPathway.findFirst.mockResolvedValue(buildSaveRow(null));
+      mockPrisma.pathwayStep.findMany.mockResolvedValue([
+        {
+          id: 'step-1',
+          title: 'Step 1',
+          description: 'Step 1 description',
+          order: 1,
+          skills: [
+            { skillId: 'skill-a', skill: { name: 'Skill A' } },
+            { skillId: 'skill-b', skill: { name: 'Skill B' } },
+          ],
+        },
+      ]);
+      mockPrisma.userSkill.findMany
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([
+          { skillId: 'skill-a', status: UserSkillStatus.HAVE },
+          { skillId: 'skill-b', status: UserSkillStatus.DONT_HAVE },
+        ]);
+      mockPrisma.userSkill.upsert
+        .mockResolvedValueOnce({ id: 'us-1' })
+        .mockResolvedValueOnce({ id: 'us-2' });
+      mockPrisma.userPathway.update.mockResolvedValue({});
+
+      const result = await service.saveAssessment('user-1', {
+        skills: [
+          { skillId: 'skill-a', status: UserSkillStatus.HAVE, rating: 3 },
+          { skillId: 'skill-b', status: UserSkillStatus.DONT_HAVE },
+        ],
+      });
+
+      expect(result.stats).toEqual({ have: 1, dontHave: 1, notSure: 0 });
+      expect(result.gaps).toHaveLength(1);
+      expect(result.gaps[0]).toMatchObject({
+        skillId: 'skill-b',
+        skillName: 'Skill B',
+        stepId: 'step-1',
+        stepTitle: 'Step 1',
+        stepOrder: 1,
+      });
+      expect(result.startStepTitle).toBe('Step 1');
+      expect(result.startStepDescription).toBe('Step 1 description');
+    });
+  });
+
+  describe('resetAssessment', () => {
+    it('resetAssessment deletes skill rows and clears startStepId', async () => {
+      mockPrisma.userPathway.findFirst.mockResolvedValue({
+        careerId: 'career-1',
+        career: { pathway: { id: 'pathway-1' } },
+      });
+      mockPrisma.pathwayStepSkill.findMany.mockResolvedValue([
+        { skillId: 'skill-a' },
+      ]);
+      mockPrisma.userSkill.findMany.mockResolvedValue([{ id: 'us-1' }]);
+      mockPrisma.userSkillProgress.deleteMany.mockResolvedValue({ count: 0 });
+      mockPrisma.userSkill.deleteMany.mockResolvedValue({ count: 1 });
+      mockPrisma.userPathway.update.mockResolvedValue({});
+
+      await service.resetAssessment('user-1');
+
+      expect(mockPrisma.userSkillProgress.deleteMany).toHaveBeenCalledWith({
+        where: { userSkillId: { in: ['us-1'] } },
+      });
+      expect(mockPrisma.userSkill.deleteMany).toHaveBeenCalledWith({
+        where: { id: { in: ['us-1'] } },
+      });
+      expect(mockPrisma.userPathway.update).toHaveBeenCalledWith({
+        where: { userId_careerId: { userId: 'user-1', careerId: 'career-1' } },
+        data: { startStepId: null },
+      });
+      expect(mockPrisma.userPathwayStep.create).not.toHaveBeenCalled();
       expect(mockPrisma.userPathwayStep.updateMany).not.toHaveBeenCalled();
     });
   });
