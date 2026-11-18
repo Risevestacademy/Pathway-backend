@@ -4,7 +4,6 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { DomainException } from '../common/exceptions/domain.exception';
 import { PrismaService } from '../prisma';
 import { CareerStatus, UserSkillStatus } from '../generated/prisma/client';
 import {
@@ -13,15 +12,26 @@ import {
   AssessmentStageDto,
 } from './dto/assessment-response.dto';
 import {
+  AssessmentStatsDto,
   SaveAssessmentDto,
   SaveAssessmentResponseDto,
+  SkillGapDto,
 } from './dto/save-assessment.dto';
+import { DomainException } from '../common/exceptions/domain.exception';
 import { normalizeUserSkillStatus } from './user-skill-status.rules';
 import {
   buildInitialAssessmentProgress,
   UserSkillProgressRow,
 } from './user-skill-progress.rules';
 import { computeHeadstart, HeadstartStep } from './headstart.rules';
+
+interface StepWithSkillNames {
+  id: string;
+  title: string;
+  description: string | null;
+  order: number;
+  skills: Array<{ skillId: string; skill: { name: string } }>;
+}
 
 @Injectable()
 export class SkillsAssessmentService {
@@ -166,12 +176,19 @@ export class SkillsAssessmentService {
       const { careerId, startStepId: currentStartStepId } = userPathway;
       const pathwayId = userPathway.career.pathway.id;
 
-      const steps = await tx.pathwayStep.findMany({
+      const steps: StepWithSkillNames[] = await tx.pathwayStep.findMany({
         where: { pathwayId },
         select: {
           id: true,
+          title: true,
+          description: true,
           order: true,
-          skills: { select: { skillId: true } },
+          skills: {
+            select: {
+              skillId: true,
+              skill: { select: { name: true } },
+            },
+          },
         },
       });
 
@@ -282,6 +299,68 @@ export class SkillsAssessmentService {
         );
       }
 
+      // ─── Build results payload ───
+      const skillNameBySkillId = new Map<string, string>();
+      const stepBySkillId = new Map<
+        string,
+        { id: string; title: string; order: number }
+      >();
+
+      for (const step of steps) {
+        for (const { skillId, skill } of step.skills) {
+          if (!skillNameBySkillId.has(skillId)) {
+            skillNameBySkillId.set(skillId, skill.name);
+          }
+          if (!stepBySkillId.has(skillId)) {
+            stepBySkillId.set(skillId, {
+              id: step.id,
+              title: step.title,
+              order: step.order,
+            });
+          }
+        }
+      }
+
+      let have = 0;
+      let dontHave = 0;
+      let notSure = 0;
+      const gaps: SkillGapDto[] = [];
+
+      for (const state of allSkillStates) {
+        if (state.status === UserSkillStatus.HAVE) {
+          have++;
+        } else if (state.status === UserSkillStatus.NOT_SURE) {
+          notSure++;
+        } else if (state.status === UserSkillStatus.DONT_HAVE) {
+          dontHave++;
+          const step = stepBySkillId.get(state.skillId);
+          const skillName = skillNameBySkillId.get(state.skillId);
+          if (step && skillName) {
+            gaps.push({
+              skillId: state.skillId,
+              skillName,
+              stepId: step.id,
+              stepTitle: step.title,
+              stepOrder: step.order,
+            });
+          }
+        }
+      }
+
+      gaps.sort((a, b) => a.stepOrder - b.stepOrder);
+
+      const stats: AssessmentStatsDto = { have, dontHave, notSure };
+
+      let startStepTitle: string | null = null;
+      let startStepDescription: string | null = null;
+      if (headstart.startStepId) {
+        const target = steps.find((s) => s.id === headstart.startStepId);
+        if (target) {
+          startStepTitle = target.title;
+          startStepDescription = target.description;
+        }
+      }
+
       this.logger.log(
         { userId, updated: dto.skills.length },
         'Assessment saved',
@@ -291,7 +370,77 @@ export class SkillsAssessmentService {
         updated: dto.skills.length,
         allGapsClosed: headstart.allGapsClosed,
         startStepId: headstart.startStepId,
+        startStepTitle,
+        startStepDescription,
+        stats,
+        gaps,
       };
+    });
+  }
+
+  async resetAssessment(userId: string): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const userPathway = await tx.userPathway.findFirst({
+        where: {
+          userId,
+          isActive: true,
+          career: {
+            status: { in: [CareerStatus.PUBLISHED, CareerStatus.RETIRED] },
+          },
+        },
+        select: {
+          careerId: true,
+          career: { select: { pathway: { select: { id: true } } } },
+        },
+      });
+
+      if (!userPathway || !userPathway.career.pathway) {
+        throw new NotFoundException('NO_ACTIVE_PATHWAY');
+      }
+
+      const { careerId } = userPathway;
+      const pathwayId = userPathway.career.pathway.id;
+
+      const pathwaySkills = await tx.pathwayStepSkill.findMany({
+        where: { pathwayStep: { pathwayId } },
+        select: { skillId: true },
+        distinct: ['skillId'],
+      });
+      const skillIds = pathwaySkills.map((s) => s.skillId);
+
+      if (skillIds.length === 0) {
+        // Nothing to reset; still clear startStepId to be safe.
+        await tx.userPathway.update({
+          where: { userId_careerId: { userId, careerId } },
+          data: { startStepId: null },
+        });
+        return;
+      }
+
+      const userSkills = await tx.userSkill.findMany({
+        where: { userId, skillId: { in: skillIds } },
+        select: { id: true },
+      });
+      const userSkillIds = userSkills.map((u) => u.id);
+
+      if (userSkillIds.length > 0) {
+        await tx.userSkillProgress.deleteMany({
+          where: { userSkillId: { in: userSkillIds } },
+        });
+        await tx.userSkill.deleteMany({
+          where: { id: { in: userSkillIds } },
+        });
+      }
+
+      await tx.userPathway.update({
+        where: { userId_careerId: { userId, careerId } },
+        data: { startStepId: null },
+      });
+
+      this.logger.log(
+        { userId, deletedSkills: userSkillIds.length },
+        'Assessment reset',
+      );
     });
   }
 }

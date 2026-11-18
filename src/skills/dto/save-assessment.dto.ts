@@ -42,6 +42,34 @@ export class SaveAssessmentDto {
   skills: AssessmentSkillSaveDto[];
 }
 
+export class AssessmentStatsDto {
+  @ApiProperty()
+  have: number;
+
+  @ApiProperty()
+  dontHave: number;
+
+  @ApiProperty()
+  notSure: number;
+}
+
+export class SkillGapDto {
+  @ApiProperty({ format: 'uuid' })
+  skillId: string;
+
+  @ApiProperty()
+  skillName: string;
+
+  @ApiProperty({ format: 'uuid' })
+  stepId: string;
+
+  @ApiProperty()
+  stepTitle: string;
+
+  @ApiProperty()
+  stepOrder: number;
+}
+
 export class SaveAssessmentResponseDto {
   @ApiProperty()
   updated: number;
@@ -51,4 +79,16 @@ export class SaveAssessmentResponseDto {
 
   @ApiProperty({ type: String, nullable: true })
   startStepId: string | null;
+
+  @ApiProperty({ type: String, nullable: true })
+  startStepTitle: string | null;
+
+  @ApiProperty({ type: String, nullable: true })
+  startStepDescription: string | null;
+
+  @ApiProperty({ type: AssessmentStatsDto })
+  stats: AssessmentStatsDto;
+
+  @ApiProperty({ type: [SkillGapDto] })
+  gaps: SkillGapDto[];
 }
