@@ -1809,7 +1809,7 @@
             }
           },
           "400": {
-            "description": "Validation error or unknown skillId"
+            "description": "Validation error, unknown skillId, or rating on non-HAVE"
           },
           "401": {
             "description": "Access token missing or invalid"
@@ -1823,7 +1823,67 @@
             "bearer": []
           }
         ],
-        "summary": "Save the caller's skill assessment (only the skills sent)",
+        "summary": "Save the caller's skill assessment and return the results page",
+        "tags": [
+          "Me — Skills"
+        ]
+      },
+      "delete": {
+        "operationId": "MeSkillsController_resetAssessment",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": "Assessment cleared."
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "404": {
+            "description": "No active pathway for this user"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Reset the caller's skill assessment",
+        "tags": [
+          "Me — Skills"
+        ]
+      }
+    },
+    "/me/skills": {
+      "put": {
+        "operationId": "MeSkillsController_updateMySkills",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMySkillsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Skills updated."
+          },
+          "400": {
+            "description": "Validation error or unknown skill IDs"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Replace the caller's profile skills",
         "tags": [
           "Me — Skills"
         ]
@@ -6581,6 +6641,54 @@
           "skills"
         ]
       },
+      "AssessmentStatsDto": {
+        "type": "object",
+        "properties": {
+          "have": {
+            "type": "number"
+          },
+          "dontHave": {
+            "type": "number"
+          },
+          "notSure": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "have",
+          "dontHave",
+          "notSure"
+        ]
+      },
+      "SkillGapDto": {
+        "type": "object",
+        "properties": {
+          "skillId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "skillName": {
+            "type": "string"
+          },
+          "stepId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "stepTitle": {
+            "type": "string"
+          },
+          "stepOrder": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "skillId",
+          "skillName",
+          "stepId",
+          "stepTitle",
+          "stepOrder"
+        ]
+      },
       "SaveAssessmentResponseDto": {
         "type": "object",
         "properties": {
@@ -6593,12 +6701,49 @@
           "startStepId": {
             "type": "string",
             "nullable": true
+          },
+          "startStepTitle": {
+            "type": "string",
+            "nullable": true
+          },
+          "startStepDescription": {
+            "type": "string",
+            "nullable": true
+          },
+          "stats": {
+            "$ref": "#/components/schemas/AssessmentStatsDto"
+          },
+          "gaps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SkillGapDto"
+            }
           }
         },
         "required": [
           "updated",
           "allGapsClosed",
-          "startStepId"
+          "startStepId",
+          "startStepTitle",
+          "startStepDescription",
+          "stats",
+          "gaps"
+        ]
+      },
+      "UpdateMySkillsDto": {
+        "type": "object",
+        "properties": {
+          "skillIds": {
+            "description": "The full list of skill IDs the user has. Replaces the existing set.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        },
+        "required": [
+          "skillIds"
         ]
       },
       "OptionDto": {
