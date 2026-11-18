@@ -90,6 +90,7 @@ describe('Users (e2e)', () => {
       'careerStage',
       'courseOfStudy',
       'createdAt',
+      'currentStreak',
       'educationLevel',
       'email',
       'emailVerified',
@@ -102,6 +103,8 @@ describe('Users (e2e)', () => {
       'lastName',
       'learningGoals',
       'role',
+      'skills',
+      'totalXp',
       'weeklyTimeCommitment',
       'yearFinished',
     ]);
@@ -227,6 +230,13 @@ describe('Users (e2e)', () => {
 
       expect(response.body).toMatchObject({
         ...payload,
+        careerInterests: expect.arrayContaining([
+          expect.objectContaining({ slug: 'software-engineering' }),
+          expect.objectContaining({ slug: 'design' }),
+        ]),
+        totalXp: 0,
+        currentStreak: 0,
+        skills: [],
         fullName: 'Ada Obi',
       });
 
@@ -248,6 +258,10 @@ describe('Users (e2e)', () => {
 
       expect(response.body).toMatchObject({
         ...fullPayload(),
+        careerInterests: expect.arrayContaining([
+          expect.objectContaining({ slug: 'software-engineering' }),
+          expect.objectContaining({ slug: 'design' }),
+        ]),
         educationLevel: 'MASTERS',
       });
     });
