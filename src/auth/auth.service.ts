@@ -31,6 +31,7 @@ import { RequestPasswordResetOtpDto } from './dto/request-password-reset-otp.dto
 import { ConfirmPasswordResetOtpDto } from './dto/confirm-password-reset-otp.dto';
 import { TeamsService, type InviteClaimFailure } from '../teams';
 import { DomainException } from '../common';
+import { ActivityService } from '../activity';
 
 type PrismaTransactionClient = Pick<PrismaService, 'refreshToken'>;
 
@@ -122,6 +123,7 @@ export class AuthService {
     private readonly googleOAuthService: GoogleOAuthService,
     private readonly analytics: AnalyticsService,
     private readonly teamsService: TeamsService,
+    private readonly activityService: ActivityService,
   ) {}
 
   // Register a new user
@@ -206,7 +208,9 @@ export class AuthService {
     this.analytics.capture('user_logged_in', user.id, { method: 'password' });
 
     return {
-      user: this.usersService.toUserResponse(user),
+      user: this.usersService.toUserResponse(
+        await this.usersService.findById(user.id),
+      ),
       tokens,
     };
   }
@@ -231,7 +235,9 @@ export class AuthService {
     this.analytics.capture('user_logged_in', user.id, { method: 'password' });
 
     return {
-      user: this.usersService.toUserResponse(user),
+      user: this.usersService.toUserResponse(
+        await this.usersService.findById(user.id),
+      ),
       tokens,
     };
   }
@@ -243,7 +249,6 @@ export class AuthService {
         if (error instanceof NotFoundException) {
           return null;
         }
-
         throw error;
       });
 
@@ -251,7 +256,12 @@ export class AuthService {
       throw new UnauthorizedException('User no longer exists');
     }
 
-    return this.usersService.toUserResponse(user);
+    const stats = await this.activityService.getUserStats(userId);
+
+    return this.usersService.toUserResponse(user, {
+      totalXp: stats.xp,
+      currentStreak: stats.streak.current,
+    });
   }
 
   // Refresh access token using refresh token
@@ -446,7 +456,9 @@ export class AuthService {
           const tokens = await this.issueTokens(identity.user, tx);
 
           return {
-            user: this.usersService.toUserResponse(identity.user),
+            user: this.usersService.toUserResponse(
+              await this.usersService.findById(identity.user.id),
+            ),
             tokens,
           };
         }
@@ -532,7 +544,9 @@ export class AuthService {
         const tokens = await this.issueTokens(user, tx);
 
         return {
-          user: this.usersService.toUserResponse(user),
+          user: this.usersService.toUserResponse(
+            await this.usersService.findById(user.id),
+          ),
           tokens,
         };
       });
@@ -964,13 +978,14 @@ export class AuthService {
         });
 
         const verifiedUser = { ...user, emailVerifiedAt: now };
-
         const tokens = await this.issueTokens(verifiedUser, tx);
 
         return {
           verified: true,
           result: {
-            user: this.usersService.toUserResponse(verifiedUser),
+            user: this.usersService.toUserResponse(
+              await this.usersService.findById(user.id, tx),
+            ),
             tokens,
           },
         };

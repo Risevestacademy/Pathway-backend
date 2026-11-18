@@ -52,6 +52,9 @@ const publicUserSelect = {
   createdAt: true,
   updatedAt: true,
   ...profileSelect,
+  userSkills: {
+    select: { skill: { select: { id: true, name: true } } },
+  },
 } satisfies Prisma.UserSelect;
 
 type ProfileFields = Prisma.UserProfileGetPayload<{
@@ -60,7 +63,7 @@ type ProfileFields = Prisma.UserProfileGetPayload<{
 
 export type PublicUser = Prisma.UserGetPayload<{
   select: typeof publicUserSelect;
-}>;
+}> & { fields: Array<{ id: string; name: string; slug: string }> };
 
 export type UserWithCredentials = Prisma.UserGetPayload<{
   include: typeof profileSelect;
@@ -85,8 +88,11 @@ export interface UserResponse {
   experienceYears: ExperienceYears | null;
   learningGoals: string[];
   weeklyTimeCommitment: string | null;
-  careerInterests: string[];
   analyticsEnabled: boolean;
+  totalXp: number;
+  currentStreak: number;
+  skills: Array<{ id: string; name: string }>;
+  careerInterests: Array<{ id: string; name: string; slug: string }>;
 }
 
 type UserClient = Pick<PrismaService, 'user'>;
@@ -111,8 +117,11 @@ export class UsersService {
     private readonly config: ConfigService<EnvironmentVariables, true>,
   ) {}
 
-  async findById(id: string): Promise<PublicUser> {
-    const user = await this.prisma.user.findUnique({
+  async findById(
+    id: string,
+    client: Pick<PrismaService, 'user' | 'field'> = this.prisma,
+  ): Promise<PublicUser> {
+    const user = await client.user.findUnique({
       where: { id },
       select: publicUserSelect,
     });
@@ -121,7 +130,16 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
-    return user;
+    const fieldSlugs = user.profile?.careerInterests ?? [];
+    const fields =
+      fieldSlugs.length > 0
+        ? await client.field.findMany({
+            where: { slug: { in: fieldSlugs } },
+            select: { id: true, name: true, slug: true },
+          })
+        : [];
+
+    return { ...user, fields };
   }
 
   async findByEmail(email: string): Promise<UserWithCredentials | null> {
@@ -137,13 +155,16 @@ export class UsersService {
     ...dto
   }: CreateUserDto): Promise<PublicUser> {
     try {
-      return await this.prisma.user.create({
+      const user = await this.prisma.user.create({
         data: {
           ...dto,
           profile: { create: { firstName, lastName } },
         },
         select: publicUserSelect,
       });
+
+      // A newly created user has no career interests yet.
+      return { ...user, fields: [] };
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -214,6 +235,12 @@ export class UsersService {
       | 'createdAt'
     > & {
       profile: ProfileFields | null;
+      userSkills: Array<{ skill: { id: string; name: string } }>;
+      fields: Array<{ id: string; name: string; slug: string }>;
+    },
+    stats: { totalXp: number; currentStreak: number } = {
+      totalXp: 0,
+      currentStreak: 0,
     },
   ): UserResponse {
     const profile = user.profile;
@@ -236,8 +263,11 @@ export class UsersService {
       experienceYears: profile?.experienceYears ?? null,
       learningGoals: profile?.learningGoals ?? [],
       weeklyTimeCommitment: profile?.weeklyTimeCommitment ?? null,
-      careerInterests: profile?.careerInterests ?? [],
       analyticsEnabled: user.analyticsEnabled,
+      totalXp: stats.totalXp,
+      currentStreak: stats.currentStreak,
+      skills: (user.userSkills ?? []).map((us) => us.skill),
+      careerInterests: user.fields ?? [],
     };
   }
 
@@ -257,11 +287,13 @@ export class UsersService {
     role: Role,
     client: UserClient = this.prisma,
   ): Promise<PublicUser> {
-    return client.user.update({
+    const user = await client.user.update({
       where: { id },
       data: { role },
       select: publicUserSelect,
     });
+
+    return { ...user, fields: [] };
   }
 
   // Prisma skips undefined fields; null lists are stored as empty
