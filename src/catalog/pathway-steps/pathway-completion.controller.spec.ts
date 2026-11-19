@@ -6,6 +6,10 @@ import { Role } from '../../generated/prisma/enums';
 import { PathwayStepsService } from './pathway-steps.service';
 import type { StepCompletionResponseDto } from './dto/step-completion-response.dto';
 import { PathwayCompletionController } from './pathway-completion.controller';
+import { PathwayCompletionService } from './pathway-completion.service';
+import type { ResourceCompletionResponseDto } from './dto/resource-completion-response.dto';
+import type { TaskCompletionResponseDto } from './dto/task-completion-response.dto';
+import type { ChecklistItemResponseDto } from './dto/checklist-item-response.dto';
 
 describe('PathwayCompletionController', () => {
   let controller: PathwayCompletionController;
@@ -22,6 +26,37 @@ describe('PathwayCompletionController', () => {
       >(),
   };
 
+  const mockPathwayCompletionService = {
+    setResourceCompletion:
+      jest.fn<
+        (
+          userId: string,
+          pathwayId: string,
+          resourceId: string,
+          completed: boolean,
+        ) => Promise<ResourceCompletionResponseDto>
+      >(),
+    setTaskCompletion:
+      jest.fn<
+        (
+          userId: string,
+          pathwayId: string,
+          taskId: string,
+          completed: boolean,
+        ) => Promise<TaskCompletionResponseDto>
+      >(),
+    setChecklistItem:
+      jest.fn<
+        (
+          userId: string,
+          pathwayId: string,
+          taskId: string,
+          itemId: string,
+          checked: boolean,
+        ) => Promise<ChecklistItemResponseDto>
+      >(),
+  };
+
   const user: AuthenticatedUser = {
     id: 'user-1',
     email: 'dev@example.com',
@@ -35,6 +70,10 @@ describe('PathwayCompletionController', () => {
       controllers: [PathwayCompletionController],
       providers: [
         { provide: PathwayStepsService, useValue: mockPathwayStepsService },
+        {
+          provide: PathwayCompletionService,
+          useValue: mockPathwayCompletionService,
+        },
       ],
     }).compile();
 
@@ -93,6 +132,89 @@ describe('PathwayCompletionController', () => {
         'step-1',
         true,
       );
+      expect(result).toEqual(mockResult);
+    });
+  });
+
+  describe('setResourceCompletion', () => {
+    it('delegates to pathwayCompletionService.setResourceCompletion', async () => {
+      const mockResult: ResourceCompletionResponseDto = {
+        resourceId: 'resource-1',
+        completed: true,
+        completedAt: new Date('2026-11-17T10:00:00.000Z'),
+        xpAwarded: 10,
+      };
+      mockPathwayCompletionService.setResourceCompletion.mockResolvedValue(
+        mockResult,
+      );
+
+      const result = await controller.setResourceCompletion(
+        user,
+        'pathway-1',
+        'resource-1',
+        { completed: true },
+      );
+
+      expect(
+        mockPathwayCompletionService.setResourceCompletion,
+      ).toHaveBeenCalledWith('user-1', 'pathway-1', 'resource-1', true);
+      expect(result).toEqual(mockResult);
+    });
+  });
+
+  describe('setTaskCompletion', () => {
+    it('delegates to pathwayCompletionService.setTaskCompletion', async () => {
+      const mockResult: TaskCompletionResponseDto = {
+        taskId: 'task-1',
+        completed: false,
+        completedAt: null,
+        xpAwarded: 0,
+        checklistChecked: 1,
+        checklistTotal: 3,
+      };
+      mockPathwayCompletionService.setTaskCompletion.mockResolvedValue(
+        mockResult,
+      );
+
+      const result = await controller.setTaskCompletion(
+        user,
+        'pathway-1',
+        'task-1',
+        { completed: false },
+      );
+
+      expect(
+        mockPathwayCompletionService.setTaskCompletion,
+      ).toHaveBeenCalledWith('user-1', 'pathway-1', 'task-1', false);
+      expect(result).toEqual(mockResult);
+    });
+  });
+
+  describe('setChecklistItem', () => {
+    it('delegates to pathwayCompletionService.setChecklistItem', async () => {
+      const mockResult: ChecklistItemResponseDto = {
+        itemId: 'item-1',
+        taskId: 'task-1',
+        checked: true,
+        checkedAt: new Date('2026-11-17T10:00:00.000Z'),
+        checklistChecked: 2,
+        checklistTotal: 3,
+      };
+      mockPathwayCompletionService.setChecklistItem.mockResolvedValue(
+        mockResult,
+      );
+
+      const result = await controller.setChecklistItem(
+        user,
+        'pathway-1',
+        'task-1',
+        'item-1',
+        { checked: true },
+      );
+
+      expect(
+        mockPathwayCompletionService.setChecklistItem,
+      ).toHaveBeenCalledWith('user-1', 'pathway-1', 'task-1', 'item-1', true);
       expect(result).toEqual(mockResult);
     });
   });
