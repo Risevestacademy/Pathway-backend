@@ -6,16 +6,15 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma';
 import { ActivityService } from '../../activity';
-import { ResourceStatus } from '../../generated/prisma/client';
+import {
+  findPathwayResource,
+  findPathwayTask,
+  findReadablePathway,
+  type ReadablePathway,
+} from '../pathways';
 import { ResourceCompletionResponseDto } from './dto/resource-completion-response.dto';
 import { TaskCompletionResponseDto } from './dto/task-completion-response.dto';
 import { ChecklistItemResponseDto } from './dto/checklist-item-response.dto';
-import { readableCareerWhere } from './readable-career';
-
-interface ReadablePathway {
-  careerId: string;
-  saved: boolean;
-}
 
 @Injectable()
 export class PathwayCompletionService {
@@ -34,17 +33,12 @@ export class PathwayCompletionService {
   ): Promise<ResourceCompletionResponseDto> {
     const pathway = await this.findReadablePathway(userId, pathwayId);
 
-    const resource = await this.prisma.resource.findFirst({
-      where: {
-        id: resourceId,
-        ...(completed ? { status: ResourceStatus.ACTIVE } : {}),
-        OR: [
-          { pathwaySteps: { some: { pathwayStep: { pathwayId } } } },
-          { careerResources: { some: { careerId: pathway.careerId } } },
-        ],
-      },
-      select: { id: true },
-    });
+    const resource = await findPathwayResource(
+      this.prisma,
+      resourceId,
+      pathwayId,
+      { activeOnly: completed },
+    );
 
     if (!resource) {
       this.reject(userId, 'RESOURCE_NOT_FOUND', { resourceId });
@@ -225,27 +219,14 @@ export class PathwayCompletionService {
     userId: string,
     pathwayId: string,
   ): Promise<ReadablePathway> {
-    const pathway = await this.prisma.pathway.findFirst({
-      where: { id: pathwayId, career: readableCareerWhere(userId) },
-      select: {
-        careerId: true,
-        career: {
-          select: {
-            userPathways: { where: { userId }, select: { id: true } },
-          },
-        },
-      },
-    });
+    const pathway = await findReadablePathway(this.prisma, pathwayId, userId);
 
     if (!pathway) {
       this.reject(userId, 'PATHWAY_NOT_FOUND', { pathwayId });
       throw new NotFoundException('Pathway not found');
     }
 
-    return {
-      careerId: pathway.careerId,
-      saved: pathway.career.userPathways.length > 0,
-    };
+    return pathway;
   }
 
   private async findTask(
@@ -253,10 +234,7 @@ export class PathwayCompletionService {
     pathwayId: string,
     taskId: string,
   ): Promise<void> {
-    const task = await this.prisma.pathwayStepTask.findFirst({
-      where: { id: taskId, step: { pathwayId } },
-      select: { id: true },
-    });
+    const task = await findPathwayTask(this.prisma, taskId, pathwayId);
 
     if (!task) {
       this.reject(userId, 'TASK_NOT_FOUND', { taskId });
