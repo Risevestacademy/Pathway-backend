@@ -12,3 +12,4 @@ export {
   StepTaskDto,
 } from './dto/pathway-read.dto';
 export * from './progress';
+export * from './pathway-access';
