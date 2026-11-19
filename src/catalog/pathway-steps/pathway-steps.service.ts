@@ -21,7 +21,7 @@ import { ActivityService } from '../../activity';
 import * as Progress from '../pathways/progress';
 import { StepCompletionResponseDto } from './dto/step-completion-response.dto';
 import { toStepCompletionResponse } from './mappers/step-completion.mapper';
-import { readableCareerWhere } from './readable-career';
+import { readableCareerWhere } from '../pathways';
 
 interface WritableStep {
   stepId: string;

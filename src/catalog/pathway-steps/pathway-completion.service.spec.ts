@@ -51,7 +51,7 @@ describe('PathwayCompletionService', () => {
   const completedAt = new Date('2026-11-17T10:00:00.000Z');
   const savedPathway = {
     careerId: 'career-1',
-    career: { userPathways: [{ id: 'up-1' }] },
+    career: { userPathways: [{ startStepId: null }] },
   };
   const unsavedPathway = {
     careerId: 'career-1',
@@ -123,7 +123,7 @@ describe('PathwayCompletionService', () => {
             select: {
               userPathways: {
                 where: { userId: 'user-1' },
-                select: { id: true },
+                select: { startStepId: true },
               },
             },
           },
@@ -184,7 +184,11 @@ describe('PathwayCompletionService', () => {
                 some: { pathwayStep: { pathwayId: 'pathway-1' } },
               },
             },
-            { careerResources: { some: { careerId: 'career-1' } } },
+            {
+              careerResources: {
+                some: { career: { pathway: { is: { id: 'pathway-1' } } } },
+              },
+            },
           ],
         },
         select: { id: true },
@@ -208,7 +212,11 @@ describe('PathwayCompletionService', () => {
                 some: { pathwayStep: { pathwayId: 'pathway-1' } },
               },
             },
-            { careerResources: { some: { careerId: 'career-1' } } },
+            {
+              careerResources: {
+                some: { career: { pathway: { is: { id: 'pathway-1' } } } },
+              },
+            },
           ],
         },
         select: { id: true },
@@ -330,7 +338,7 @@ describe('PathwayCompletionService', () => {
 
       expect(mockPrismaService.pathwayStepTask.findFirst).toHaveBeenCalledWith({
         where: { id: 'task-9', step: { pathwayId: 'pathway-1' } },
-        select: { id: true },
+        select: { id: true, stepId: true },
       });
     });
 
