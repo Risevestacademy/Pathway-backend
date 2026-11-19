@@ -477,14 +477,15 @@ model PathwayStep {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  pathway      Pathway               @relation(fields: [pathwayId], references: [id], onDelete: Cascade)
-  stage        PathwayStage?         @relation(fields: [stageId], references: [id], onDelete: SetNull)
-  skills       PathwayStepSkill[]
-  resources    PathwayStepResource[]
-  progress     UserPathwayStep[]
-  assessments  Assessment[]
-  userPathways UserPathway[]
-  tasks        PathwayStepTask[]
+  pathway       Pathway               @relation(fields: [pathwayId], references: [id], onDelete: Cascade)
+  stage         PathwayStage?         @relation(fields: [stageId], references: [id], onDelete: SetNull)
+  skills        PathwayStepSkill[]
+  resources     PathwayStepResource[]
+  progress      UserPathwayStep[]
+  assessments   Assessment[]
+  userPathways  UserPathway[]
+  tasks         PathwayStepTask[]
+  quizQuestions QuizQuestion[]
 
   @@unique([pathwayId, order])
   @@index([stageId])
@@ -559,6 +560,7 @@ model Resource {
   status            ResourceStatus     @default(ACTIVE)
   estimatedWeeks    Int?
   badgeImageUrl     String?
+  outcomes          String[]           @default([])
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 
@@ -572,6 +574,7 @@ model Resource {
 model PathwayStepResource {
   pathwayStepId String
   resourceId    String
+  usageNote     String?
 
   pathwayStep PathwayStep @relation(fields: [pathwayStepId], references: [id], onDelete: Cascade)
   resource    Resource    @relation(fields: [resourceId], references: [id], onDelete: Cascade)
@@ -984,16 +987,19 @@ model StageQuiz {
 }
 
 model QuizQuestion {
-  id           String @id @default(uuid())
+  id           String  @id @default(uuid())
   quizId       String
   prompt       String
   order        Int
-  correctIndex Int    // 0..3, stored server-side; never returned
+  correctIndex Int     // 0..3, stored server-side; never returned
+  stepId       String?
 
   quiz    StageQuiz    @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  step    PathwayStep? @relation(fields: [stepId], references: [id], onDelete: SetNull)
   options QuizOption[]
 
   @@unique([quizId, order])
+  @@index([stepId])
 }
 
 model QuizOption {
