@@ -31,8 +31,12 @@ describe('PathwayStepsService', () => {
     userPathway: {
       findUnique: jest.fn<(args: unknown) => Promise<unknown>>(),
     },
+    pathwayStage: {
+      findMany: jest.fn<(args: unknown) => Promise<unknown>>(),
+    },
     userPathwayStep: {
       findMany: jest.fn<(args: unknown) => Promise<unknown>>(),
+      findUnique: jest.fn<(args: unknown) => Promise<unknown>>(),
       updateMany: jest.fn<(args: unknown) => Promise<unknown>>(),
       createMany: jest.fn<(args: unknown) => Promise<unknown>>(),
     },
@@ -44,7 +48,9 @@ describe('PathwayStepsService', () => {
 
   const mockActivityService = {
     recordStepCompleted:
-      jest.fn<(userId: string, stepId: string, tx: unknown) => Promise<void>>(),
+      jest.fn<
+        (userId: string, stepId: string, tx: unknown) => Promise<number>
+      >(),
     awardEarnedBadges:
       jest.fn<(userId: string, tx: unknown) => Promise<void>>(),
   };
@@ -261,6 +267,7 @@ describe('PathwayStepsService', () => {
       mockPrismaService.userPathwayStep.findMany.mockResolvedValue([
         { pathwayStepId: 'step-1', status: 'COMPLETED' },
       ]);
+      mockActivityService.recordStepCompleted.mockResolvedValue(50);
     });
 
     it('looks up the step under a PUBLISHED career or a RETIRED career the user saved', async () => {
@@ -345,7 +352,11 @@ describe('PathwayStepsService', () => {
         [
           'step_completion_changed',
           'user-1',
-          { careerId: 'career-1', stepId: 'step-1', status: 'COMPLETED' },
+          {
+            pathwayId: 'pathway-1',
+            stepId: 'step-1',
+            status: 'COMPLETED',
+          },
         ],
       ]);
     });
@@ -388,7 +399,11 @@ describe('PathwayStepsService', () => {
       expect(mockAnalyticsService.capture).toHaveBeenCalledWith(
         'step_completion_changed',
         'user-1',
-        { careerId: 'career-1', stepId: 'step-1', status: 'NOT_STARTED' },
+        {
+          pathwayId: 'pathway-1',
+          stepId: 'step-1',
+          status: 'NOT_STARTED',
+        },
       );
     });
 
@@ -435,6 +450,14 @@ describe('PathwayStepsService', () => {
       await service.setStepStatus('user-1', 'step-1', 'COMPLETED');
 
       expect(mockActivityService.recordStepCompleted).toHaveBeenCalledTimes(1);
+    });
+
+    it('awards no badges when the step XP was already awarded', async () => {
+      mockActivityService.recordStepCompleted.mockResolvedValue(0);
+
+      await service.setStepStatus('user-1', 'step-1', 'COMPLETED');
+
+      expect(mockActivityService.awardEarnedBadges).not.toHaveBeenCalled();
     });
 
     it('records no XP when marking a step NOT_STARTED', async () => {
@@ -521,6 +544,212 @@ describe('PathwayStepsService', () => {
       await service.setStepStatus('user-1', 'step-1', 'COMPLETED');
 
       expect(order).toEqual(['commit', 'capture']);
+    });
+  });
+
+  describe('setStepCompletion', () => {
+    const completedAt = new Date('2026-11-17T10:00:00.000Z');
+
+    beforeEach(() => {
+      mockPrismaService.pathwayStep.findFirst.mockResolvedValue({
+        pathwayId: 'pathway-1',
+        pathway: { careerId: 'career-1' },
+      });
+      mockPrismaService.userPathway.findUnique.mockResolvedValue({
+        startStepId: null,
+      });
+      mockPrismaService.userPathwayStep.updateMany.mockResolvedValue({
+        count: 0,
+      });
+      mockPrismaService.userPathwayStep.createMany.mockResolvedValue({
+        count: 1,
+      });
+      mockPrismaService.userPathwayStep.findUnique.mockResolvedValue({
+        completedAt,
+      });
+      mockPrismaService.pathwayStage.findMany.mockResolvedValue([
+        {
+          id: 'stage-1',
+          order: 1,
+          steps: [
+            { id: 'step-1', order: 1 },
+            { id: 'step-2', order: 2 },
+          ],
+        },
+      ]);
+      mockPrismaService.userPathwayStep.findMany.mockResolvedValue([
+        { pathwayStepId: 'step-1', status: 'COMPLETED' },
+      ]);
+      mockActivityService.recordStepCompleted.mockResolvedValue(50);
+    });
+
+    it('looks the step up inside the given pathway', async () => {
+      await service.setStepCompletion('user-1', 'pathway-1', 'step-1', true);
+
+      expect(mockPrismaService.pathwayStep.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            id: 'step-1',
+            pathwayId: 'pathway-1',
+          }),
+        }),
+      );
+    });
+
+    it('throws NotFoundException for a step outside the pathway', async () => {
+      mockPrismaService.pathwayStep.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.setStepCompletion('user-1', 'pathway-2', 'step-1', true),
+      ).rejects.toThrow(NotFoundException);
+
+      expect(mockPrismaService.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('throws ConflictException and writes nothing when the pathway is not saved', async () => {
+      mockPrismaService.userPathway.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.setStepCompletion('user-1', 'pathway-1', 'step-1', true),
+      ).rejects.toThrow(ConflictException);
+
+      expect(mockPrismaService.$transaction).not.toHaveBeenCalled();
+      expect(mockActivityService.recordStepCompleted).not.toHaveBeenCalled();
+    });
+
+    it('writes the mark, the XP and the badges in one transaction', async () => {
+      await service.setStepCompletion('user-1', 'pathway-1', 'step-1', true);
+
+      expect(mockPrismaService.$transaction).toHaveBeenCalledTimes(1);
+      expect(mockActivityService.recordStepCompleted).toHaveBeenCalledWith(
+        'user-1',
+        'step-1',
+        mockPrismaService,
+      );
+      expect(mockActivityService.awardEarnedBadges).toHaveBeenCalledWith(
+        'user-1',
+        mockPrismaService,
+      );
+    });
+
+    it('returns the completion with the XP awarded and the progress', async () => {
+      const result = await service.setStepCompletion(
+        'user-1',
+        'pathway-1',
+        'step-1',
+        true,
+      );
+
+      expect(result).toEqual({
+        stepId: 'step-1',
+        status: 'COMPLETED',
+        completedAt,
+        progress: {
+          completed: 1,
+          total: 2,
+          percentage: 50,
+          nextStepId: 'step-2',
+          selfReported: true,
+        },
+        stageProgress: {
+          stageId: 'stage-1',
+          completed: 1,
+          total: 2,
+          percentage: 50,
+        },
+        nextStepId: 'step-2',
+        xpAwarded: 50,
+      });
+    });
+
+    it('reads the progress inside the write transaction', async () => {
+      const txStageFindMany = jest.fn<(args: unknown) => Promise<unknown>>();
+      txStageFindMany.mockResolvedValue([]);
+      mockPrismaService.$transaction.mockImplementationOnce((callback) =>
+        callback({
+          ...mockPrismaService,
+          pathwayStage: { findMany: txStageFindMany },
+        }),
+      );
+
+      await service.setStepCompletion('user-1', 'pathway-1', 'step-1', true);
+
+      expect(txStageFindMany).toHaveBeenCalledTimes(1);
+      expect(mockPrismaService.pathwayStage.findMany).not.toHaveBeenCalled();
+    });
+
+    it('returns xpAwarded 0 when the step XP was already awarded', async () => {
+      mockActivityService.recordStepCompleted.mockResolvedValue(0);
+
+      const result = await service.setStepCompletion(
+        'user-1',
+        'pathway-1',
+        'step-1',
+        true,
+      );
+
+      expect(result.xpAwarded).toBe(0);
+    });
+
+    it('emits step_completion_changed with the pathway id on a real change', async () => {
+      await service.setStepCompletion('user-1', 'pathway-1', 'step-1', true);
+
+      expect(mockAnalyticsService.capture).toHaveBeenCalledWith(
+        'step_completion_changed',
+        'user-1',
+        {
+          pathwayId: 'pathway-1',
+          stepId: 'step-1',
+          status: 'COMPLETED',
+        },
+      );
+    });
+
+    it('emits nothing on a repeat completion', async () => {
+      mockPrismaService.userPathwayStep.createMany.mockResolvedValue({
+        count: 0,
+      });
+
+      await service.setStepCompletion('user-1', 'pathway-1', 'step-1', true);
+
+      expect(mockAnalyticsService.capture).not.toHaveBeenCalled();
+    });
+
+    it('undoing clears completedAt, records no XP and awards no badges', async () => {
+      mockPrismaService.userPathwayStep.updateMany.mockResolvedValue({
+        count: 1,
+      });
+      mockPrismaService.userPathwayStep.findUnique.mockResolvedValue({
+        completedAt: null,
+      });
+      mockPrismaService.userPathwayStep.findMany.mockResolvedValue([
+        { pathwayStepId: 'step-1', status: 'NOT_STARTED' },
+      ]);
+
+      const result = await service.setStepCompletion(
+        'user-1',
+        'pathway-1',
+        'step-1',
+        false,
+      );
+
+      expect(mockPrismaService.userPathwayStep.updateMany).toHaveBeenCalledWith(
+        {
+          where: {
+            userId: 'user-1',
+            pathwayStepId: 'step-1',
+            status: { not: 'NOT_STARTED' },
+          },
+          data: { status: 'NOT_STARTED', completedAt: null },
+        },
+      );
+      expect(mockActivityService.recordStepCompleted).not.toHaveBeenCalled();
+      expect(mockActivityService.awardEarnedBadges).not.toHaveBeenCalled();
+      expect(result).toMatchObject({
+        status: 'NOT_STARTED',
+        completedAt: null,
+        xpAwarded: 0,
+      });
     });
   });
 });

@@ -50,24 +50,24 @@ export class ActivityService {
     userId: string,
     stepId: string,
     tx: Prisma.TransactionClient,
-  ): Promise<void> {
-    await this.recordActivity(userId, ActivityType.STEP_COMPLETED, stepId, tx);
+  ): Promise<number> {
+    return this.recordActivity(userId, ActivityType.STEP_COMPLETED, stepId, tx);
   }
 
   async recordTaskCompleted(
     userId: string,
     taskId: string,
     tx: Prisma.TransactionClient,
-  ): Promise<void> {
-    await this.recordActivity(userId, ActivityType.TASK_COMPLETED, taskId, tx);
+  ): Promise<number> {
+    return this.recordActivity(userId, ActivityType.TASK_COMPLETED, taskId, tx);
   }
 
   async recordResourceCompleted(
     userId: string,
     resourceId: string,
     tx: Prisma.TransactionClient,
-  ): Promise<void> {
-    await this.recordActivity(
+  ): Promise<number> {
+    return this.recordActivity(
       userId,
       ActivityType.RESOURCE_COMPLETED,
       resourceId,
@@ -79,8 +79,8 @@ export class ActivityService {
     userId: string,
     quizId: string,
     tx: Prisma.TransactionClient,
-  ): Promise<void> {
-    await this.recordActivity(userId, ActivityType.QUIZ_PASSED, quizId, tx);
+  ): Promise<number> {
+    return this.recordActivity(userId, ActivityType.QUIZ_PASSED, quizId, tx);
   }
 
   async awardEarnedBadges(
@@ -123,17 +123,20 @@ export class ActivityService {
     type: ActivityType,
     referenceId: string,
     tx: Prisma.TransactionClient,
-  ): Promise<void> {
+  ): Promise<number> {
     const xp = ACTIVITY_XP[type];
-    if (xp === undefined) return;
+    if (xp === undefined) return 0;
 
     const { count } = await tx.activityLedger.createMany({
       data: [{ userId, type, referenceId, xp }],
       skipDuplicates: true,
     });
 
-    if (count > 0) {
-      this.logger.log({ userId, type, xp }, 'XP awarded');
+    if (count === 0) {
+      return 0;
     }
+
+    this.logger.log({ userId, type, xp }, 'XP awarded');
+    return xp;
   }
 }

@@ -19,6 +19,15 @@ import {
 import { AnalyticsService } from '../../analytics';
 import { ActivityService } from '../../activity';
 import * as Progress from '../pathways/progress';
+import { StepCompletionResponseDto } from './dto/step-completion-response.dto';
+import { toStepCompletionResponse } from './mappers/step-completion.mapper';
+import { readableCareerWhere } from './readable-career';
+
+interface WritableStep {
+  stepId: string;
+  pathwayId: string;
+  startStepId: string | null;
+}
 
 @Injectable()
 export class PathwayStepsService {
@@ -110,20 +119,85 @@ export class PathwayStepsService {
     stepId: string,
     status: StepCompletionStatus,
   ): Promise<StepStatusResponseDto> {
+    const step = await this.findWritableStep(userId, stepId);
+
+    const {
+      read: [steps, userSteps],
+    } = await this.commitStepStatus(userId, step, status, (tx) =>
+      Promise.all([
+        tx.pathwayStep.findMany({
+          where: { pathwayId: step.pathwayId },
+          select: { id: true, order: true },
+        }),
+        this.findUserSteps(tx, userId, step.pathwayId),
+      ]),
+    );
+
+    const progress = Progress.computeProgress(
+      steps,
+      userSteps,
+      Progress.findStepOrder(steps, step.startStepId),
+    );
+
+    return {
+      stepId,
+      status,
+      progress: { ...progress, startStepId: step.startStepId },
+    };
+  }
+
+  async setStepCompletion(
+    userId: string,
+    pathwayId: string,
+    stepId: string,
+    completed: boolean,
+  ): Promise<StepCompletionResponseDto> {
+    const step = await this.findWritableStep(userId, stepId, pathwayId);
+    const status = completed
+      ? PathwayStepStatus.COMPLETED
+      : PathwayStepStatus.NOT_STARTED;
+
+    const {
+      xpAwarded,
+      read: [mark, stages, userSteps],
+    } = await this.commitStepStatus(userId, step, status, (tx) =>
+      Promise.all([
+        tx.userPathwayStep.findUnique({
+          where: { userId_pathwayStepId: { userId, pathwayStepId: stepId } },
+          select: { completedAt: true },
+        }),
+        tx.pathwayStage.findMany({
+          where: { pathwayId },
+          select: {
+            id: true,
+            order: true,
+            steps: { select: { id: true, order: true } },
+          },
+        }),
+        this.findUserSteps(tx, userId, pathwayId),
+      ]),
+    );
+
+    return toStepCompletionResponse({
+      stepId,
+      completedAt: mark?.completedAt ?? null,
+      xpAwarded,
+      stages,
+      userSteps,
+      startStepId: step.startStepId,
+    });
+  }
+
+  private async findWritableStep(
+    userId: string,
+    stepId: string,
+    pathwayId?: string,
+  ): Promise<WritableStep> {
     const step = await this.prisma.pathwayStep.findFirst({
       where: {
         id: stepId,
-        pathway: {
-          career: {
-            OR: [
-              { status: CareerStatus.PUBLISHED },
-              {
-                status: CareerStatus.RETIRED,
-                userPathways: { some: { userId } },
-              },
-            ],
-          },
-        },
+        ...(pathwayId ? { pathwayId } : {}),
+        pathway: { career: readableCareerWhere(userId) },
       },
       select: { pathwayId: true, pathway: { select: { careerId: true } } },
     });
@@ -151,48 +225,56 @@ export class PathwayStepsService {
       throw new ConflictException('Save this career before tracking its steps');
     }
 
-    const changed = await this.prisma.$transaction(async (tx) => {
-      const written = await this.writeStepStatus(tx, userId, stepId, status);
+    return {
+      stepId,
+      pathwayId: step.pathwayId,
+      startStepId: userPathway.startStepId,
+    };
+  }
 
+  private async commitStepStatus<T>(
+    userId: string,
+    step: WritableStep,
+    status: StepCompletionStatus,
+    read: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<{ xpAwarded: number; read: T }> {
+    const { stepId, pathwayId } = step;
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const changed = await this.writeStepStatus(tx, userId, stepId, status);
+
+      let xpAwarded = 0;
       if (status === PathwayStepStatus.COMPLETED) {
-        await this.activity.recordStepCompleted(userId, stepId, tx);
-        await this.activity.awardEarnedBadges(userId, tx);
+        xpAwarded = await this.activity.recordStepCompleted(userId, stepId, tx);
+        if (xpAwarded > 0) {
+          await this.activity.awardEarnedBadges(userId, tx);
+        }
       }
 
-      return written;
+      return { changed, xpAwarded, read: await read(tx) };
     });
 
-    if (changed) {
+    if (result.changed) {
       this.logger.log({ userId, stepId, status }, 'Step status changed');
       this.analytics.capture('step_completion_changed', userId, {
-        careerId,
+        pathwayId,
         stepId,
         status,
       });
     }
 
-    const [steps, userSteps] = await Promise.all([
-      this.prisma.pathwayStep.findMany({
-        where: { pathwayId: step.pathwayId },
-        select: { id: true, order: true },
-      }),
-      this.prisma.userPathwayStep.findMany({
-        where: { userId, pathwayStep: { pathwayId: step.pathwayId } },
-        select: { pathwayStepId: true, status: true },
-      }),
-    ]);
+    return { xpAwarded: result.xpAwarded, read: result.read };
+  }
 
-    const progress = Progress.computeProgress(
-      steps,
-      userSteps,
-      Progress.findStepOrder(steps, userPathway.startStepId),
-    );
-
-    return {
-      stepId,
-      status,
-      progress: { ...progress, startStepId: userPathway.startStepId },
-    };
+  private findUserSteps(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    pathwayId: string,
+  ) {
+    return tx.userPathwayStep.findMany({
+      where: { userId, pathwayStep: { pathwayId } },
+      select: { pathwayStepId: true, status: true },
+    });
   }
 
   // Conditional writes, so only a real change returns true

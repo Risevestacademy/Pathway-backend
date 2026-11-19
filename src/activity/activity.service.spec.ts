@@ -111,12 +111,18 @@ describe('ActivityService', () => {
       );
     });
 
-    it('ignores a duplicate insert and logs nothing', async () => {
+    it('returns the XP awarded for a first completion', async () => {
+      await expect(
+        service.recordStepCompleted('user-1', 'step-1', client),
+      ).resolves.toBe(ACTIVITY_XP[ActivityType.STEP_COMPLETED]);
+    });
+
+    it('ignores a duplicate insert, returns 0 and logs nothing', async () => {
       tx.activityLedger.createMany.mockResolvedValue({ count: 0 });
 
       await expect(
         service.recordStepCompleted('user-1', 'step-1', client),
-      ).resolves.toBeUndefined();
+      ).resolves.toBe(0);
 
       expect(logSpy).not.toHaveBeenCalled();
     });
@@ -133,6 +139,18 @@ describe('ActivityService', () => {
   });
 
   describe('recordTaskCompleted', () => {
+    it('returns the XP awarded, or 0 on a duplicate', async () => {
+      await expect(
+        service.recordTaskCompleted('user-1', 'task-1', client),
+      ).resolves.toBe(ACTIVITY_XP[ActivityType.TASK_COMPLETED]);
+
+      tx.activityLedger.createMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.recordTaskCompleted('user-1', 'task-1', client),
+      ).resolves.toBe(0);
+    });
+
     it('inserts a task completion ledger row', async () => {
       await service.recordTaskCompleted('user-1', 'task-1', client);
 
@@ -172,6 +190,18 @@ describe('ActivityService', () => {
   });
 
   describe('recordResourceCompleted', () => {
+    it('returns the XP awarded, or 0 on a duplicate', async () => {
+      await expect(
+        service.recordResourceCompleted('user-1', 'resource-1', client),
+      ).resolves.toBe(ACTIVITY_XP[ActivityType.RESOURCE_COMPLETED]);
+
+      tx.activityLedger.createMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.recordResourceCompleted('user-1', 'resource-1', client),
+      ).resolves.toBe(0);
+    });
+
     it('inserts a resource completion ledger row', async () => {
       await service.recordResourceCompleted('user-1', 'resource-1', client);
 
@@ -211,6 +241,18 @@ describe('ActivityService', () => {
   });
 
   describe('recordQuizPassed', () => {
+    it('returns the XP awarded, or 0 on a duplicate', async () => {
+      await expect(
+        service.recordQuizPassed('user-1', 'quiz-1', client),
+      ).resolves.toBe(ACTIVITY_XP[ActivityType.QUIZ_PASSED]);
+
+      tx.activityLedger.createMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.recordQuizPassed('user-1', 'quiz-1', client),
+      ).resolves.toBe(0);
+    });
+
     it('inserts a quiz passed ledger row', async () => {
       await service.recordQuizPassed('user-1', 'quiz-1', client);
 

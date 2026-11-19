@@ -20,7 +20,7 @@ export interface AnalyticsEventMap {
   password_reset_completed: { channel: PasswordResetChannel };
   pathway_saved: { careerId: string };
   step_completion_changed: {
-    careerId: string;
+    pathwayId: string;
     stepId: string;
     status: StepCompletionStatus;
   };
