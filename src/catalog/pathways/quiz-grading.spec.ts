@@ -170,6 +170,62 @@ describe('gradeQuiz', () => {
     expect(() => gradeQuiz(broken, [])).toThrow('q1');
   });
 
+  describe('revisit step', () => {
+    const withSteps = (steps: Array<string | null | undefined>) =>
+      questions.map((question, i) => ({ ...question, stepId: steps[i] }));
+
+    const allWrong = () =>
+      questions.map(({ id, correctIndex }) => wrongAnswer(id, correctIndex));
+
+    it('is the step of the first wrong question that has one', () => {
+      const grade = gradeQuiz(
+        withSteps([null, 'step-2', 'step-3', 'step-4', 'step-5']),
+        allWrong(),
+      );
+
+      expect(grade.revisitStepId).toBe('step-2');
+    });
+
+    it('skips right answers even when they have a step', () => {
+      const answers = correctAnswers();
+      answers[2] = wrongAnswer('q3', 2);
+
+      const grade = gradeQuiz(
+        withSteps(['step-1', 'step-2', 'step-3', 'step-4', 'step-5']),
+        answers,
+      );
+
+      expect(grade.revisitStepId).toBe('step-3');
+    });
+
+    it('is null when every wrong question has no step', () => {
+      const grade = gradeQuiz(
+        withSteps([null, undefined, null, undefined, null]),
+        allWrong(),
+      );
+
+      expect(grade.revisitStepId).toBeNull();
+    });
+
+    it('is null when every answer is right, whatever the steps', () => {
+      const grade = gradeQuiz(
+        withSteps(['step-1', 'step-2', 'step-3', 'step-4', 'step-5']),
+        correctAnswers(),
+      );
+
+      expect(grade.revisitStepId).toBeNull();
+    });
+
+    it('counts a missing answer as wrong', () => {
+      const grade = gradeQuiz(
+        withSteps([null, null, 'step-3', null, null]),
+        correctAnswers().filter(({ questionId }) => questionId !== 'q3'),
+      );
+
+      expect(grade.revisitStepId).toBe('step-3');
+    });
+  });
+
   describe('pass mark boundary', () => {
     const withCorrect = (count: number): QuizAnswer[] =>
       questions.map(({ id, correctIndex }, i) =>
