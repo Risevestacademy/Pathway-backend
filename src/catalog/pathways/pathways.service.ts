@@ -73,6 +73,8 @@ export class PathwaysService {
                 id: true,
                 attempts: {
                   where: { userId: userId ?? '__anonymous__' },
+                  // Every attempt is kept: the best score is the one shown
+                  orderBy: { correct: 'desc' },
                   select: { correct: true, total: true },
                   take: 1,
                 },

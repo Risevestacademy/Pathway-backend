@@ -309,6 +309,38 @@ describe('PathwaysService', () => {
       });
     });
 
+    it("reads one attempt per quiz: the caller's best score", async () => {
+      mockPrismaService.pathway.findFirst.mockResolvedValue(baseDbRow);
+      mockPrismaService.userPathwayStep.findMany.mockResolvedValue([]);
+      mockPrismaService.userPathway.findUnique.mockResolvedValue({
+        startStepId: null,
+      });
+
+      await service.getPathwayRead('p1', 'u1');
+
+      expect(mockPrismaService.pathway.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: expect.objectContaining({
+            stages: expect.objectContaining({
+              select: expect.objectContaining({
+                quiz: {
+                  select: {
+                    id: true,
+                    attempts: {
+                      where: { userId: 'u1' },
+                      orderBy: { correct: 'desc' },
+                      select: { correct: true, total: true },
+                      take: 1,
+                    },
+                  },
+                },
+              }),
+            }),
+          }),
+        }),
+      );
+    });
+
     it('career header: stage count, step count, resource count and retired flag', async () => {
       mockPrismaService.pathway.findFirst.mockResolvedValue({
         ...baseDbRow,
