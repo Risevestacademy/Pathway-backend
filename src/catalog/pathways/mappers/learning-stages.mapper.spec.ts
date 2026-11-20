@@ -2,6 +2,7 @@ import { PathwayStepStatus } from '../../../generated/prisma/client';
 import {
   type LearningStageRow,
   type LearningStepRow,
+  stageQuizSelect,
   type StepMark,
   toLearningStages,
 } from './learning-stages.mapper';
@@ -36,6 +37,17 @@ const marks: StepMark[] = [
     completedAt: null,
   },
 ];
+
+describe('stageQuizSelect', () => {
+  it("reads only the caller's best attempt", () => {
+    expect(stageQuizSelect('user-1').select.attempts).toEqual({
+      where: { userId: 'user-1' },
+      orderBy: { correct: 'desc' },
+      select: { correct: true, total: true },
+      take: 1,
+    });
+  });
+});
 
 describe('toLearningStages', () => {
   const result = toLearningStages(stages, marks, (step) => ({
