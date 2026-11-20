@@ -27,6 +27,7 @@ import {
 import { GetPathwayResourceQueryDto } from './dto/get-pathway-resource-query.dto';
 import { PathwayTaskDetailDto, PathwayTasksDto } from './dto/pathway-tasks.dto';
 import { StageQuizDto } from './dto/stage-quiz.dto';
+import { PathwayProgressDto } from './dto/pathway-progress.dto';
 
 @ApiTags('Pathways')
 @Controller('pathways')
@@ -171,6 +172,30 @@ export class PathwaysController {
       pathwayId,
       taskId,
     );
+  }
+
+  @Get(':pathwayId/progress')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: "Get the pathway's Progress tab",
+    description:
+      "The caller's self-reported overall progress, every stage with its progress and quiz status (best score), the completed steps with the newest first, and the next step with its stage. A pathway the caller hasn't saved shows zero progress. The career must be PUBLISHED, or RETIRED and saved by the caller. Reads only.",
+  })
+  @ApiParam({ name: 'pathwayId', description: 'Pathway UUID' })
+  @ApiResponse({ status: 200, type: PathwayProgressDto })
+  @ApiResponse({ status: 400, description: 'pathwayId is not a valid UUID' })
+  @ApiResponse({ status: 401, description: 'Access token missing or invalid' })
+  @ApiResponse({
+    status: 404,
+    description:
+      'Pathway not found, its career is a draft, or it is retired and not saved by the caller',
+  })
+  async getPathwayProgress(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('pathwayId', ParseUUIDPipe) pathwayId: string,
+  ): Promise<PathwayProgressDto> {
+    return this.pathwayLearningService.getPathwayProgress(user.id, pathwayId);
   }
 
   @Get(':pathwayId/stages/:stageId/quiz')

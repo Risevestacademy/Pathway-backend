@@ -18,6 +18,7 @@ export const stageQuizSelect = (userId: string) =>
       id: true,
       attempts: {
         where: { userId },
+        orderBy: { correct: 'desc' },
         select: { correct: true, total: true },
         take: 1,
       },
