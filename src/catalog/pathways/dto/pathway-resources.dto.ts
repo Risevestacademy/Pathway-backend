@@ -1,14 +1,12 @@
 import { ApiProperty } from '@nestjs/swagger';
 import {
-  PathwayStepStatus,
   ResourceCostStatus,
   ResourceType,
 } from '../../../generated/prisma/client';
-import { PathwayReadStageProgressDto } from './pathway-read.dto';
 import {
-  StageQuizStatusNotTaken,
-  StageQuizStatusTaken,
-} from './stage-quiz-status.dto';
+  PathwayLearningStageDto,
+  PathwayLearningStepDto,
+} from './pathway-learning.dto';
 
 export class PathwayResourceItemDto {
   @ApiProperty()
@@ -43,22 +41,7 @@ export class PathwayResourceItemDto {
   completedAt: Date | null;
 }
 
-export class PathwayResourcesStepDto {
-  @ApiProperty()
-  id: string;
-
-  @ApiProperty({ example: 'Learn TypeScript Basics' })
-  title: string;
-
-  @ApiProperty({ example: 1 })
-  order: number;
-
-  @ApiProperty({ enum: PathwayStepStatus })
-  status: PathwayStepStatus;
-
-  @ApiProperty({ type: String, format: 'date-time', nullable: true })
-  completedAt: Date | null;
-
+export class PathwayResourcesStepDto extends PathwayLearningStepDto {
   @ApiProperty({
     type: [PathwayResourceItemDto],
     description: 'ACTIVE resources only',
@@ -66,32 +49,7 @@ export class PathwayResourcesStepDto {
   resources: PathwayResourceItemDto[];
 }
 
-export class PathwayResourcesStageDto {
-  @ApiProperty()
-  id: string;
-
-  @ApiProperty({ example: 'Language foundations' })
-  title: string;
-
-  @ApiProperty({ example: 1 })
-  order: number;
-
-  @ApiProperty({
-    type: PathwayReadStageProgressDto,
-    description: 'Self-reported step completion within the stage',
-  })
-  progress: PathwayReadStageProgressDto;
-
-  @ApiProperty({
-    oneOf: [
-      { $ref: '#/components/schemas/StageQuizStatusNotTaken' },
-      { $ref: '#/components/schemas/StageQuizStatusTaken' },
-    ],
-    nullable: true,
-    description: 'Null when the stage has no quiz',
-  })
-  quiz: StageQuizStatusNotTaken | StageQuizStatusTaken | null;
-
+export class PathwayResourcesStageDto extends PathwayLearningStageDto {
   @ApiProperty({ type: [PathwayResourcesStepDto] })
   steps: PathwayResourcesStepDto[];
 }

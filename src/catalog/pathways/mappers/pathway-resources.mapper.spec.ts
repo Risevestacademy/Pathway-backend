@@ -7,10 +7,10 @@ import {
   type PathwayResourcesStageRow,
   type ResourceItemRow,
   resourceIdsOf,
-  type StepMark,
   toPathwayResourceDetail,
   toPathwayResources,
 } from './pathway-resources.mapper';
+import type { StepMark } from './learning-stages.mapper';
 
 const lastCheckedDate = new Date('2026-11-01T00:00:00.000Z');
 const completedAt = new Date('2026-11-19T10:00:00.000Z');

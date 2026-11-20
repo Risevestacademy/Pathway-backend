@@ -1,5 +1,4 @@
 import {
-  PathwayStepStatus,
   Prisma,
   ResourceCostStatus,
   ResourceStatus,
@@ -10,8 +9,11 @@ import type {
   PathwayResourceItemDto,
   PathwayResourcesDto,
 } from '../dto/pathway-resources.dto';
-import { computeStageProgress, computeStepStatuses } from '../progress';
-import { toStageQuizStatus } from '../stage-quiz-status';
+import {
+  stageQuizSelect,
+  type StepMark,
+  toLearningStages,
+} from './learning-stages.mapper';
 
 export const resourceItemSelect = {
   id: true,
@@ -35,16 +37,7 @@ export const pathwayResourcesStageSelect = (userId: string) =>
     id: true,
     title: true,
     order: true,
-    quiz: {
-      select: {
-        id: true,
-        attempts: {
-          where: { userId },
-          select: { correct: true, total: true },
-          take: 1,
-        },
-      },
-    },
+    quiz: stageQuizSelect(userId),
     steps: {
       orderBy: { order: 'asc' },
       select: {
@@ -82,12 +75,6 @@ export type ResourceDetailRow = Prisma.ResourceGetPayload<{
 export type PathwayResourcesStageRow = Prisma.PathwayStageGetPayload<{
   select: ReturnType<typeof pathwayResourcesStageSelect>;
 }>;
-
-export interface StepMark {
-  pathwayStepId: string;
-  status: PathwayStepStatus;
-  completedAt: Date | null;
-}
 
 export interface NextTaskRow {
   id: string;
@@ -134,53 +121,17 @@ export const toPathwayResources = (
   marks: StepMark[],
   optionalPaidCourses: ResourceItemRow[],
   completions: Map<string, Date>,
-): PathwayResourcesDto => {
-  const completedAtByStep = new Map(
-    marks.map(({ pathwayStepId, completedAt }) => [pathwayStepId, completedAt]),
-  );
-
-  return {
-    pathwayId,
-    stages: [...stages]
-      .sort((a, b) => a.order - b.order)
-      .map((stage) => {
-        const steps = [...stage.steps].sort((a, b) => a.order - b.order);
-        const statuses = computeStepStatuses(steps, marks);
-
-        return {
-          id: stage.id,
-          title: stage.title,
-          order: stage.order,
-          progress: computeStageProgress(steps, marks),
-          quiz: toStageQuizStatus(
-            stage.quiz ? { id: stage.quiz.id } : null,
-            stage.quiz?.attempts[0] ?? null,
-          ),
-          steps: steps.map((step) => {
-            const status =
-              statuses.get(step.id) ?? PathwayStepStatus.NOT_STARTED;
-
-            return {
-              id: step.id,
-              title: step.title,
-              order: step.order,
-              status,
-              completedAt:
-                status === PathwayStepStatus.COMPLETED
-                  ? (completedAtByStep.get(step.id) ?? null)
-                  : null,
-              resources: step.resources.map(({ resource }) =>
-                toResourceItem(resource, completions),
-              ),
-            };
-          }),
-        };
-      }),
-    optionalPaidCourses: optionalPaidCourses.map((resource) =>
+): PathwayResourcesDto => ({
+  pathwayId,
+  stages: toLearningStages(stages, marks, (step) => ({
+    resources: step.resources.map(({ resource }) =>
       toResourceItem(resource, completions),
     ),
-  };
-};
+  })),
+  optionalPaidCourses: optionalPaidCourses.map((resource) =>
+    toResourceItem(resource, completions),
+  ),
+});
 
 export const toPathwayResourceDetail = (
   resource: ResourceDetailRow,
