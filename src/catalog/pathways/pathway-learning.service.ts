@@ -186,8 +186,7 @@ export class PathwayLearningService {
       where: { userId, pathwayStep: { pathwayId } },
       select: { pathwayStepId: true, status: true, completedAt: true },
     });
-  };
-  
+  }
 
   async getStageQuiz(
     userId: string,
@@ -205,5 +204,3 @@ export class PathwayLearningService {
     return toStageQuiz(quiz);
   }
 }
-};
-
