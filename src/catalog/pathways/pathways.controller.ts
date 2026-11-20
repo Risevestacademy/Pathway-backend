@@ -1,8 +1,10 @@
 import {
+  Body,
   Controller,
   Get,
   Param,
   ParseUUIDPipe,
+  Post,
   Query,
   Req,
   UseGuards,
@@ -19,15 +21,19 @@ import type { AuthenticatedUser } from '../../common';
 import { CurrentUser, JwtAuthGuard, OptionalJwtAuthGuard } from '../../common';
 import { PathwaysService } from './pathways.service';
 import { PathwayLearningService } from './pathway-learning.service';
+import { StageQuizService } from './stage-quiz.service';
 import { PathwayReadDto } from './dto/pathway-read.dto';
 import {
   PathwayResourceDetailDto,
   PathwayResourcesDto,
 } from './dto/pathway-resources.dto';
 import { GetPathwayResourceQueryDto } from './dto/get-pathway-resource-query.dto';
-import { PathwayTaskDetailDto, PathwayTasksDto } from './dto/pathway-tasks.dto';
 import { StageQuizDto } from './dto/stage-quiz.dto';
-import { PathwayProgressDto } from './dto/pathway-progress.dto';
+import {
+  StageQuizResultDto,
+  SubmitStageQuizResponseDto,
+} from './dto/stage-quiz-result.dto';
+import { SubmitStageQuizDto } from './dto/submit-stage-quiz.dto';
 
 @ApiTags('Pathways')
 @Controller('pathways')
@@ -35,6 +41,7 @@ export class PathwaysController {
   constructor(
     private readonly pathwaysService: PathwaysService,
     private readonly pathwayLearningService: PathwayLearningService,
+    private readonly stageQuizService: StageQuizService,
   ) {}
 
   @Get(':pathwayId')
@@ -118,86 +125,6 @@ export class PathwaysController {
     );
   }
 
-  @Get(':pathwayId/tasks')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({
-    summary: "Get the pathway's Practice tasks tab",
-    description:
-      "Every stage with its self-reported progress and quiz status, every step with its status and its tasks, each with the caller's completion and checklist counts. No hints or checklist items. The career must be PUBLISHED, or RETIRED and saved by the caller. Reads only.",
-  })
-  @ApiParam({ name: 'pathwayId', description: 'Pathway UUID' })
-  @ApiResponse({ status: 200, type: PathwayTasksDto })
-  @ApiResponse({ status: 400, description: 'pathwayId is not a valid UUID' })
-  @ApiResponse({ status: 401, description: 'Access token missing or invalid' })
-  @ApiResponse({
-    status: 404,
-    description:
-      'Pathway not found, its career is a draft, or it is retired and not saved by the caller',
-  })
-  async getPathwayTasks(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('pathwayId', ParseUUIDPipe) pathwayId: string,
-  ): Promise<PathwayTasksDto> {
-    return this.pathwayLearningService.getPathwayTasks(user.id, pathwayId);
-  }
-
-  @Get(':pathwayId/tasks/:taskId')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({
-    summary: 'Get one task brief in a pathway',
-    description:
-      "The task with what to make, hints, the checklist with the caller's ticks, and its ACTIVE linked resources. Reads only.",
-  })
-  @ApiParam({ name: 'pathwayId', description: 'Pathway UUID' })
-  @ApiParam({ name: 'taskId', description: 'Task UUID' })
-  @ApiResponse({ status: 200, type: PathwayTaskDetailDto })
-  @ApiResponse({
-    status: 400,
-    description: 'pathwayId or taskId is not a valid UUID',
-  })
-  @ApiResponse({ status: 401, description: 'Access token missing or invalid' })
-  @ApiResponse({
-    status: 404,
-    description: 'Pathway not readable, or the task is not in this pathway',
-  })
-  async getPathwayTask(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('pathwayId', ParseUUIDPipe) pathwayId: string,
-    @Param('taskId', ParseUUIDPipe) taskId: string,
-  ): Promise<PathwayTaskDetailDto> {
-    return this.pathwayLearningService.getPathwayTask(
-      user.id,
-      pathwayId,
-      taskId,
-    );
-  }
-
-  @Get(':pathwayId/progress')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({
-    summary: "Get the pathway's Progress tab",
-    description:
-      "The caller's self-reported overall progress, every stage with its progress and quiz status (best score), the completed steps with the newest first, and the next step with its stage. A pathway the caller hasn't saved shows zero progress. The career must be PUBLISHED, or RETIRED and saved by the caller. Reads only.",
-  })
-  @ApiParam({ name: 'pathwayId', description: 'Pathway UUID' })
-  @ApiResponse({ status: 200, type: PathwayProgressDto })
-  @ApiResponse({ status: 400, description: 'pathwayId is not a valid UUID' })
-  @ApiResponse({ status: 401, description: 'Access token missing or invalid' })
-  @ApiResponse({
-    status: 404,
-    description:
-      'Pathway not found, its career is a draft, or it is retired and not saved by the caller',
-  })
-  async getPathwayProgress(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('pathwayId', ParseUUIDPipe) pathwayId: string,
-  ): Promise<PathwayProgressDto> {
-    return this.pathwayLearningService.getPathwayProgress(user.id, pathwayId);
-  }
-
   @Get(':pathwayId/stages/:stageId/quiz')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
@@ -225,6 +152,78 @@ export class PathwaysController {
     @Param('stageId', ParseUUIDPipe) stageId: string,
   ): Promise<StageQuizDto> {
     return this.pathwayLearningService.getStageQuiz(
+      user.id,
+      pathwayId,
+      stageId,
+    );
+  }
+
+  @Post(':pathwayId/stages/:stageId/quiz/submit')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: "Submit a stage quiz's answers",
+    description:
+      'Grades the answers and stores an attempt every time. The first submit of a quiz awards 20 XP, whatever the score; a retake awards 0. The response has the score, the pass label, the next step, the step to revisit and a breakdown with the answer texts. A quiz never completes a step. The career must be PUBLISHED, or RETIRED, and saved by the caller.',
+  })
+  @ApiParam({ name: 'pathwayId', description: 'Pathway UUID' })
+  @ApiParam({ name: 'stageId', description: 'Stage UUID' })
+  @ApiResponse({ status: 201, type: SubmitStageQuizResponseDto })
+  @ApiResponse({
+    status: 400,
+    description: 'An id is not a valid UUID, or the body is invalid',
+  })
+  @ApiResponse({ status: 401, description: 'Access token missing or invalid' })
+  @ApiResponse({
+    status: 404,
+    description:
+      'Pathway not readable, the stage is not in this pathway, or the stage has no quiz',
+  })
+  @ApiResponse({
+    status: 409,
+    description: "The user hasn't saved this pathway's career",
+  })
+  async submitStageQuiz(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('pathwayId', ParseUUIDPipe) pathwayId: string,
+    @Param('stageId', ParseUUIDPipe) stageId: string,
+    @Body() dto: SubmitStageQuizDto,
+  ): Promise<SubmitStageQuizResponseDto> {
+    return this.stageQuizService.submitStageQuiz(
+      user.id,
+      pathwayId,
+      stageId,
+      dto.answers,
+    );
+  }
+
+  @Get(':pathwayId/stages/:stageId/quiz/result')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Get the latest result of a stage quiz',
+    description:
+      "The caller's latest attempt, with the score and a breakdown with the answer texts. It has no XP field. The career must be PUBLISHED, or RETIRED and saved by the caller. Reads only.",
+  })
+  @ApiParam({ name: 'pathwayId', description: 'Pathway UUID' })
+  @ApiParam({ name: 'stageId', description: 'Stage UUID' })
+  @ApiResponse({ status: 200, type: StageQuizResultDto })
+  @ApiResponse({
+    status: 400,
+    description: 'pathwayId or stageId is not a valid UUID',
+  })
+  @ApiResponse({ status: 401, description: 'Access token missing or invalid' })
+  @ApiResponse({
+    status: 404,
+    description:
+      'Pathway not readable, the stage is not in this pathway, the stage has no quiz, or the caller has not submitted it',
+  })
+  async getStageQuizResult(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('pathwayId', ParseUUIDPipe) pathwayId: string,
+    @Param('stageId', ParseUUIDPipe) stageId: string,
+  ): Promise<StageQuizResultDto> {
+    return this.stageQuizService.getStageQuizResult(
       user.id,
       pathwayId,
       stageId,
