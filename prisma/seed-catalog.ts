@@ -54,6 +54,18 @@ interface StageQuizSeed {
   questions: QuizQuestionSeed[];
 }
 
+interface StepTaskSeed {
+  // Step order in the pathway; tasks are numbered within a step in list order
+  step: number;
+  title: string;
+  goal: string;
+  estimatedWeeks: number | null;
+  whatToMake: string[];
+  hints: string[];
+  checklist: string[];
+  resources: string[];
+}
+
 interface CertificationSeed {
   // e.g. 'Frontend Expert'. The three levels are titled "<title>: Level 1" to 3.
   title: string;
@@ -85,6 +97,7 @@ interface CareerSeed {
     description: string;
     steps: StepSeed[];
     quizzes?: StageQuizSeed[];
+    tasks?: StepTaskSeed[];
   };
 }
 
@@ -1579,6 +1592,54 @@ const CAREERS: CareerSeed[] = [
           ],
         },
       ],
+      tasks: [
+        {
+          step: 1,
+          title: 'Model a library catalogue with types',
+          goal: 'Practise interfaces and generics on a small data model.',
+          estimatedWeeks: 1,
+          whatToMake: [
+            'Interfaces for a book, an author and a loan',
+            'A generic findById helper that works for any of them',
+          ],
+          hints: [
+            'Start with the fields every item shares, then extend',
+            'Let the compiler infer the generic type where it can',
+          ],
+          checklist: [
+            'Each interface has typed fields, with optional fields marked',
+            'findById returns the right type without a cast',
+            'The project compiles with strict mode on',
+          ],
+          resources: [RESOURCE.typescriptHandbook],
+        },
+        {
+          step: 2,
+          title: 'Build a notes API',
+          goal: 'Build a CRUD API with a NestJS module backed by Prisma.',
+          estimatedWeeks: 2,
+          whatToMake: [
+            'A notes module with a controller and a service',
+            'Create, list, read, update and delete routes',
+            'A Prisma model for notes',
+          ],
+          hints: [
+            'Keep database calls in the service, not the controller',
+            'Return 404 when a note does not exist',
+          ],
+          checklist: [
+            'All five routes work from an API client',
+            'Invalid input returns 400',
+            'A missing note returns 404',
+            'Notes survive an app restart',
+          ],
+          resources: [
+            RESOURCE.nestFirstSteps,
+            RESOURCE.nestControllers,
+            RESOURCE.prismaCrud,
+          ],
+        },
+      ],
     },
   },
   {
@@ -1739,6 +1800,82 @@ const CAREERS: CareerSeed[] = [
           ],
         },
       ],
+      tasks: [
+        {
+          step: 1,
+          title: 'Recreate a landing page',
+          goal: 'Turn a design into a semantic, responsive page.',
+          estimatedWeeks: 1,
+          whatToMake: [
+            'A landing page with a header, hero, features and footer',
+            'Layouts that work at phone and desktop widths',
+          ],
+          hints: [
+            'Mark up the content before writing any CSS',
+            'Build the phone layout first, then add a breakpoint',
+          ],
+          checklist: [
+            'Uses header, nav, main and footer elements',
+            'No horizontal scroll at 375px wide',
+            'Images have alt text',
+          ],
+          resources: [RESOURCE.webDevLearnHtml, RESOURCE.flexboxGuide],
+        },
+        {
+          step: 1,
+          title: 'Lay out a card grid with flexbox',
+          goal: 'Practise wrapping and alignment with flexbox.',
+          estimatedWeeks: null,
+          whatToMake: ['A grid of product cards that wraps to fit the screen'],
+          hints: ['flex-wrap and gap do most of the work'],
+          checklist: [
+            'Cards wrap onto new rows as the screen narrows',
+            'Card content stays aligned when titles are different lengths',
+          ],
+          resources: [RESOURCE.flexboxGuide, RESOURCE.flexboxFroggy],
+        },
+        {
+          step: 2,
+          title: 'Search a list from a public API',
+          goal: 'Load data with fetch and filter it as the user types.',
+          estimatedWeeks: 1,
+          whatToMake: [
+            'A page that lists items from a public API',
+            'A search box that filters the list',
+          ],
+          hints: [
+            'Show a loading message while the request is in flight',
+            'Filter the data you already have instead of fetching again',
+          ],
+          checklist: [
+            'The list loads from the API',
+            'Typing filters the list',
+            'A failed request shows an error message',
+            'The work is committed to Git in small steps',
+          ],
+          resources: [RESOURCE.mdnFetchApi, RESOURCE.javascriptInfo],
+        },
+        {
+          step: 3,
+          title: 'Rebuild the search page in React',
+          goal: 'Split the search page into reusable components with state.',
+          estimatedWeeks: 2,
+          whatToMake: [
+            'At least three components: search box, list and list item',
+            'A loading state and an error state',
+          ],
+          hints: [
+            'Keep the search text in the parent and pass it down',
+            'Fetch once in an effect',
+          ],
+          checklist: [
+            'Components are typed with TypeScript',
+            'The list re-renders as the search text changes',
+            'Loading and error states both show',
+          ],
+          resources: [RESOURCE.reactQuickStart, RESOURCE.viteGuide],
+        },
+      ],
     },
   },
   {
@@ -1838,6 +1975,42 @@ const CAREERS: CareerSeed[] = [
             RESOURCE.kaggleDataViz,
             RESOURCE.powerBiGuidedLearning,
           ],
+        },
+      ],
+      tasks: [
+        {
+          step: 1,
+          title: 'Summarise a sales export',
+          goal: 'Clean a raw dataset and answer questions with a pivot table.',
+          estimatedWeeks: 1,
+          whatToMake: [
+            'A cleaned copy of the sales data',
+            'A pivot table that answers three business questions',
+          ],
+          hints: [
+            'Fix dates and remove duplicates before summarising',
+            'Write each question above the table that answers it',
+          ],
+          checklist: [
+            'No duplicate or blank rows remain',
+            'Dates are stored as dates, not text',
+            'Each question has a clear answer in the pivot table',
+          ],
+          resources: [RESOURCE.exceljet, RESOURCE.excelEasy],
+        },
+        {
+          step: 2,
+          title: 'Answer questions with SQL joins',
+          goal: 'Use joins and GROUP BY to answer questions about a database.',
+          estimatedWeeks: 1,
+          whatToMake: ['Five SQL queries, each answering one question'],
+          hints: ['Run each join on its own before adding the aggregate'],
+          checklist: [
+            'At least two queries join tables',
+            'At least two queries use GROUP BY',
+            'Each query has a comment stating its question',
+          ],
+          resources: [RESOURCE.sqlBolt, RESOURCE.kaggleIntroSql],
         },
       ],
     },
@@ -2395,6 +2568,7 @@ async function upsertPathway(
     description,
     steps,
     quizzes = [],
+    tasks = [],
   }: NonNullable<CareerSeed['pathway']>,
   skillIds: Map<string, string>,
 ): Promise<void> {
@@ -2438,6 +2612,7 @@ async function upsertPathway(
   });
 
   await upsertStageQuizzes(prisma, pathway.id, stageIds, quizzes);
+  await upsertStepTasks(prisma, pathway.id, tasks);
 }
 
 async function upsertStageQuizzes(
@@ -2489,6 +2664,68 @@ async function upsertStageQuizzes(
   }
 }
 
+async function upsertStepTasks(
+  prisma: PrismaClient,
+  pathwayId: string,
+  tasks: StepTaskSeed[],
+): Promise<void> {
+  if (tasks.length === 0) {
+    return;
+  }
+
+  const steps = await prisma.pathwayStep.findMany({
+    where: { pathwayId },
+    select: { id: true, order: true },
+  });
+  const stepIds = new Map(steps.map(({ id, order }) => [String(order), id]));
+  const taskCounts = new Map<string, number>();
+
+  for (const { step, checklist, resources, ...task } of tasks) {
+    const stepId = idOf(stepIds, String(step));
+    const order = (taskCounts.get(stepId) ?? 0) + 1;
+    taskCounts.set(stepId, order);
+
+    const existing = await prisma.pathwayStepTask.findUnique({
+      where: { stepId_order: { stepId, order } },
+      select: { id: true },
+    });
+
+    if (existing && !REFRESH) {
+      continue;
+    }
+
+    const checklistItems = checklist.map((text, index) => ({
+      text,
+      order: index + 1,
+    }));
+    const links = resources.map((resourceId, index) => ({
+      resourceId,
+      order: index + 1,
+    }));
+
+    if (existing) {
+      await prisma.pathwayStepTask.update({
+        where: { id: existing.id },
+        data: {
+          ...task,
+          checklistItems: { deleteMany: {}, create: checklistItems },
+          resources: { deleteMany: {}, create: links },
+        },
+      });
+    } else {
+      await prisma.pathwayStepTask.create({
+        data: {
+          stepId,
+          order,
+          ...task,
+          checklistItems: { create: checklistItems },
+          resources: { create: links },
+        },
+      });
+    }
+  }
+}
+
 async function linkCareerResources(
   prisma: PrismaClient,
   careerId: string,
@@ -2531,6 +2768,7 @@ async function backfillCareer(
       stageIds,
       pathwaySeed.quizzes ?? [],
     );
+    await upsertStepTasks(prisma, pathway.id, pathwaySeed.tasks ?? []);
   }
 }
 
