@@ -23,6 +23,11 @@ import {
   toPathwayTasks,
 } from './mappers/pathway-tasks.mapper';
 import { stageQuizReadSelect, toStageQuiz } from './mappers/stage-quiz.mapper';
+import { PathwayProgressDto } from './dto/pathway-progress.dto';
+import {
+  pathwayProgressStageSelect,
+  toPathwayProgress,
+} from './mappers/pathway-progress.mapper';
 import {
   assertPathwayReadable,
   assertResourceBelongsToPathway,
@@ -181,11 +186,26 @@ export class PathwayLearningService {
     return toPathwayTaskDetail(task, completions);
   }
 
-  private findStepMarks(userId: string, pathwayId: string) {
-    return this.prisma.userPathwayStep.findMany({
-      where: { userId, pathwayStep: { pathwayId } },
-      select: { pathwayStepId: true, status: true, completedAt: true },
-    });
+  async getPathwayProgress(
+    userId: string,
+    pathwayId: string,
+  ): Promise<PathwayProgressDto> {
+    const { startStepId } = await assertPathwayReadable(
+      this.prisma,
+      pathwayId,
+      userId,
+    );
+
+    const [stages, marks] = await Promise.all([
+      this.prisma.pathwayStage.findMany({
+        where: { pathwayId },
+        orderBy: { order: 'asc' },
+        select: pathwayProgressStageSelect(userId),
+      }),
+      this.findStepMarks(userId, pathwayId),
+    ]);
+
+    return toPathwayProgress(pathwayId, stages, marks, startStepId);
   }
 
   async getStageQuiz(
@@ -202,5 +222,12 @@ export class PathwayLearningService {
     if (!quiz) throw new NotFoundException('Quiz not found');
 
     return toStageQuiz(quiz);
+  }
+
+  private findStepMarks(userId: string, pathwayId: string) {
+    return this.prisma.userPathwayStep.findMany({
+      where: { userId, pathwayStep: { pathwayId } },
+      select: { pathwayStepId: true, status: true, completedAt: true },
+    });
   }
 }
