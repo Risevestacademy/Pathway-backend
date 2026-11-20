@@ -7,6 +7,10 @@ import type {
   PathwayResourceDetailDto,
   PathwayResourcesDto,
 } from './dto/pathway-resources.dto';
+import type {
+  PathwayTaskDetailDto,
+  PathwayTasksDto,
+} from './dto/pathway-tasks.dto';
 import { PathwayLearningService } from './pathway-learning.service';
 import { PathwaysController } from './pathways.controller';
 import { PathwaysService } from './pathways.service';
@@ -40,6 +44,18 @@ describe('PathwaysController', () => {
           resourceId: string,
           stepId?: string,
         ) => Promise<PathwayResourceDetailDto>
+      >(),
+    getPathwayTasks:
+      jest.fn<
+        (userId: string, pathwayId: string) => Promise<PathwayTasksDto>
+      >(),
+    getPathwayTask:
+      jest.fn<
+        (
+          userId: string,
+          pathwayId: string,
+          taskId: string,
+        ) => Promise<PathwayTaskDetailDto>
       >(),
   };
 
@@ -87,6 +103,33 @@ describe('PathwaysController', () => {
       'pathway-1',
       'resource-1',
       'step-1',
+    );
+  });
+
+  it('delegates GET /pathways/:pathwayId/tasks with the caller id', async () => {
+    const response = { pathwayId: 'pathway-1' } as PathwayTasksDto;
+    mockPathwayLearningService.getPathwayTasks.mockResolvedValue(response);
+
+    await expect(controller.getPathwayTasks(user, 'pathway-1')).resolves.toBe(
+      response,
+    );
+    expect(mockPathwayLearningService.getPathwayTasks).toHaveBeenCalledWith(
+      'user-1',
+      'pathway-1',
+    );
+  });
+
+  it('delegates GET /pathways/:pathwayId/tasks/:taskId with the caller id', async () => {
+    const response = { id: 'task-1' } as PathwayTaskDetailDto;
+    mockPathwayLearningService.getPathwayTask.mockResolvedValue(response);
+
+    await expect(
+      controller.getPathwayTask(user, 'pathway-1', 'task-1'),
+    ).resolves.toBe(response);
+    expect(mockPathwayLearningService.getPathwayTask).toHaveBeenCalledWith(
+      'user-1',
+      'pathway-1',
+      'task-1',
     );
   });
 });
