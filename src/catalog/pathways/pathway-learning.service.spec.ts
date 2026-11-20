@@ -428,8 +428,7 @@ describe('PathwayLearningService', () => {
         ],
         resources: [],
       });
-     });
-   
+    });
 
     it("reads the task with the caller's ticks and returns the brief", async () => {
       const result = await service.getPathwayTask(
@@ -483,9 +482,9 @@ describe('PathwayLearningService', () => {
       expect(
         mockPrismaService.pathwayStepTask.findFirst,
       ).not.toHaveBeenCalled();
-     });
     });
-  
+  });
+
   describe('getStageQuiz', () => {
     const quizRow = {
       id: 'quiz-1',
@@ -560,6 +559,5 @@ describe('PathwayLearningService', () => {
       ).rejects.toThrow(NotFoundException);
       expect(mockPrismaService.stageQuiz.findFirst).not.toHaveBeenCalled();
     });
-});
-});
+  });
 });
