@@ -1019,11 +1019,12 @@ model QuizAttempt {
   stageQuizId String
   correct     Int
   total       Int
+  answers     Json     @default("[]")
   submittedAt DateTime @default(now())
 
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   stageQuiz StageQuiz @relation(fields: [stageQuizId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, stageQuizId])
   @@index([userId])
+  @@index([userId, stageQuizId, submittedAt])
 }

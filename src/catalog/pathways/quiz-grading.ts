@@ -10,6 +10,7 @@ export interface GradableOption {
 export interface GradableQuestion {
   id: string;
   correctIndex: number;
+  stepId?: string | null;
   options: GradableOption[];
 }
 
@@ -32,6 +33,7 @@ export interface QuizGrade {
   total: number;
   passed: boolean;
   results: QuestionResult[];
+  revisitStepId: string | null;
 }
 
 export const isPassingScore = (correct: number): boolean =>
@@ -41,7 +43,8 @@ export const isPassingScore = (correct: number): boolean =>
  * Grades a submission. One result per question, in the order given. A missing
  * answer, or an option that belongs to another question, is wrong. The first
  * answer sent for a question counts, and answers to unknown questions are
- * ignored. Nothing is read or written outside the arguments.
+ * ignored. The revisit step comes from the first wrong question that has a
+ * step. Nothing is read or written outside the arguments.
  */
 export function gradeQuiz(
   questions: readonly GradableQuestion[],
@@ -74,11 +77,16 @@ export function gradeQuiz(
   });
 
   const correct = results.filter(({ isCorrect }) => isCorrect).length;
+  const revisitStepId =
+    questions.find(
+      (question, i) => !results[i].isCorrect && question.stepId != null,
+    )?.stepId ?? null;
 
   return {
     correct,
     total: questions.length,
     passed: isPassingScore(correct),
     results,
+    revisitStepId,
   };
 }
