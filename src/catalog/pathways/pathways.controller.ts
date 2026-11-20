@@ -25,6 +25,7 @@ import {
   PathwayResourcesDto,
 } from './dto/pathway-resources.dto';
 import { GetPathwayResourceQueryDto } from './dto/get-pathway-resource-query.dto';
+import { StageQuizDto } from './dto/stage-quiz.dto';
 
 @ApiTags('Pathways')
 @Controller('pathways')
@@ -112,6 +113,39 @@ export class PathwaysController {
       pathwayId,
       resourceId,
       query.stepId,
+    );
+  }
+
+  @Get(':pathwayId/stages/:stageId/quiz')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: "Get a stage's quiz questions",
+    description:
+      'The quiz questions with their options, in display order. The correct option is never returned. Available again after a pass, so the quiz can be retaken. The career must be PUBLISHED, or RETIRED and saved by the caller. Reads only: a quiz never changes a step or stage completion.',
+  })
+  @ApiParam({ name: 'pathwayId', description: 'Pathway UUID' })
+  @ApiParam({ name: 'stageId', description: 'Stage UUID' })
+  @ApiResponse({ status: 200, type: StageQuizDto })
+  @ApiResponse({
+    status: 400,
+    description: 'pathwayId or stageId is not a valid UUID',
+  })
+  @ApiResponse({ status: 401, description: 'Access token missing or invalid' })
+  @ApiResponse({
+    status: 404,
+    description:
+      'Pathway not readable, the stage is not in this pathway, or the stage has no quiz',
+  })
+  async getStageQuiz(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('pathwayId', ParseUUIDPipe) pathwayId: string,
+    @Param('stageId', ParseUUIDPipe) stageId: string,
+  ): Promise<StageQuizDto> {
+    return this.pathwayLearningService.getStageQuiz(
+      user.id,
+      pathwayId,
+      stageId,
     );
   }
 }

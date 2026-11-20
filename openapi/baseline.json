@@ -1858,6 +1858,175 @@
         ]
       }
     },
+    "/pathways/{pathwayId}/resources": {
+      "get": {
+        "description": "Every stage with its self-reported progress and quiz status, every step with its status and its ACTIVE resources, each with the caller's completion. optionalPaidCourses lists the career's PAID courses that no step uses. The career must be PUBLISHED, or RETIRED and saved by the caller. Reads only.",
+        "operationId": "PathwaysController_getPathwayResources",
+        "parameters": [
+          {
+            "name": "pathwayId",
+            "required": true,
+            "in": "path",
+            "description": "Pathway UUID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PathwayResourcesDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "pathwayId is not a valid UUID"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "404": {
+            "description": "Pathway not found, its career is a draft, or it is retired and not saved by the caller"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get the pathway's Resources tab",
+        "tags": [
+          "Pathways"
+        ]
+      }
+    },
+    "/pathways/{pathwayId}/resources/{resourceId}": {
+      "get": {
+        "description": "The resource's description, outcomes and external link, with the caller's completion. With stepId, also the step's usage note and the first task in that step the caller hasn't completed. Reads only.",
+        "operationId": "PathwaysController_getPathwayResource",
+        "parameters": [
+          {
+            "name": "pathwayId",
+            "required": true,
+            "in": "path",
+            "description": "Pathway UUID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "resourceId",
+            "required": true,
+            "in": "path",
+            "description": "Resource UUID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "stepId",
+            "required": false,
+            "in": "query",
+            "description": "The step the resource was opened from; adds its usage note and next task",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PathwayResourceDetailDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "pathwayId, resourceId or stepId is not a valid UUID"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "404": {
+            "description": "Pathway not readable, the resource is withdrawn or not in this pathway, or stepId is not a step in this pathway that uses the resource"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get one resource in a pathway",
+        "tags": [
+          "Pathways"
+        ]
+      }
+    },
+    "/pathways/{pathwayId}/stages/{stageId}/quiz": {
+      "get": {
+        "description": "The quiz questions with their options, in display order. The correct option is never returned. Available again after a pass, so the quiz can be retaken. The career must be PUBLISHED, or RETIRED and saved by the caller. Reads only: a quiz never changes a step or stage completion.",
+        "operationId": "PathwaysController_getStageQuiz",
+        "parameters": [
+          {
+            "name": "pathwayId",
+            "required": true,
+            "in": "path",
+            "description": "Pathway UUID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "stageId",
+            "required": true,
+            "in": "path",
+            "description": "Stage UUID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StageQuizDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "pathwayId or stageId is not a valid UUID"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "404": {
+            "description": "Pathway not readable, the stage is not in this pathway, or the stage has no quiz"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get a stage's quiz questions",
+        "tags": [
+          "Pathways"
+        ]
+      }
+    },
     "/me/active-pathway": {
       "put": {
         "operationId": "MeController_setActivePathway",
@@ -6775,6 +6944,386 @@
           "career",
           "progress",
           "stages"
+        ]
+      },
+      "PathwayResourceItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "example": "The TypeScript Handbook"
+          },
+          "provider": {
+            "type": "string",
+            "example": "Microsoft"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "COURSE",
+              "CERTIFICATION",
+              "ARTICLE",
+              "VIDEO",
+              "BOOK"
+            ]
+          },
+          "costStatus": {
+            "type": "string",
+            "enum": [
+              "FREE",
+              "PAID",
+              "UNKNOWN"
+            ]
+          },
+          "estimatedWeeks": {
+            "type": "number",
+            "nullable": true,
+            "example": 2
+          },
+          "lastCheckedDate": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the link was last checked"
+          },
+          "isCompleted": {
+            "type": "boolean",
+            "example": false
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "provider",
+          "type",
+          "costStatus",
+          "estimatedWeeks",
+          "lastCheckedDate",
+          "isCompleted",
+          "completedAt"
+        ]
+      },
+      "PathwayResourcesStepDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "example": "Learn TypeScript Basics"
+          },
+          "order": {
+            "type": "number",
+            "example": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "NOT_STARTED",
+              "IN_PROGRESS",
+              "COMPLETED"
+            ]
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "resources": {
+            "description": "ACTIVE resources only",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PathwayResourceItemDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "order",
+          "status",
+          "completedAt",
+          "resources"
+        ]
+      },
+      "PathwayResourcesStageDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "example": "Language foundations"
+          },
+          "order": {
+            "type": "number",
+            "example": 1
+          },
+          "progress": {
+            "description": "Self-reported step completion within the stage",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PathwayReadStageProgressDto"
+              }
+            ]
+          },
+          "quiz": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/StageQuizStatusNotTaken"
+              },
+              {
+                "$ref": "#/components/schemas/StageQuizStatusTaken"
+              }
+            ],
+            "nullable": true,
+            "description": "Null when the stage has no quiz"
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PathwayResourcesStepDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "order",
+          "progress",
+          "quiz",
+          "steps"
+        ]
+      },
+      "PathwayResourcesDto": {
+        "type": "object",
+        "properties": {
+          "pathwayId": {
+            "type": "string"
+          },
+          "stages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PathwayResourcesStageDto"
+            }
+          },
+          "optionalPaidCourses": {
+            "description": "The career's PAID courses that no step in this pathway uses",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PathwayResourceItemDto"
+            }
+          }
+        },
+        "required": [
+          "pathwayId",
+          "stages",
+          "optionalPaidCourses"
+        ]
+      },
+      "PathwayResourceNextTaskDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "example": "Build a typed API client"
+          },
+          "goal": {
+            "type": "string",
+            "example": "Practise generics on a real request helper"
+          },
+          "estimatedWeeks": {
+            "type": "number",
+            "nullable": true,
+            "example": 1
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "goal",
+          "estimatedWeeks"
+        ]
+      },
+      "PathwayResourceDetailDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "example": "The TypeScript Handbook"
+          },
+          "provider": {
+            "type": "string",
+            "example": "Microsoft"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "COURSE",
+              "CERTIFICATION",
+              "ARTICLE",
+              "VIDEO",
+              "BOOK"
+            ]
+          },
+          "costStatus": {
+            "type": "string",
+            "enum": [
+              "FREE",
+              "PAID",
+              "UNKNOWN"
+            ]
+          },
+          "estimatedWeeks": {
+            "type": "number",
+            "nullable": true,
+            "example": 2
+          },
+          "lastCheckedDate": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the link was last checked"
+          },
+          "isCompleted": {
+            "type": "boolean",
+            "example": false
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "outcomes": {
+            "example": [
+              "Write type-safe functions"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "url": {
+            "type": "string",
+            "example": "https://www.typescriptlang.org/docs/handbook/"
+          },
+          "usageNote": {
+            "type": "string",
+            "nullable": true,
+            "description": "How to use this resource in the requested step"
+          },
+          "nextTask": {
+            "nullable": true,
+            "description": "The first task in the requested step the user hasn't completed",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PathwayResourceNextTaskDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "provider",
+          "type",
+          "costStatus",
+          "estimatedWeeks",
+          "lastCheckedDate",
+          "isCompleted",
+          "completedAt",
+          "description",
+          "outcomes",
+          "url",
+          "usageNote",
+          "nextTask"
+        ]
+      },
+      "StageQuizOptionDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Send this id as the answer"
+          },
+          "text": {
+            "type": "string",
+            "example": "A closure"
+          }
+        },
+        "required": [
+          "id",
+          "text"
+        ]
+      },
+      "StageQuizQuestionDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "prompt": {
+            "type": "string",
+            "example": "Which keyword declares a constant?"
+          },
+          "options": {
+            "description": "In display order",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StageQuizOptionDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "prompt",
+          "options"
+        ]
+      },
+      "StageQuizDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "stageId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "questions": {
+            "description": "In display order",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StageQuizQuestionDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "stageId",
+          "questions"
         ]
       },
       "SetActivePathwayDto": {
