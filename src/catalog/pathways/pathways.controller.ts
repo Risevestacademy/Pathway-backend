@@ -28,12 +28,14 @@ import {
   PathwayResourcesDto,
 } from './dto/pathway-resources.dto';
 import { GetPathwayResourceQueryDto } from './dto/get-pathway-resource-query.dto';
+import { PathwayTaskDetailDto, PathwayTasksDto } from './dto/pathway-tasks.dto';
 import { StageQuizDto } from './dto/stage-quiz.dto';
 import {
   StageQuizResultDto,
   SubmitStageQuizResponseDto,
 } from './dto/stage-quiz-result.dto';
 import { SubmitStageQuizDto } from './dto/submit-stage-quiz.dto';
+import { PathwayProgressDto } from './dto/pathway-progress.dto';
 
 @ApiTags('Pathways')
 @Controller('pathways')
@@ -123,6 +125,86 @@ export class PathwaysController {
       resourceId,
       query.stepId,
     );
+  }
+
+  @Get(':pathwayId/tasks')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: "Get the pathway's Practice tasks tab",
+    description:
+      "Every stage with its self-reported progress and quiz status, every step with its status and its tasks, each with the caller's completion and checklist counts. No hints or checklist items. The career must be PUBLISHED, or RETIRED and saved by the caller. Reads only.",
+  })
+  @ApiParam({ name: 'pathwayId', description: 'Pathway UUID' })
+  @ApiResponse({ status: 200, type: PathwayTasksDto })
+  @ApiResponse({ status: 400, description: 'pathwayId is not a valid UUID' })
+  @ApiResponse({ status: 401, description: 'Access token missing or invalid' })
+  @ApiResponse({
+    status: 404,
+    description:
+      'Pathway not found, its career is a draft, or it is retired and not saved by the caller',
+  })
+  async getPathwayTasks(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('pathwayId', ParseUUIDPipe) pathwayId: string,
+  ): Promise<PathwayTasksDto> {
+    return this.pathwayLearningService.getPathwayTasks(user.id, pathwayId);
+  }
+
+  @Get(':pathwayId/tasks/:taskId')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Get one task brief in a pathway',
+    description:
+      "The task with what to make, hints, the checklist with the caller's ticks, and its ACTIVE linked resources. Reads only.",
+  })
+  @ApiParam({ name: 'pathwayId', description: 'Pathway UUID' })
+  @ApiParam({ name: 'taskId', description: 'Task UUID' })
+  @ApiResponse({ status: 200, type: PathwayTaskDetailDto })
+  @ApiResponse({
+    status: 400,
+    description: 'pathwayId or taskId is not a valid UUID',
+  })
+  @ApiResponse({ status: 401, description: 'Access token missing or invalid' })
+  @ApiResponse({
+    status: 404,
+    description: 'Pathway not readable, or the task is not in this pathway',
+  })
+  async getPathwayTask(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('pathwayId', ParseUUIDPipe) pathwayId: string,
+    @Param('taskId', ParseUUIDPipe) taskId: string,
+  ): Promise<PathwayTaskDetailDto> {
+    return this.pathwayLearningService.getPathwayTask(
+      user.id,
+      pathwayId,
+      taskId,
+    );
+  }
+
+  @Get(':pathwayId/progress')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: "Get the pathway's Progress tab",
+    description:
+      "The caller's self-reported overall progress, every stage with its progress and quiz status (best score), the completed steps with the newest first, and the next step with its stage. A pathway the caller hasn't saved shows zero progress. The career must be PUBLISHED, or RETIRED and saved by the caller. Reads only.",
+  })
+  @ApiParam({ name: 'pathwayId', description: 'Pathway UUID' })
+  @ApiResponse({ status: 200, type: PathwayProgressDto })
+  @ApiResponse({ status: 400, description: 'pathwayId is not a valid UUID' })
+  @ApiResponse({ status: 401, description: 'Access token missing or invalid' })
+  @ApiResponse({
+    status: 404,
+    description:
+      'Pathway not found, its career is a draft, or it is retired and not saved by the caller',
+  })
+  async getPathwayProgress(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('pathwayId', ParseUUIDPipe) pathwayId: string,
+  ): Promise<PathwayProgressDto> {
+    return this.pathwayLearningService.getPathwayProgress(user.id, pathwayId);
   }
 
   @Get(':pathwayId/stages/:stageId/quiz')
