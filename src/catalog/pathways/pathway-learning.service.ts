@@ -14,10 +14,19 @@ import {
   toPathwayResourceDetail,
   toPathwayResources,
 } from './mappers/pathway-resources.mapper';
+import { PathwayTaskDetailDto, PathwayTasksDto } from './dto/pathway-tasks.dto';
+import {
+  pathwayTasksStageSelect,
+  taskDetailSelect,
+  taskIdsOf,
+  toPathwayTaskDetail,
+  toPathwayTasks,
+} from './mappers/pathway-tasks.mapper';
 import { stageQuizReadSelect, toStageQuiz } from './mappers/stage-quiz.mapper';
 import {
   assertPathwayReadable,
   assertResourceBelongsToPathway,
+  assertTaskBelongsToPathway,
   loadResourceCompletions,
   loadTaskCompletions,
 } from './pathway-access';
@@ -42,10 +51,7 @@ export class PathwayLearningService {
         orderBy: { order: 'asc' },
         select: pathwayResourcesStageSelect(userId),
       }),
-      this.prisma.userPathwayStep.findMany({
-        where: { userId, pathwayStep: { pathwayId } },
-        select: { pathwayStepId: true, status: true, completedAt: true },
-      }),
+      this.findStepMarks(userId, pathwayId),
       this.prisma.resource.findMany({
         where: optionalPaidCoursesWhere(careerId, pathwayId),
         orderBy: { title: 'asc' },
@@ -126,6 +132,60 @@ export class PathwayLearningService {
       stepLink?.usageNote ?? null,
       tasks.find(({ id }) => !taskCompletions.has(id)) ?? null,
     );
+  }
+
+  async getPathwayTasks(
+    userId: string,
+    pathwayId: string,
+  ): Promise<PathwayTasksDto> {
+    await assertPathwayReadable(this.prisma, pathwayId, userId);
+
+    const [stages, marks, checks] = await Promise.all([
+      this.prisma.pathwayStage.findMany({
+        where: { pathwayId },
+        orderBy: { order: 'asc' },
+        select: pathwayTasksStageSelect(userId),
+      }),
+      this.findStepMarks(userId, pathwayId),
+      this.prisma.userTaskChecklistItem.findMany({
+        where: { userId, item: { task: { step: { pathwayId } } } },
+        select: { item: { select: { taskId: true } } },
+      }),
+    ]);
+
+    const completions = await loadTaskCompletions(
+      this.prisma,
+      userId,
+      taskIdsOf(stages),
+    );
+
+    return toPathwayTasks(pathwayId, stages, marks, checks, completions);
+  }
+
+  async getPathwayTask(
+    userId: string,
+    pathwayId: string,
+    taskId: string,
+  ): Promise<PathwayTaskDetailDto> {
+    await assertPathwayReadable(this.prisma, pathwayId, userId);
+    await assertTaskBelongsToPathway(this.prisma, taskId, pathwayId);
+
+    const [task, completions] = await Promise.all([
+      this.prisma.pathwayStepTask.findUniqueOrThrow({
+        where: { id: taskId },
+        select: taskDetailSelect(userId),
+      }),
+      loadTaskCompletions(this.prisma, userId, [taskId]),
+    ]);
+
+    return toPathwayTaskDetail(task, completions);
+  }
+
+  private findStepMarks(userId: string, pathwayId: string) {
+    return this.prisma.userPathwayStep.findMany({
+      where: { userId, pathwayStep: { pathwayId } },
+      select: { pathwayStepId: true, status: true, completedAt: true },
+    });
   }
 
   async getStageQuiz(

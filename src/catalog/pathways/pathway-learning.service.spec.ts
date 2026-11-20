@@ -13,6 +13,10 @@ import {
   resourceDetailSelect,
   resourceItemSelect,
 } from './mappers/pathway-resources.mapper';
+import {
+  pathwayTasksStageSelect,
+  taskDetailSelect,
+} from './mappers/pathway-tasks.mapper';
 import { PathwayLearningService } from './pathway-learning.service';
 
 describe('PathwayLearningService', () => {
@@ -28,6 +32,8 @@ describe('PathwayLearningService', () => {
     pathwayStepResource: { findFirst: fn() },
     userResourceCompletion: { findMany: fn() },
     userTask: { findMany: fn() },
+    pathwayStepTask: { findFirst: fn(), findUniqueOrThrow: fn() },
+    userTaskChecklistItem: { findMany: fn() },
     stageQuiz: { findFirst: fn() },
   };
 
@@ -79,6 +85,11 @@ describe('PathwayLearningService', () => {
     });
     mockPrismaService.userResourceCompletion.findMany.mockResolvedValue([]);
     mockPrismaService.userTask.findMany.mockResolvedValue([]);
+    mockPrismaService.pathwayStepTask.findFirst.mockResolvedValue({
+      id: 'task-1',
+      stepId: 'step-1',
+    });
+    mockPrismaService.userTaskChecklistItem.findMany.mockResolvedValue([]);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -284,6 +295,193 @@ describe('PathwayLearningService', () => {
         service.getPathwayResource('user-1', 'pathway-1', 'resource-1'),
       ).rejects.toThrow(NotFoundException);
       expect(mockPrismaService.resource.findFirst).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getPathwayTasks', () => {
+    const taskStagesWith = (stepCount: number) => [
+      {
+        id: 'stage-1',
+        title: 'Stage A',
+        order: 1,
+        quiz: null,
+        steps: Array.from({ length: stepCount }, (_, i) => ({
+          id: `step-${i + 1}`,
+          title: `Step ${i + 1}`,
+          order: i + 1,
+          tasks: [
+            {
+              id: `task-${i + 1}`,
+              title: `Task ${i + 1}`,
+              goal: 'Build it',
+              estimatedWeeks: null,
+              _count: { checklistItems: 2 },
+            },
+          ],
+        })),
+      },
+    ];
+
+    beforeEach(() => {
+      mockPrismaService.pathwayStage.findMany.mockResolvedValue(
+        taskStagesWith(2),
+      );
+    });
+
+    it("reads the stages with tasks, the marks and only the caller's checklist ticks", async () => {
+      await service.getPathwayTasks('user-1', 'pathway-1');
+
+      expect(mockPrismaService.pathwayStage.findMany).toHaveBeenCalledWith({
+        where: { pathwayId: 'pathway-1' },
+        orderBy: { order: 'asc' },
+        select: pathwayTasksStageSelect('user-1'),
+      });
+      expect(mockPrismaService.userPathwayStep.findMany).toHaveBeenCalledWith({
+        where: { userId: 'user-1', pathwayStep: { pathwayId: 'pathway-1' } },
+        select: { pathwayStepId: true, status: true, completedAt: true },
+      });
+      expect(
+        mockPrismaService.userTaskChecklistItem.findMany,
+      ).toHaveBeenCalledWith({
+        where: {
+          userId: 'user-1',
+          item: { task: { step: { pathwayId: 'pathway-1' } } },
+        },
+        select: { item: { select: { taskId: true } } },
+      });
+    });
+
+    it("maps the caller's task completions and checklist counts", async () => {
+      mockPrismaService.userTask.findMany.mockResolvedValue([
+        { taskId: 'task-1', completedAt },
+      ]);
+      mockPrismaService.userTaskChecklistItem.findMany.mockResolvedValue([
+        { item: { taskId: 'task-1' } },
+      ]);
+
+      const result = await service.getPathwayTasks('user-1', 'pathway-1');
+
+      expect(mockPrismaService.userTask.findMany).toHaveBeenCalledWith({
+        where: {
+          userId: 'user-1',
+          taskId: { in: ['task-1', 'task-2'] },
+          completedAt: { not: null },
+        },
+        select: { taskId: true, completedAt: true },
+      });
+      expect(result.stages[0].steps[0].tasks[0]).toMatchObject({
+        id: 'task-1',
+        isCompleted: true,
+        completedAt,
+        checklistChecked: 1,
+        checklistTotal: 2,
+      });
+      expect(result.stages[0].steps[1].tasks[0]).toMatchObject({
+        isCompleted: false,
+        checklistChecked: 0,
+      });
+    });
+
+    it('makes the same number of queries for a 4-step and a 16-step pathway', async () => {
+      mockPrismaService.pathwayStage.findMany.mockResolvedValue(
+        taskStagesWith(4),
+      );
+      await service.getPathwayTasks('user-1', 'pathway-1');
+      const fourSteps = totalCalls();
+
+      jest.clearAllMocks();
+      mockPrismaService.pathwayStage.findMany.mockResolvedValue(
+        taskStagesWith(16),
+      );
+      await service.getPathwayTasks('user-1', 'pathway-1');
+
+      expect(totalCalls()).toBe(fourSteps);
+    });
+
+    it('throws NotFoundException for an unreadable pathway', async () => {
+      mockPrismaService.pathway.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.getPathwayTasks('user-1', 'pathway-1'),
+      ).rejects.toThrow(NotFoundException);
+      expect(mockPrismaService.pathwayStage.findMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getPathwayTask', () => {
+    beforeEach(() => {
+      mockPrismaService.pathwayStepTask.findUniqueOrThrow.mockResolvedValue({
+        id: 'task-1',
+        title: 'Task 1',
+        goal: 'Build it',
+        estimatedWeeks: 1,
+        _count: { checklistItems: 1 },
+        stepId: 'step-1',
+        whatToMake: ['A page'],
+        hints: ['Start small'],
+        checklistItems: [
+          {
+            id: 'item-1',
+            text: 'Check it',
+            userChecks: [{ checkedAt: completedAt }],
+          },
+        ],
+        resources: [],
+      });
+    });
+
+    it("reads the task with the caller's ticks and returns the brief", async () => {
+      const result = await service.getPathwayTask(
+        'user-1',
+        'pathway-1',
+        'task-1',
+      );
+
+      expect(mockPrismaService.pathwayStepTask.findFirst).toHaveBeenCalledWith({
+        where: { id: 'task-1', step: { pathwayId: 'pathway-1' } },
+        select: { id: true, stepId: true },
+      });
+      expect(
+        mockPrismaService.pathwayStepTask.findUniqueOrThrow,
+      ).toHaveBeenCalledWith({
+        where: { id: 'task-1' },
+        select: taskDetailSelect('user-1'),
+      });
+      expect(
+        taskDetailSelect('user-1').checklistItems.select.userChecks.where,
+      ).toEqual({ userId: 'user-1' });
+      expect(taskDetailSelect('user-1').resources.where).toEqual({
+        resource: { status: ResourceStatus.ACTIVE },
+      });
+      expect(result).toMatchObject({
+        id: 'task-1',
+        stepId: 'step-1',
+        checklistChecked: 1,
+        checklistTotal: 1,
+        checklist: [{ id: 'item-1', isChecked: true }],
+      });
+    });
+
+    it('throws NotFoundException for a task from another pathway', async () => {
+      mockPrismaService.pathwayStepTask.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.getPathwayTask('user-1', 'pathway-1', 'task-9'),
+      ).rejects.toThrow(NotFoundException);
+      expect(
+        mockPrismaService.pathwayStepTask.findUniqueOrThrow,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException for an unreadable pathway', async () => {
+      mockPrismaService.pathway.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.getPathwayTask('user-1', 'pathway-1', 'task-1'),
+      ).rejects.toThrow(NotFoundException);
+      expect(
+        mockPrismaService.pathwayStepTask.findFirst,
+      ).not.toHaveBeenCalled();
     });
   });
 
