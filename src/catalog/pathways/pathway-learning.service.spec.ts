@@ -7,6 +7,7 @@ import {
   ResourceType,
 } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma';
+import { stageQuizReadSelect } from './mappers/stage-quiz.mapper';
 import {
   pathwayResourcesStageSelect,
   resourceDetailSelect,
@@ -33,6 +34,7 @@ describe('PathwayLearningService', () => {
     userTask: { findMany: fn() },
     pathwayStepTask: { findFirst: fn(), findUniqueOrThrow: fn() },
     userTaskChecklistItem: { findMany: fn() },
+    stageQuiz: { findFirst: fn() },
   };
 
   const lastCheckedDate = new Date('2026-11-01T00:00:00.000Z');
@@ -426,7 +428,8 @@ describe('PathwayLearningService', () => {
         ],
         resources: [],
       });
-    });
+     });
+   
 
     it("reads the task with the caller's ticks and returns the brief", async () => {
       const result = await service.getPathwayTask(
@@ -480,6 +483,83 @@ describe('PathwayLearningService', () => {
       expect(
         mockPrismaService.pathwayStepTask.findFirst,
       ).not.toHaveBeenCalled();
+     });
     });
-  });
+  
+  describe('getStageQuiz', () => {
+    const quizRow = {
+      id: 'quiz-1',
+      stageId: 'stage-1',
+      questions: [
+        {
+          id: 'q1',
+          prompt: 'Which one?',
+          options: [
+            { id: 'q1-o0', text: 'A' },
+            { id: 'q1-o1', text: 'B' },
+            { id: 'q1-o2', text: 'C' },
+            { id: 'q1-o3', text: 'D' },
+          ],
+        },
+      ],
+    };
+
+    beforeEach(() => {
+      mockPrismaService.stageQuiz.findFirst.mockResolvedValue(quizRow);
+    });
+
+    it('reads the quiz of a stage in this pathway with the answer-free select', async () => {
+      await service.getStageQuiz('user-1', 'pathway-1', 'stage-1');
+
+      expect(mockPrismaService.stageQuiz.findFirst).toHaveBeenCalledWith({
+        where: { stageId: 'stage-1', stage: { pathwayId: 'pathway-1' } },
+        select: stageQuizReadSelect,
+      });
+    });
+
+    it('returns the questions and options', async () => {
+      await expect(
+        service.getStageQuiz('user-1', 'pathway-1', 'stage-1'),
+      ).resolves.toEqual(quizRow);
+    });
+
+    it('never returns a correct option', async () => {
+      mockPrismaService.stageQuiz.findFirst.mockResolvedValue({
+        ...quizRow,
+        questions: [{ ...quizRow.questions[0], correctIndex: 2 }],
+      });
+
+      const result = await service.getStageQuiz(
+        'user-1',
+        'pathway-1',
+        'stage-1',
+      );
+
+      expect(JSON.stringify(result)).not.toMatch(/correct/i);
+    });
+
+    it('does not look at earlier attempts, so a quiz can be retaken', async () => {
+      await service.getStageQuiz('user-1', 'pathway-1', 'stage-1');
+
+      expect(totalCalls()).toBe(2);
+    });
+
+    it('throws NotFoundException for a stage of another pathway or one with no quiz', async () => {
+      mockPrismaService.stageQuiz.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.getStageQuiz('user-1', 'pathway-1', 'stage-9'),
+      ).rejects.toThrow(new NotFoundException('Quiz not found'));
+    });
+
+    it('throws NotFoundException for an unreadable pathway and reads no quiz', async () => {
+      mockPrismaService.pathway.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.getStageQuiz('user-1', 'pathway-1', 'stage-1'),
+      ).rejects.toThrow(NotFoundException);
+      expect(mockPrismaService.stageQuiz.findFirst).not.toHaveBeenCalled();
+    });
+});
+});
 });

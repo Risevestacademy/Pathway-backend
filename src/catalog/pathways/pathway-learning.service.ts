@@ -4,6 +4,7 @@ import {
   PathwayResourceDetailDto,
   PathwayResourcesDto,
 } from './dto/pathway-resources.dto';
+import { StageQuizDto } from './dto/stage-quiz.dto';
 import {
   optionalPaidCoursesWhere,
   pathwayResourcesStageSelect,
@@ -21,6 +22,7 @@ import {
   toPathwayTaskDetail,
   toPathwayTasks,
 } from './mappers/pathway-tasks.mapper';
+import { stageQuizReadSelect, toStageQuiz } from './mappers/stage-quiz.mapper';
 import {
   assertPathwayReadable,
   assertResourceBelongsToPathway,
@@ -184,5 +186,24 @@ export class PathwayLearningService {
       where: { userId, pathwayStep: { pathwayId } },
       select: { pathwayStepId: true, status: true, completedAt: true },
     });
+  };
+  
+
+  async getStageQuiz(
+    userId: string,
+    pathwayId: string,
+    stageId: string,
+  ): Promise<StageQuizDto> {
+    await assertPathwayReadable(this.prisma, pathwayId, userId);
+
+    const quiz = await this.prisma.stageQuiz.findFirst({
+      where: { stageId, stage: { pathwayId } },
+      select: stageQuizReadSelect,
+    });
+    if (!quiz) throw new NotFoundException('Quiz not found');
+
+    return toStageQuiz(quiz);
   }
 }
+};
+

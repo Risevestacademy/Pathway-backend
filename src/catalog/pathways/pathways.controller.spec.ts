@@ -11,6 +11,7 @@ import type {
   PathwayTaskDetailDto,
   PathwayTasksDto,
 } from './dto/pathway-tasks.dto';
+import type { StageQuizDto } from './dto/stage-quiz.dto';
 import { PathwayLearningService } from './pathway-learning.service';
 import { PathwaysController } from './pathways.controller';
 import { PathwaysService } from './pathways.service';
@@ -56,6 +57,14 @@ describe('PathwaysController', () => {
           pathwayId: string,
           taskId: string,
         ) => Promise<PathwayTaskDetailDto>
+      >(),
+    getStageQuiz:
+      jest.fn<
+        (
+          userId: string,
+          pathwayId: string,
+          stageId: string,
+        ) => Promise<StageQuizDto>
       >(),
   };
 
@@ -130,6 +139,20 @@ describe('PathwaysController', () => {
       'user-1',
       'pathway-1',
       'task-1',
+    );
+  });
+
+  it('delegates GET /pathways/:pathwayId/stages/:stageId/quiz with the caller id', async () => {
+    const response = { id: 'quiz-1' } as StageQuizDto;
+    mockPathwayLearningService.getStageQuiz.mockResolvedValue(response);
+
+    await expect(
+      controller.getStageQuiz(user, 'pathway-1', 'stage-1'),
+    ).resolves.toBe(response);
+    expect(mockPathwayLearningService.getStageQuiz).toHaveBeenCalledWith(
+      'user-1',
+      'pathway-1',
+      'stage-1',
     );
   });
 });
