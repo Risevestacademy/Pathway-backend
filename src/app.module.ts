@@ -24,6 +24,7 @@ import { RevisionsModule } from './catalog/content-revisions/content-revisions.m
 import { OpportunitiesModule } from './opportunities';
 import { CloudinaryModule } from './cloudinary/cloudinary.module';
 import { DashboardModule } from './dashboard';
+import { RevisionsModule } from './revisions/revisions.module';
 
 @Module({
   imports: [
