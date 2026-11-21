@@ -13,9 +13,15 @@ import type {
 } from './dto/pathway-tasks.dto';
 import type { PathwayProgressDto } from './dto/pathway-progress.dto';
 import type { StageQuizDto } from './dto/stage-quiz.dto';
+import type {
+  StageQuizResultDto,
+  SubmitStageQuizResponseDto,
+} from './dto/stage-quiz-result.dto';
 import { PathwayLearningService } from './pathway-learning.service';
 import { PathwaysController } from './pathways.controller';
+import type { QuizAnswer } from './quiz-grading';
 import { PathwaysService } from './pathways.service';
+import { StageQuizService } from './stage-quiz.service';
 
 describe('PathwaysController', () => {
   let controller: PathwaysController;
@@ -73,6 +79,26 @@ describe('PathwaysController', () => {
       >(),
   };
 
+  const mockStageQuizService = {
+    submitStageQuiz:
+      jest.fn<
+        (
+          userId: string,
+          pathwayId: string,
+          stageId: string,
+          answers: readonly QuizAnswer[],
+        ) => Promise<SubmitStageQuizResponseDto>
+      >(),
+    getStageQuizResult:
+      jest.fn<
+        (
+          userId: string,
+          pathwayId: string,
+          stageId: string,
+        ) => Promise<StageQuizResultDto>
+      >(),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
 
@@ -84,6 +110,7 @@ describe('PathwaysController', () => {
           provide: PathwayLearningService,
           useValue: mockPathwayLearningService,
         },
+        { provide: StageQuizService, useValue: mockStageQuizService },
       ],
     }).compile();
 
@@ -172,5 +199,39 @@ describe('PathwaysController', () => {
       'user-1',
       'pathway-1',
     );
+  });
+
+  describe('submitStageQuiz', () => {
+    it('passes the user, the ids and the answers to the service, and returns its result', async () => {
+      const response = { xpAwarded: 20 } as SubmitStageQuizResponseDto;
+      const answers = [{ questionId: 'q-1', optionId: 'o-1' }];
+      mockStageQuizService.submitStageQuiz.mockResolvedValue(response);
+
+      await expect(
+        controller.submitStageQuiz(user, 'pathway-1', 'stage-1', { answers }),
+      ).resolves.toBe(response);
+      expect(mockStageQuizService.submitStageQuiz).toHaveBeenCalledWith(
+        'user-1',
+        'pathway-1',
+        'stage-1',
+        answers,
+      );
+    });
+  });
+
+  describe('getStageQuizResult', () => {
+    it('passes the user and the ids to the service and returns its result', async () => {
+      const response = { quizId: 'quiz-1' } as StageQuizResultDto;
+      mockStageQuizService.getStageQuizResult.mockResolvedValue(response);
+
+      await expect(
+        controller.getStageQuizResult(user, 'pathway-1', 'stage-1'),
+      ).resolves.toBe(response);
+      expect(mockStageQuizService.getStageQuizResult).toHaveBeenCalledWith(
+        'user-1',
+        'pathway-1',
+        'stage-1',
+      );
+    });
   });
 });

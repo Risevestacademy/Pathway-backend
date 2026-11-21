@@ -2027,6 +2027,131 @@
         ]
       }
     },
+    "/pathways/{pathwayId}/stages/{stageId}/quiz/submit": {
+      "post": {
+        "description": "Grades the answers and stores an attempt every time. The first submit of a quiz awards 20 XP, whatever the score; a retake awards 0. The response has the score, the pass label, the next step, the step to revisit and a breakdown with the answer texts. A quiz never completes a step. The career must be PUBLISHED, or RETIRED, and saved by the caller.",
+        "operationId": "PathwaysController_submitStageQuiz",
+        "parameters": [
+          {
+            "name": "pathwayId",
+            "required": true,
+            "in": "path",
+            "description": "Pathway UUID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "stageId",
+            "required": true,
+            "in": "path",
+            "description": "Stage UUID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitStageQuizDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmitStageQuizResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "An id is not a valid UUID, or the body is invalid"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "404": {
+            "description": "Pathway not readable, the stage is not in this pathway, or the stage has no quiz"
+          },
+          "409": {
+            "description": "The user hasn't saved this pathway's career"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Submit a stage quiz's answers",
+        "tags": [
+          "Pathways"
+        ]
+      }
+    },
+    "/pathways/{pathwayId}/stages/{stageId}/quiz/result": {
+      "get": {
+        "description": "The caller's latest attempt, with the score and a breakdown with the answer texts. It has no XP field. The career must be PUBLISHED, or RETIRED and saved by the caller. Reads only.",
+        "operationId": "PathwaysController_getStageQuizResult",
+        "parameters": [
+          {
+            "name": "pathwayId",
+            "required": true,
+            "in": "path",
+            "description": "Pathway UUID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "stageId",
+            "required": true,
+            "in": "path",
+            "description": "Stage UUID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StageQuizResultDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "pathwayId or stageId is not a valid UUID"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "404": {
+            "description": "Pathway not readable, the stage is not in this pathway, the stage has no quiz, or the caller has not submitted it"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get the latest result of a stage quiz",
+        "tags": [
+          "Pathways"
+        ]
+      }
+    },
     "/me/active-pathway": {
       "put": {
         "operationId": "MeController_setActivePathway",
@@ -7324,6 +7449,215 @@
           "id",
           "stageId",
           "questions"
+        ]
+      },
+      "QuizAnswerDto": {
+        "type": "object",
+        "properties": {
+          "questionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "optionId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The id of the chosen option, from the quiz response"
+          }
+        },
+        "required": [
+          "questionId",
+          "optionId"
+        ]
+      },
+      "SubmitStageQuizDto": {
+        "type": "object",
+        "properties": {
+          "answers": {
+            "description": "One answer per question. A question left out counts as wrong. If a question is answered twice, the first answer counts.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QuizAnswerDto"
+            }
+          }
+        },
+        "required": [
+          "answers"
+        ]
+      },
+      "StageQuizScoreDto": {
+        "type": "object",
+        "properties": {
+          "correct": {
+            "type": "number",
+            "example": 4
+          },
+          "total": {
+            "type": "number",
+            "example": 5
+          }
+        },
+        "required": [
+          "correct",
+          "total"
+        ]
+      },
+      "StageQuizBreakdownItemDto": {
+        "type": "object",
+        "properties": {
+          "questionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "prompt": {
+            "type": "string",
+            "example": "Which keyword declares a constant?"
+          },
+          "selectedOptionId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "selectedOptionText": {
+            "type": "string",
+            "nullable": true,
+            "description": "Null when the question was not answered"
+          },
+          "correctOptionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "correctOptionText": {
+            "type": "string",
+            "example": "const"
+          },
+          "isCorrect": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "questionId",
+          "prompt",
+          "selectedOptionId",
+          "selectedOptionText",
+          "correctOptionId",
+          "correctOptionText",
+          "isCorrect"
+        ]
+      },
+      "StageQuizStreakDto": {
+        "type": "object",
+        "properties": {
+          "current": {
+            "type": "number",
+            "example": 3
+          },
+          "longest": {
+            "type": "number",
+            "example": 7
+          }
+        },
+        "required": [
+          "current",
+          "longest"
+        ]
+      },
+      "SubmitStageQuizResponseDto": {
+        "type": "object",
+        "properties": {
+          "quizId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "score": {
+            "$ref": "#/components/schemas/StageQuizScoreDto"
+          },
+          "passed": {
+            "type": "boolean",
+            "description": "Whether the score reaches the pass mark. A label only."
+          },
+          "revisitStepId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "The step of the first wrong question that has one, else null"
+          },
+          "breakdown": {
+            "description": "One item per question, in display order",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StageQuizBreakdownItemDto"
+            }
+          },
+          "submittedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "xpAwarded": {
+            "type": "number",
+            "example": 20,
+            "description": "XP awarded by this submit: 20 on the first submit of this quiz, 0 after that. The score does not change it."
+          },
+          "nextStepId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "The next step on the pathway, or null when all are done"
+          },
+          "streak": {
+            "$ref": "#/components/schemas/StageQuizStreakDto"
+          }
+        },
+        "required": [
+          "quizId",
+          "score",
+          "passed",
+          "revisitStepId",
+          "breakdown",
+          "submittedAt",
+          "xpAwarded",
+          "nextStepId",
+          "streak"
+        ]
+      },
+      "StageQuizResultDto": {
+        "type": "object",
+        "properties": {
+          "quizId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "score": {
+            "$ref": "#/components/schemas/StageQuizScoreDto"
+          },
+          "passed": {
+            "type": "boolean",
+            "description": "Whether the score reaches the pass mark. A label only."
+          },
+          "revisitStepId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "The step of the first wrong question that has one, else null"
+          },
+          "breakdown": {
+            "description": "One item per question, in display order",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StageQuizBreakdownItemDto"
+            }
+          },
+          "submittedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "quizId",
+          "score",
+          "passed",
+          "revisitStepId",
+          "breakdown",
+          "submittedAt"
         ]
       },
       "SetActivePathwayDto": {

@@ -1,8 +1,10 @@
 import {
+  Body,
   Controller,
   Get,
   Param,
   ParseUUIDPipe,
+  Post,
   Query,
   Req,
   UseGuards,
@@ -19,6 +21,7 @@ import type { AuthenticatedUser } from '../../common';
 import { CurrentUser, JwtAuthGuard, OptionalJwtAuthGuard } from '../../common';
 import { PathwaysService } from './pathways.service';
 import { PathwayLearningService } from './pathway-learning.service';
+import { StageQuizService } from './stage-quiz.service';
 import { PathwayReadDto } from './dto/pathway-read.dto';
 import {
   PathwayResourceDetailDto,
@@ -27,6 +30,11 @@ import {
 import { GetPathwayResourceQueryDto } from './dto/get-pathway-resource-query.dto';
 import { PathwayTaskDetailDto, PathwayTasksDto } from './dto/pathway-tasks.dto';
 import { StageQuizDto } from './dto/stage-quiz.dto';
+import {
+  StageQuizResultDto,
+  SubmitStageQuizResponseDto,
+} from './dto/stage-quiz-result.dto';
+import { SubmitStageQuizDto } from './dto/submit-stage-quiz.dto';
 import { PathwayProgressDto } from './dto/pathway-progress.dto';
 
 @ApiTags('Pathways')
@@ -35,6 +43,7 @@ export class PathwaysController {
   constructor(
     private readonly pathwaysService: PathwaysService,
     private readonly pathwayLearningService: PathwayLearningService,
+    private readonly stageQuizService: StageQuizService,
   ) {}
 
   @Get(':pathwayId')
@@ -225,6 +234,78 @@ export class PathwaysController {
     @Param('stageId', ParseUUIDPipe) stageId: string,
   ): Promise<StageQuizDto> {
     return this.pathwayLearningService.getStageQuiz(
+      user.id,
+      pathwayId,
+      stageId,
+    );
+  }
+
+  @Post(':pathwayId/stages/:stageId/quiz/submit')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: "Submit a stage quiz's answers",
+    description:
+      'Grades the answers and stores an attempt every time. The first submit of a quiz awards 20 XP, whatever the score; a retake awards 0. The response has the score, the pass label, the next step, the step to revisit and a breakdown with the answer texts. A quiz never completes a step. The career must be PUBLISHED, or RETIRED, and saved by the caller.',
+  })
+  @ApiParam({ name: 'pathwayId', description: 'Pathway UUID' })
+  @ApiParam({ name: 'stageId', description: 'Stage UUID' })
+  @ApiResponse({ status: 201, type: SubmitStageQuizResponseDto })
+  @ApiResponse({
+    status: 400,
+    description: 'An id is not a valid UUID, or the body is invalid',
+  })
+  @ApiResponse({ status: 401, description: 'Access token missing or invalid' })
+  @ApiResponse({
+    status: 404,
+    description:
+      'Pathway not readable, the stage is not in this pathway, or the stage has no quiz',
+  })
+  @ApiResponse({
+    status: 409,
+    description: "The user hasn't saved this pathway's career",
+  })
+  async submitStageQuiz(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('pathwayId', ParseUUIDPipe) pathwayId: string,
+    @Param('stageId', ParseUUIDPipe) stageId: string,
+    @Body() dto: SubmitStageQuizDto,
+  ): Promise<SubmitStageQuizResponseDto> {
+    return this.stageQuizService.submitStageQuiz(
+      user.id,
+      pathwayId,
+      stageId,
+      dto.answers,
+    );
+  }
+
+  @Get(':pathwayId/stages/:stageId/quiz/result')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Get the latest result of a stage quiz',
+    description:
+      "The caller's latest attempt, with the score and a breakdown with the answer texts. It has no XP field. The career must be PUBLISHED, or RETIRED and saved by the caller. Reads only.",
+  })
+  @ApiParam({ name: 'pathwayId', description: 'Pathway UUID' })
+  @ApiParam({ name: 'stageId', description: 'Stage UUID' })
+  @ApiResponse({ status: 200, type: StageQuizResultDto })
+  @ApiResponse({
+    status: 400,
+    description: 'pathwayId or stageId is not a valid UUID',
+  })
+  @ApiResponse({ status: 401, description: 'Access token missing or invalid' })
+  @ApiResponse({
+    status: 404,
+    description:
+      'Pathway not readable, the stage is not in this pathway, the stage has no quiz, or the caller has not submitted it',
+  })
+  async getStageQuizResult(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('pathwayId', ParseUUIDPipe) pathwayId: string,
+    @Param('stageId', ParseUUIDPipe) stageId: string,
+  ): Promise<StageQuizResultDto> {
+    return this.stageQuizService.getStageQuizResult(
       user.id,
       pathwayId,
       stageId,
