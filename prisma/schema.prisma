@@ -133,19 +133,6 @@ enum SkillImportance {
   NICE_TO_HAVE
 }
 
-enum RevisionStatus {
-  DRAFT
-  IN_REVIEW
-  APPROVED
-  REJECTED
-  PUBLISHED
-}
-
-enum ReviewDecision {
-  APPROVED
-  REJECTED
-}
-
 enum OpportunityType {
   INTERNSHIP
   JOB
@@ -191,6 +178,35 @@ enum UserSkillStatus {
   NOT_SURE
 }
 
+enum ContentType {
+  CAREER
+  PATHWAY
+  PATHWAY_STAGE
+  PATHWAY_STEP
+  PATHWAY_STEP_TASK
+  RESOURCE
+  SKILL
+  OUTLOOK
+  SOURCE
+  STAGE_QUIZ
+  QUIZ_QUESTION
+}
+
+enum RevisionStatus {
+  DRAFT
+  IN_REVIEW
+  CHANGES_REQUESTED
+  APPROVED
+  REJECTED
+  PUBLISHED
+}
+
+enum ReviewDecision {
+  APPROVED
+  CHANGES_REQUESTED
+  REJECTED
+}
+
 model User {
   id               String    @id @default(uuid())
   email            String    @unique
@@ -229,6 +245,7 @@ model User {
   badges                  UserBadge[]
   activityLedger          ActivityLedger[]
   feedbackNotes           FeedbackNote[]
+  revisionSessions        RevisionSession[]
 }
 
 model UserProfile {
@@ -249,9 +266,9 @@ model UserProfile {
   careerInterests      String[]         @default([])
   careerStage          TargetLevel?
 
-  institution          String?
-  yearFinished         Int?
-  courseOfStudy        String?
+  institution   String?
+  yearFinished  Int?
+  courseOfStudy String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -667,13 +684,13 @@ model UserResourceCompletion {
 }
 
 model UserSkill {
-  id        String   @id @default(uuid())
+  id        String          @id @default(uuid())
   userId    String
   skillId   String
   status    UserSkillStatus @default(NOT_SURE)
   rating    Int?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
 
   user     User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   skill    Skill               @relation(fields: [skillId], references: [id], onDelete: Cascade)
@@ -774,6 +791,8 @@ model Source {
   url           String?
   lastCheckedAt DateTime?
   verifiedById  String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @default(now()) @updatedAt
 
   verifiedBy User? @relation(fields: [verifiedById], references: [id], onDelete: SetNull)
 
@@ -784,6 +803,9 @@ model Source {
 
 model ContentRevision {
   id          String         @id @default(uuid())
+  contentType ContentType
+  contentId   String
+  sessionId   String?
   careerId    String
   baseVersion Int
   snapshot    Json
@@ -791,27 +813,67 @@ model ContentRevision {
   createdById String
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
+  publishedAt DateTime?
 
-  career    Career   @relation(fields: [careerId], references: [id], onDelete: Cascade)
-  createdBy User     @relation(fields: [createdById], references: [id])
+  career        Career                        @relation(fields: [careerId], references: [id], onDelete: Cascade)
+  createdBy     User                          @relation(fields: [createdById], references: [id])
+  session       RevisionSession?              @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  reviews       Review[]
+  publishEvents ContentRevisionPublishEvent[]
+
+  @@unique([sessionId, contentType, contentId])
+  @@index([contentType, contentId, status])
+  @@index([careerId])
+  @@index([sessionId])
+  @@index([createdById])
+}
+
+model RevisionSession {
+  id          String         @id @default(uuid())
+  contextType ContentType
+  contextId   String
+  status      RevisionStatus @default(DRAFT)
+  createdById String
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  submittedAt DateTime?
+  publishedAt DateTime?
+
+  createdBy User              @relation(fields: [createdById], references: [id])
+  revisions ContentRevision[]
   reviews   Review[]
 
-  @@index([careerId])
+  @@index([contextType, contextId, status])
   @@index([createdById])
+}
+
+model ContentRevisionPublishEvent {
+  id          String      @id @default(uuid())
+  contentType ContentType
+  contentId   String
+  revisionId  String?
+  publishedAt DateTime    @default(now())
+
+  revision ContentRevision? @relation(fields: [revisionId], references: [id], onDelete: SetNull)
+
+  @@index([contentType, contentId, publishedAt])
 }
 
 model Review {
   id         String         @id @default(uuid())
-  revisionId String
+  revisionId String?
+  sessionId  String?
   reviewerId String
   decision   ReviewDecision
   note       String?
   createdAt  DateTime       @default(now())
 
-  revision ContentRevision @relation(fields: [revisionId], references: [id], onDelete: Cascade)
-  reviewer User            @relation(fields: [reviewerId], references: [id])
+  revision ContentRevision? @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+  session  RevisionSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  reviewer User             @relation(fields: [reviewerId], references: [id])
 
   @@index([revisionId])
+  @@index([sessionId])
   @@index([reviewerId])
 }
 
@@ -972,14 +1034,13 @@ model FeedbackNote {
   @@index([feedbackId])
 }
 
-
 model StageQuiz {
   id        String   @id @default(uuid())
   stageId   String   @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  stage     PathwayStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  stage     PathwayStage   @relation(fields: [stageId], references: [id], onDelete: Cascade)
   questions QuizQuestion[]
   attempts  QuizAttempt[]
 
@@ -987,12 +1048,14 @@ model StageQuiz {
 }
 
 model QuizQuestion {
-  id           String  @id @default(uuid())
+  id           String   @id @default(uuid())
   quizId       String
   prompt       String
   order        Int
-  correctIndex Int     // 0..3, stored server-side; never returned
+  correctIndex Int // 0..3, stored server-side; never returned
   stepId       String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now()) @updatedAt
 
   quiz    StageQuiz    @relation(fields: [quizId], references: [id], onDelete: Cascade)
   step    PathwayStep? @relation(fields: [stepId], references: [id], onDelete: SetNull)
@@ -1003,12 +1066,11 @@ model QuizQuestion {
 }
 
 model QuizOption {
-  id         String @id @default(uuid())
+  id         String       @id @default(uuid())
   questionId String
   text       String
-  order      Int    // 0..3
-
-  question QuizQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  order      Int // 0..3
+  question   QuizQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
   @@unique([questionId, order])
 }

@@ -20,7 +20,7 @@ import { ReferenceModule } from './reference/reference.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { FeedbackModule } from './feedback';
 import { TeamsModule } from './teams';
-import { RevisionsModule } from './catalog/content-revisions/content-revisions.module';
+import { ContentRevisionsModule } from './catalog/content-revisions/content-revisions.module';
 import { OpportunitiesModule } from './opportunities';
 import { CloudinaryModule } from './cloudinary/cloudinary.module';
 import { DashboardModule } from './dashboard';
@@ -50,10 +50,11 @@ import { RevisionsModule } from './revisions/revisions.module';
     AnalyticsModule,
     FeedbackModule,
     TeamsModule,
-    RevisionsModule,
+    ContentRevisionsModule,
     OpportunitiesModule,
     CloudinaryModule,
     DashboardModule,
+    RevisionsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

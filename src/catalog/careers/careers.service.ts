@@ -46,6 +46,8 @@ import {
   toCareerCard,
   toCareerDetail,
 } from '../careers/mappers/career.mappers';
+import { randomUUID } from 'crypto';
+
 const decimalToString = (
   value: { toString(): string } | null,
 ): string | null => (value === null ? null : value.toString());
@@ -148,10 +150,13 @@ export class CareersService {
       certificationsNote: null,
     };
 
+    const careerId = randomUUID();
+
     let created;
     try {
       created = await this.prisma.career.create({
         data: {
+          id: careerId,
           title: draft.title,
           slug: draft.slug,
           description: draft.description,
@@ -165,6 +170,8 @@ export class CareersService {
               baseVersion: 1,
               snapshot: initialSnapshot(draft),
               createdById: actorUserId,
+              contentType: 'CAREER',
+              contentId: careerId,
             },
           },
         },
