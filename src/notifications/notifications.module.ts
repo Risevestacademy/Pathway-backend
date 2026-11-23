@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { MailerSend } from 'mailersend';
 import { NotificationService } from './notification.service';
 import { NotificationPreferencesService } from './notification-preferences.service';
+import { NotificationDispatcher } from './notification.dispatcher';
 import { TemplateRenderer, TEMPLATES_DIR } from './template-renderer.service';
 import { MailerSendProvider } from './providers/mailersend.provider';
 import { LogEmailProvider } from './providers/log-email.provider';
@@ -25,6 +26,7 @@ const moduleDir =
   providers: [
     NotificationService,
     NotificationPreferencesService,
+    NotificationDispatcher,
     TemplateRenderer,
     { provide: TEMPLATES_DIR, useValue: join(moduleDir, 'templates') },
     {
@@ -55,6 +57,10 @@ const moduleDir =
       },
     },
   ],
-  exports: [NotificationService, NotificationPreferencesService],
+  exports: [
+    NotificationService,
+    NotificationPreferencesService,
+    NotificationDispatcher,
+  ],
 })
 export class NotificationsModule {}
