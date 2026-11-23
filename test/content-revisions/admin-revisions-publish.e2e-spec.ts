@@ -241,6 +241,8 @@ describe('Admin revisions — publish (e2e)', () => {
         snapshot: args.snapshot as unknown as object,
         status: RevisionStatus.APPROVED,
         createdById: args.editorId ?? editorId,
+        contentType: 'CAREER',
+        contentId: args.careerId,
       },
     });
     revisionIds.push(revision.id);
@@ -556,6 +558,8 @@ describe('Admin revisions — publish (e2e)', () => {
         snapshot: snapshot as unknown as object,
         status: RevisionStatus.IN_REVIEW,
         createdById: editorId,
+        contentType: 'CAREER',
+        contentId: careerId,
       },
     });
     revisionIds.push(revision.id);

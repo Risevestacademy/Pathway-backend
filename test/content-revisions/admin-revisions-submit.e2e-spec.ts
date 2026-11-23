@@ -99,6 +99,8 @@ describe('Admin revisions — submit (e2e)', () => {
         snapshot: (options.snapshot ?? readySnapshot)(key) as unknown as object,
         status: options.status ?? RevisionStatus.DRAFT,
         createdById: ids[Role.EDITOR],
+        contentType: 'CAREER',
+        contentId: career.id,
       },
     });
     return { careerId: career.id, revisionId: revision.id, key };

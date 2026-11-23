@@ -159,6 +159,8 @@ describe('Admin career revision save (e2e)', () => {
         snapshot: makeSnapshot('Original'),
         status: RevisionStatus.DRAFT,
         createdById: userIds[Role.EDITOR],
+        contentType: 'CAREER',
+        contentId: career.id,
       },
     });
     revisionIds[label] = revision.id;

@@ -14,6 +14,7 @@ import {
   registerAndVerify,
   wireNotificationMock,
 } from '../utils/auth';
+import { seedRevision } from '../utils/content-revision-util';
 
 describe('Admin career delete (e2e)', () => {
   let app: INestApplication;
@@ -140,14 +141,16 @@ describe('Admin career delete (e2e)', () => {
         period: '2026',
       },
     });
-    const revision = await prisma.contentRevision.create({
-      data: {
-        careerId: draftId,
-        baseVersion: 1,
-        snapshot: {},
-        createdById: editorId,
-      },
+
+    const revision = await seedRevision({
+      prisma: prisma,
+      careerId: draftId,
+      createdById: editorId,
+      baseVersion: 1,
+      snapshot: {},
+      status: 'IN_REVIEW',
     });
+
     await prisma.review.create({
       data: {
         revisionId: revision.id,

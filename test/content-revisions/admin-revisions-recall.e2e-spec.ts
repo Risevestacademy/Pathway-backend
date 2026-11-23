@@ -86,6 +86,8 @@ describe('Admin revision recall (e2e)', () => {
         snapshot: snapshot('Proposed'),
         status,
         createdById: users.creator.id,
+        contentType: 'CAREER',
+        contentId: career.id,
       },
     });
     return { careerId: career.id, revisionId: revision.id };
