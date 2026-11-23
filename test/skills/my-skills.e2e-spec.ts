@@ -6,6 +6,7 @@ import request from 'supertest';
 import { AppModule } from '../../src/app.module';
 import { apiPrefix as resolveApiPrefix, configureApp } from '../../src/common';
 import { EnvironmentVariables } from '../../src/config';
+import { UserSkillStatus } from '../../src/generated/prisma/client';
 import { NotificationService } from '../../src/notifications';
 import { PrismaService } from '../../src/prisma';
 import {
@@ -84,7 +85,7 @@ describe('Me — Skills Write (e2e)', () => {
     await putMine(user, [skillAId, skillBId]).expect(204);
 
     const initial = await prisma.userSkill.findMany({
-      where: { userId: user.id },
+      where: { userId: user.id, onProfile: true },
     });
     expect(initial).toHaveLength(2);
 
@@ -92,10 +93,52 @@ describe('Me — Skills Write (e2e)', () => {
     await putMine(user, [skillAId]).expect(204);
 
     const after = await prisma.userSkill.findMany({
-      where: { userId: user.id },
+      where: { userId: user.id, onProfile: true },
     });
     expect(after).toHaveLength(1);
     expect(after[0].skillId).toBe(skillAId);
+  });
+
+  it('starts a new profile skill as not assessed', async () => {
+    const user = await registerUser('new');
+
+    await putMine(user, [skillAId]).expect(204);
+
+    expect(
+      await prisma.userSkill.findFirstOrThrow({ where: { userId: user.id } }),
+    ).toMatchObject({
+      skillId: skillAId,
+      onProfile: true,
+      status: UserSkillStatus.NOT_SURE,
+      rating: null,
+      assessedAt: null,
+    });
+  });
+
+  it('keeps a Skill Check answer when the list is cleared', async () => {
+    const user = await registerUser('assessed');
+    const assessedAt = new Date('2026-11-20T10:00:00.000Z');
+    await prisma.userSkill.create({
+      data: {
+        userId: user.id,
+        skillId: skillAId,
+        status: UserSkillStatus.HAVE,
+        rating: 4,
+        onProfile: true,
+        assessedAt,
+      },
+    });
+
+    await putMine(user, []).expect(204);
+
+    expect(
+      await prisma.userSkill.findFirstOrThrow({ where: { userId: user.id } }),
+    ).toMatchObject({
+      onProfile: false,
+      status: UserSkillStatus.HAVE,
+      rating: 4,
+      assessedAt,
+    });
   });
 
   it('rejects unknown skill IDs with UNKNOWN_SKILL', async () => {

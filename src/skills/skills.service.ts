@@ -1,7 +1,6 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma';
 import { SkillListItemDto } from './dto/list-skills.dto';
-import { UserSkillStatus } from '../generated/prisma/browser';
 import { DomainException } from '../common';
 
 @Injectable()
@@ -44,25 +43,21 @@ export class SkillsService {
 
     // 3. Replace the user's set
     await this.prisma.$transaction(async (tx) => {
-      // Delete rows not in the new list
-      await tx.userSkill.deleteMany({
+      await tx.userSkill.updateMany({
         where: {
           userId,
+          onProfile: true,
           skillId: { notIn: uniqueIds },
         },
+        data: { onProfile: false },
       });
 
       // Upsert the rest
       for (const skillId of uniqueIds) {
         await tx.userSkill.upsert({
           where: { userId_skillId: { userId, skillId } },
-          create: {
-            userId,
-            skillId,
-            status: UserSkillStatus.NOT_SURE,
-            rating: null,
-          },
-          update: {}, // No-op if it already exists
+          create: { userId, skillId, onProfile: true },
+          update: { onProfile: true },
         });
       }
     });
