@@ -4,6 +4,7 @@ import { SkillsService } from './skills.service';
 import { PrismaService } from '../prisma';
 import { SkillListItemDto } from './dto/list-skills.dto';
 import { DomainException } from '../common';
+import { UserSkillStatus } from '../generated/prisma/browser';
 
 describe('SkillsService', () => {
   let service: SkillsService;
@@ -16,8 +17,8 @@ describe('SkillsService', () => {
         >(),
     },
     userSkill: {
-      deleteMany: jest.fn<() => Promise<{ count: number }>>(),
-      upsert: jest.fn<() => Promise<unknown>>(),
+      updateMany: jest.fn<(args: unknown) => Promise<{ count: number }>>(),
+      upsert: jest.fn<(args: unknown) => Promise<unknown>>(),
     },
     $transaction: jest.fn(),
   };
@@ -100,23 +101,105 @@ describe('SkillsService', () => {
         service.updateMySkills('user-1', ['known', 'unknown']),
       ).rejects.toThrow(DomainException);
 
-      expect(mockPrismaService.userSkill.deleteMany).not.toHaveBeenCalled();
+      expect(mockPrismaService.userSkill.updateMany).not.toHaveBeenCalled();
+      expect(mockPrismaService.userSkill.upsert).not.toHaveBeenCalled();
     });
 
-    it('deletes skills not in the list and upserts the rest', async () => {
+    it('takes unlisted skills off the profile and puts listed ones on it', async () => {
       mockPrismaService.skill.findMany.mockResolvedValue([
         { id: 'a' },
         { id: 'b' },
       ]);
-      mockPrismaService.userSkill.deleteMany.mockResolvedValue({ count: 0 });
+      mockPrismaService.userSkill.updateMany.mockResolvedValue({ count: 0 });
       mockPrismaService.userSkill.upsert.mockResolvedValue({});
 
-      await service.updateMySkills('user-1', ['a', 'b']);
+      await service.updateMySkills('user-1', ['a', 'b', 'a']);
 
-      expect(mockPrismaService.userSkill.deleteMany).toHaveBeenCalledWith({
-        where: { userId: 'user-1', skillId: { notIn: ['a', 'b'] } },
+      expect(mockPrismaService.userSkill.updateMany).toHaveBeenCalledTimes(1);
+      expect(mockPrismaService.userSkill.updateMany).toHaveBeenCalledWith({
+        where: {
+          userId: 'user-1',
+          onProfile: true,
+          skillId: { notIn: ['a', 'b'] },
+        },
+        data: { onProfile: false },
       });
       expect(mockPrismaService.userSkill.upsert).toHaveBeenCalledTimes(2);
+      expect(mockPrismaService.userSkill.upsert).toHaveBeenCalledWith({
+        where: { userId_skillId: { userId: 'user-1', skillId: 'a' } },
+        create: { userId: 'user-1', skillId: 'a', onProfile: true },
+        update: { onProfile: true },
+      });
+    });
+
+    describe('with an assessed skill', () => {
+      const assessedAt = new Date('2026-11-20T10:00:00.000Z');
+      let row: Record<string, unknown>;
+
+      beforeEach(() => {
+        row = {
+          userId: 'user-1',
+          skillId: 'a',
+          status: UserSkillStatus.HAVE,
+          rating: 4,
+          onProfile: false,
+          assessedAt,
+        };
+        mockPrismaService.skill.findMany.mockImplementation((args) =>
+          Promise.resolve(
+            (args as { where: { id: { in: string[] } } }).where.id.in.map(
+              (id) => ({ id }),
+            ),
+          ),
+        );
+        mockPrismaService.userSkill.updateMany.mockImplementation((args) => {
+          const { where, data } = args as {
+            where: { skillId: { notIn: string[] } };
+            data: Record<string, unknown>;
+          };
+          const matches =
+            row.onProfile === true &&
+            !where.skillId.notIn.includes(row.skillId as string);
+          if (matches) Object.assign(row, data);
+          return Promise.resolve({ count: matches ? 1 : 0 });
+        });
+        mockPrismaService.userSkill.upsert.mockImplementation((args) => {
+          const { where, update } = args as {
+            where: { userId_skillId: { skillId: string } };
+            update: Record<string, unknown>;
+          };
+          if (where.userId_skillId.skillId === row.skillId) {
+            Object.assign(row, update);
+          }
+          return Promise.resolve({});
+        });
+      });
+
+      it('keeps the answer when the skill leaves the profile', async () => {
+        row.onProfile = true;
+
+        await service.updateMySkills('user-1', []);
+
+        expect(row).toMatchObject({
+          onProfile: false,
+          status: UserSkillStatus.HAVE,
+          rating: 4,
+          assessedAt,
+        });
+      });
+
+      it('keeps the answer when the skill is added, removed and added again', async () => {
+        for (const skillIds of [['a'], ['b'], ['a']]) {
+          await service.updateMySkills('user-1', skillIds);
+
+          expect(row).toMatchObject({
+            onProfile: skillIds.includes('a'),
+            status: UserSkillStatus.HAVE,
+            rating: 4,
+            assessedAt,
+          });
+        }
+      });
     });
   });
 });

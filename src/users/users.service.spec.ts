@@ -625,6 +625,18 @@ describe('UsersService', () => {
       ]);
     });
 
+    it('returns only the skills on the profile', () => {
+      const result = service.toUserResponse({
+        ...publicUser,
+        userSkills: [
+          { onProfile: true, skill: { id: 'skill-1', name: 'React' } },
+          { onProfile: false, skill: { id: 'skill-2', name: 'Docker' } },
+        ],
+      });
+
+      expect(result.skills).toEqual([{ id: 'skill-1', name: 'React' }]);
+    });
+
     it('passes stats to the response when provided', () => {
       const result = service.toUserResponse(
         { ...publicUser, userSkills: [], fields: [] },

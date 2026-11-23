@@ -53,7 +53,10 @@ const publicUserSelect = {
   updatedAt: true,
   ...profileSelect,
   userSkills: {
-    select: { skill: { select: { id: true, name: true } } },
+    select: {
+      onProfile: true,
+      skill: { select: { id: true, name: true } },
+    },
   },
 } satisfies Prisma.UserSelect;
 
@@ -235,7 +238,10 @@ export class UsersService {
       | 'createdAt'
     > & {
       profile: ProfileFields | null;
-      userSkills: Array<{ skill: { id: string; name: string } }>;
+      userSkills: Array<{
+        onProfile: boolean;
+        skill: { id: string; name: string };
+      }>;
       fields: Array<{ id: string; name: string; slug: string }>;
     },
     stats: { totalXp: number; currentStreak: number } = {
@@ -266,7 +272,9 @@ export class UsersService {
       analyticsEnabled: user.analyticsEnabled,
       totalXp: stats.totalXp,
       currentStreak: stats.currentStreak,
-      skills: (user.userSkills ?? []).map((us) => us.skill),
+      skills: (user.userSkills ?? [])
+        .filter((us) => us.onProfile)
+        .map((us) => us.skill),
       careerInterests: user.fields ?? [],
     };
   }

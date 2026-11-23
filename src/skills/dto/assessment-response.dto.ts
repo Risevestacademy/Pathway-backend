@@ -13,6 +13,9 @@ export class AssessmentSkillDto {
 
   @ApiProperty({ type: Number, nullable: true })
   rating: number | null;
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  assessedAt: Date | null;
 }
 
 export class AssessmentStageDto {
@@ -35,6 +38,9 @@ export class AssessmentResponseDto {
 
   @ApiProperty()
   pathwayId: string;
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  lastAssessedAt: Date | null;
 
   @ApiProperty({ type: [AssessmentStageDto] })
   stages: AssessmentStageDto[];
