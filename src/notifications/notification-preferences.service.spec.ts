@@ -1,4 +1,5 @@
 import { jest } from '@jest/globals';
+import { Logger } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotificationCategory } from '../generated/prisma/client';
 import { PrismaService } from '../prisma';
@@ -112,6 +113,36 @@ describe('NotificationPreferencesService', () => {
         select: { inAppEnabled: true, emailEnabled: true },
       });
       expect(result).toEqual({ inAppEnabled: true, emailEnabled: true });
+    });
+
+    it('leaves an undefined channel out of the write and the log', async () => {
+      const logSpy = jest
+        .spyOn(Logger.prototype, 'log')
+        .mockImplementation(() => undefined);
+
+      await service.updateForUser(
+        'user-1',
+        NotificationCategory.RESOURCE_LINK_PROBLEMS,
+        { inAppEnabled: false, emailEnabled: undefined },
+      );
+
+      const [[args]] =
+        mockPrismaService.notificationPreference.upsert.mock.calls;
+      expect(args).toMatchObject({
+        create: { inAppEnabled: false, emailEnabled: false },
+      });
+      expect((args as { update: object }).update).toStrictEqual({
+        inAppEnabled: false,
+      });
+      expect(logSpy).toHaveBeenCalledWith(
+        {
+          userId: 'user-1',
+          category: NotificationCategory.RESOURCE_LINK_PROBLEMS,
+          channels: ['inAppEnabled'],
+        },
+        'Notification preference updated',
+      );
+      logSpy.mockRestore();
     });
 
     it('sends the same single upsert when repeated, so a repeat changes nothing', async () => {
