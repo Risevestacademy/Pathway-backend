@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { join } from 'node:path';
 import { MailerSend } from 'mailersend';
 import { NotificationService } from './notification.service';
+import { NotificationPreferencesService } from './notification-preferences.service';
 import { TemplateRenderer, TEMPLATES_DIR } from './template-renderer.service';
 import { MailerSendProvider } from './providers/mailersend.provider';
 import { LogEmailProvider } from './providers/log-email.provider';
@@ -23,6 +24,7 @@ const moduleDir =
 @Module({
   providers: [
     NotificationService,
+    NotificationPreferencesService,
     TemplateRenderer,
     { provide: TEMPLATES_DIR, useValue: join(moduleDir, 'templates') },
     {
@@ -53,6 +55,6 @@ const moduleDir =
       },
     },
   ],
-  exports: [NotificationService],
+  exports: [NotificationService, NotificationPreferencesService],
 })
 export class NotificationsModule {}
