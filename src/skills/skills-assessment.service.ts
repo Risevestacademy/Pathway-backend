@@ -102,17 +102,32 @@ export class SkillsAssessmentService {
         ? []
         : await this.prisma.userSkill.findMany({
             where: { userId, skillId: { in: [...allSkillIds] } },
-            select: { skillId: true, status: true, rating: true },
+            select: {
+              skillId: true,
+              status: true,
+              rating: true,
+              assessedAt: true,
+            },
           });
 
     const savedBySkillId = new Map<
       string,
-      { status: UserSkillStatus; rating: number | null }
+      {
+        status: UserSkillStatus;
+        rating: number | null;
+        assessedAt: Date | null;
+      }
     >(
       savedSkills.map((s) => [
         s.skillId,
-        { status: s.status, rating: s.rating },
+        { status: s.status, rating: s.rating, assessedAt: s.assessedAt },
       ]),
+    );
+
+    const lastAssessedAt = savedSkills.reduce<Date | null>(
+      (latest, { assessedAt }) =>
+        assessedAt && (!latest || assessedAt > latest) ? assessedAt : latest,
+      null,
     );
 
     const seenSkillIds = new Set<string>();
@@ -130,6 +145,7 @@ export class SkillsAssessmentService {
             skillName: skill.name,
             status: saved?.status ?? UserSkillStatus.NOT_SURE,
             rating: saved?.rating ?? null,
+            assessedAt: saved?.assessedAt ?? null,
           });
         }
       }
@@ -145,6 +161,7 @@ export class SkillsAssessmentService {
     return {
       careerId,
       pathwayId: pathway.id,
+      lastAssessedAt,
       stages,
     };
   }
@@ -239,6 +256,7 @@ export class SkillsAssessmentService {
       );
 
       const progressRows: UserSkillProgressRow[] = [];
+      const now = new Date();
 
       for (const entry of dto.skills) {
         const normalized = normalizeUserSkillStatus({
@@ -255,10 +273,12 @@ export class SkillsAssessmentService {
             skillId: entry.skillId,
             status: normalized.status,
             rating: normalized.rating,
+            assessedAt: now,
           },
           update: {
             status: normalized.status,
             rating: normalized.rating,
+            assessedAt: now,
           },
           select: { id: true },
         });
@@ -283,7 +303,7 @@ export class SkillsAssessmentService {
           ? []
           : await tx.userSkill.findMany({
               where: { userId, skillId: { in: [...validSkillIds] } },
-              select: { skillId: true, status: true },
+              select: { skillId: true, status: true, assessedAt: true },
             });
 
       const headstart = computeHeadstart(headstartSteps, allSkillStates);
@@ -330,7 +350,7 @@ export class SkillsAssessmentService {
         if (state.status === UserSkillStatus.HAVE) {
           have++;
         } else if (state.status === UserSkillStatus.NOT_SURE) {
-          notSure++;
+          if (state.assessedAt) notSure++;
         } else if (state.status === UserSkillStatus.DONT_HAVE) {
           dontHave++;
           const step = stepBySkillId.get(state.skillId);
@@ -417,20 +437,25 @@ export class SkillsAssessmentService {
         return;
       }
 
-      const userSkills = await tx.userSkill.findMany({
+      const reset = await tx.userSkill.updateMany({
         where: { userId, skillId: { in: skillIds } },
-        select: { id: true },
+        data: {
+          status: UserSkillStatus.NOT_SURE,
+          rating: null,
+          assessedAt: null,
+        },
       });
-      const userSkillIds = userSkills.map((u) => u.id);
-
-      if (userSkillIds.length > 0) {
-        await tx.userSkillProgress.deleteMany({
-          where: { userSkillId: { in: userSkillIds } },
-        });
-        await tx.userSkill.deleteMany({
-          where: { id: { in: userSkillIds } },
-        });
-      }
+      await tx.userSkillProgress.deleteMany({
+        where: { userSkill: { userId, skillId: { in: skillIds } } },
+      });
+      const deleted = await tx.userSkill.deleteMany({
+        where: {
+          userId,
+          skillId: { in: skillIds },
+          onProfile: false,
+          assessedAt: null,
+        },
+      });
 
       await tx.userPathway.update({
         where: { userId_careerId: { userId, careerId } },
@@ -438,7 +463,7 @@ export class SkillsAssessmentService {
       });
 
       this.logger.log(
-        { userId, deletedSkills: userSkillIds.length },
+        { userId, resetSkills: reset.count, deletedSkills: deleted.count },
         'Assessment reset',
       );
     });
