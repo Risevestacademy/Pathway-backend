@@ -1,9 +1,18 @@
 import { Module } from '@nestjs/common';
-import { RevisionsService } from './revisions.service';
-import { RevisionsController } from './revisions.controller';
+import { PublishingService } from './publishing.service';
+import { registerStrategies } from './strategies';
 
 @Module({
-  controllers: [RevisionsController],
-  providers: [RevisionsService],
+  providers: [
+    PublishingService,
+    {
+      provide: 'REVISIONS_BOOTSTRAP',
+      useFactory: () => {
+        registerStrategies();
+        return true;
+      },
+    },
+  ],
+  exports: [PublishingService],
 })
 export class RevisionsModule {}

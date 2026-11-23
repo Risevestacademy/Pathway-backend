@@ -213,6 +213,15 @@ export interface MovedEntity {
   toOrder: number;
 }
 
+export interface DiffContext {
+  revisionId: string;
+  baseVersion: number;
+  liveVersion: number;
+  sessionId: string | null;
+  /** For strategies that resolve labels via Prisma. */
+  prisma: Prisma.TransactionClient;
+}
+
 /**
  * One section of a diff, grouped by `section`. A session diff is an array of
  * these, one per section that has changes.
@@ -326,8 +335,20 @@ export interface RevisionStrategy<TSnapshot = unknown> {
    * The returned sections are merged with other revisions' sections in the
    * same session by the service. Use `fieldLabels` and `titleFor` to produce
    * human-readable output.
+   *
+   * The `ctx` argument carries session-scoped metadata the diff renderer may
+   * need: the revision id (for logging / correlation), and the session's
+   * current base and live versions (for the response envelope). Strategies
+   * that don't need it can ignore the argument.
+   *
+   * Asynchronous because some strategies (e.g. career) resolve foreign-key
+   * display labels via a Prisma query. The envelope awaits the result.
    */
-  diff(plan: RevisionPlan, snapshot: TSnapshot): SectionChanges[];
+  diff(
+    plan: RevisionPlan,
+    snapshot: TSnapshot,
+    ctx: DiffContext,
+  ): Promise<SectionChanges[]>;
 
   /**
    * Apply a plan to the live database inside the caller's transaction.
