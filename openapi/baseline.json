@@ -1971,6 +1971,156 @@
         ]
       }
     },
+    "/pathways/{pathwayId}/tasks": {
+      "get": {
+        "description": "Every stage with its self-reported progress and quiz status, every step with its status and its tasks, each with the caller's completion and checklist counts. No hints or checklist items. The career must be PUBLISHED, or RETIRED and saved by the caller. Reads only.",
+        "operationId": "PathwaysController_getPathwayTasks",
+        "parameters": [
+          {
+            "name": "pathwayId",
+            "required": true,
+            "in": "path",
+            "description": "Pathway UUID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PathwayTasksDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "pathwayId is not a valid UUID"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "404": {
+            "description": "Pathway not found, its career is a draft, or it is retired and not saved by the caller"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get the pathway's Practice tasks tab",
+        "tags": [
+          "Pathways"
+        ]
+      }
+    },
+    "/pathways/{pathwayId}/tasks/{taskId}": {
+      "get": {
+        "description": "The task with what to make, hints, the checklist with the caller's ticks, and its ACTIVE linked resources. Reads only.",
+        "operationId": "PathwaysController_getPathwayTask",
+        "parameters": [
+          {
+            "name": "pathwayId",
+            "required": true,
+            "in": "path",
+            "description": "Pathway UUID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "taskId",
+            "required": true,
+            "in": "path",
+            "description": "Task UUID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PathwayTaskDetailDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "pathwayId or taskId is not a valid UUID"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "404": {
+            "description": "Pathway not readable, or the task is not in this pathway"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get one task brief in a pathway",
+        "tags": [
+          "Pathways"
+        ]
+      }
+    },
+    "/pathways/{pathwayId}/progress": {
+      "get": {
+        "description": "The caller's self-reported overall progress, every stage with its progress and quiz status (best score), the completed steps with the newest first, and the next step with its stage. A pathway the caller hasn't saved shows zero progress. The career must be PUBLISHED, or RETIRED and saved by the caller. Reads only.",
+        "operationId": "PathwaysController_getPathwayProgress",
+        "parameters": [
+          {
+            "name": "pathwayId",
+            "required": true,
+            "in": "path",
+            "description": "Pathway UUID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PathwayProgressDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "pathwayId is not a valid UUID"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "404": {
+            "description": "Pathway not found, its career is a draft, or it is retired and not saved by the caller"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get the pathway's Progress tab",
+        "tags": [
+          "Pathways"
+        ]
+      }
+    },
     "/pathways/{pathwayId}/stages/{stageId}/quiz": {
       "get": {
         "description": "The quiz questions with their options, in display order. The correct option is never returned. Available again after a pass, so the quiz can be retaken. The career must be PUBLISHED, or RETIRED and saved by the caller. Reads only: a quiz never changes a step or stage completion.",
@@ -7384,6 +7534,519 @@
           "nextTask"
         ]
       },
+      "PathwayTaskItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "example": "Build a typed API client"
+          },
+          "goal": {
+            "type": "string",
+            "example": "Practise generics on a real request helper"
+          },
+          "estimatedWeeks": {
+            "type": "number",
+            "nullable": true,
+            "example": 1
+          },
+          "isCompleted": {
+            "type": "boolean",
+            "example": false
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "checklistChecked": {
+            "type": "number",
+            "example": 2,
+            "description": "Checklist items the caller has ticked"
+          },
+          "checklistTotal": {
+            "type": "number",
+            "example": 4
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "goal",
+          "estimatedWeeks",
+          "isCompleted",
+          "completedAt",
+          "checklistChecked",
+          "checklistTotal"
+        ]
+      },
+      "PathwayTasksStepDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "example": "Learn TypeScript Basics"
+          },
+          "order": {
+            "type": "number",
+            "example": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "NOT_STARTED",
+              "IN_PROGRESS",
+              "COMPLETED"
+            ]
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PathwayTaskItemDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "order",
+          "status",
+          "completedAt",
+          "tasks"
+        ]
+      },
+      "PathwayTasksStageDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "example": "Language foundations"
+          },
+          "order": {
+            "type": "number",
+            "example": 1
+          },
+          "progress": {
+            "description": "Self-reported step completion within the stage",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PathwayReadStageProgressDto"
+              }
+            ]
+          },
+          "quiz": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/StageQuizStatusNotTaken"
+              },
+              {
+                "$ref": "#/components/schemas/StageQuizStatusTaken"
+              }
+            ],
+            "nullable": true,
+            "description": "Null when the stage has no quiz"
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PathwayTasksStepDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "order",
+          "progress",
+          "quiz",
+          "steps"
+        ]
+      },
+      "PathwayTasksDto": {
+        "type": "object",
+        "properties": {
+          "pathwayId": {
+            "type": "string"
+          },
+          "stages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PathwayTasksStageDto"
+            }
+          }
+        },
+        "required": [
+          "pathwayId",
+          "stages"
+        ]
+      },
+      "PathwayTaskChecklistEntryDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string",
+            "example": "Handle a failed request"
+          },
+          "isChecked": {
+            "type": "boolean",
+            "example": true
+          },
+          "checkedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "text",
+          "isChecked",
+          "checkedAt"
+        ]
+      },
+      "PathwayTaskLinkDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "example": "The TypeScript Handbook"
+          },
+          "provider": {
+            "type": "string",
+            "example": "Microsoft"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "COURSE",
+              "CERTIFICATION",
+              "ARTICLE",
+              "VIDEO",
+              "BOOK"
+            ]
+          },
+          "costStatus": {
+            "type": "string",
+            "enum": [
+              "FREE",
+              "PAID",
+              "UNKNOWN"
+            ]
+          },
+          "url": {
+            "type": "string",
+            "example": "https://www.typescriptlang.org/docs/handbook/"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "provider",
+          "type",
+          "costStatus",
+          "url"
+        ]
+      },
+      "PathwayTaskDetailDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "example": "Build a typed API client"
+          },
+          "goal": {
+            "type": "string",
+            "example": "Practise generics on a real request helper"
+          },
+          "estimatedWeeks": {
+            "type": "number",
+            "nullable": true,
+            "example": 1
+          },
+          "isCompleted": {
+            "type": "boolean",
+            "example": false
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "checklistChecked": {
+            "type": "number",
+            "example": 2,
+            "description": "Checklist items the caller has ticked"
+          },
+          "checklistTotal": {
+            "type": "number",
+            "example": 4
+          },
+          "stepId": {
+            "type": "string",
+            "description": "The step the task belongs to"
+          },
+          "whatToMake": {
+            "example": [
+              "A request helper with types"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "hints": {
+            "example": [
+              "Start with a GET request"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "checklist": {
+            "description": "In order, with the caller's ticks",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PathwayTaskChecklistEntryDto"
+            }
+          },
+          "helpfulLinks": {
+            "description": "ACTIVE resources linked to the task, in order",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PathwayTaskLinkDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "goal",
+          "estimatedWeeks",
+          "isCompleted",
+          "completedAt",
+          "checklistChecked",
+          "checklistTotal",
+          "stepId",
+          "whatToMake",
+          "hints",
+          "checklist",
+          "helpfulLinks"
+        ]
+      },
+      "PathwayProgressSummaryDto": {
+        "type": "object",
+        "properties": {
+          "completed": {
+            "type": "number",
+            "example": 1
+          },
+          "total": {
+            "type": "number",
+            "example": 3
+          },
+          "percentage": {
+            "type": "number",
+            "example": 33
+          },
+          "selfReported": {
+            "type": "boolean",
+            "example": true,
+            "description": "Progress is self-reported, never verified"
+          }
+        },
+        "required": [
+          "completed",
+          "total",
+          "percentage",
+          "selfReported"
+        ]
+      },
+      "PathwayLearningStageDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "example": "Language foundations"
+          },
+          "order": {
+            "type": "number",
+            "example": 1
+          },
+          "progress": {
+            "description": "Self-reported step completion within the stage",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PathwayReadStageProgressDto"
+              }
+            ]
+          },
+          "quiz": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/StageQuizStatusNotTaken"
+              },
+              {
+                "$ref": "#/components/schemas/StageQuizStatusTaken"
+              }
+            ],
+            "nullable": true,
+            "description": "Null when the stage has no quiz"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "order",
+          "progress",
+          "quiz"
+        ]
+      },
+      "PathwayProgressStageRefDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "example": "Web foundations"
+          },
+          "order": {
+            "type": "number",
+            "example": 1
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "order"
+        ]
+      },
+      "PathwayCompletedStepDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "example": "Structure and style pages with HTML and CSS"
+          },
+          "order": {
+            "type": "number",
+            "example": 1
+          },
+          "stage": {
+            "$ref": "#/components/schemas/PathwayProgressStageRefDto"
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "order",
+          "stage",
+          "completedAt"
+        ]
+      },
+      "PathwayProgressStepDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "example": "Structure and style pages with HTML and CSS"
+          },
+          "order": {
+            "type": "number",
+            "example": 1
+          },
+          "stage": {
+            "$ref": "#/components/schemas/PathwayProgressStageRefDto"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "order",
+          "stage"
+        ]
+      },
+      "PathwayProgressDto": {
+        "type": "object",
+        "properties": {
+          "pathwayId": {
+            "type": "string"
+          },
+          "progress": {
+            "$ref": "#/components/schemas/PathwayProgressSummaryDto"
+          },
+          "stages": {
+            "description": "Every stage with its progress and quiz status (best score)",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PathwayLearningStageDto"
+            }
+          },
+          "completedSteps": {
+            "description": "Completed steps, most recently completed first",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PathwayCompletedStepDto"
+            }
+          },
+          "nextStep": {
+            "nullable": true,
+            "description": "Null when every step is complete",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PathwayProgressStepDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "pathwayId",
+          "progress",
+          "stages",
+          "completedSteps",
+          "nextStep"
+        ]
+      },
       "StageQuizOptionDto": {
         "type": "object",
         "properties": {
@@ -7934,13 +8597,19 @@
           "rating": {
             "type": "number",
             "nullable": true
+          },
+          "assessedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
           }
         },
         "required": [
           "skillId",
           "skillName",
           "status",
-          "rating"
+          "rating",
+          "assessedAt"
         ]
       },
       "AssessmentStageDto": {
@@ -7978,6 +8647,11 @@
           "pathwayId": {
             "type": "string"
           },
+          "lastAssessedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
           "stages": {
             "type": "array",
             "items": {
@@ -7988,6 +8662,7 @@
         "required": [
           "careerId",
           "pathwayId",
+          "lastAssessedAt",
           "stages"
         ]
       },
