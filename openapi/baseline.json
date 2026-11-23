@@ -856,6 +856,98 @@
         ]
       }
     },
+    "/me/notification-preferences": {
+      "get": {
+        "description": "Every category with both channels. A category the user has never changed returns its defaults.",
+        "operationId": "MeNotificationPreferencesController_getMyPreferences",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationPreferencesResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get the signed-in user's notification preferences",
+        "tags": [
+          "Me"
+        ]
+      }
+    },
+    "/me/notification-preferences/{category}": {
+      "patch": {
+        "description": "An omitted channel is unchanged.",
+        "operationId": "MeNotificationPreferencesController_updateMyPreference",
+        "parameters": [
+          {
+            "name": "category",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "enum": [
+                "ROADMAP_UPDATES",
+                "NEW_OPENINGS",
+                "FEEDBACK_REPLIES",
+                "RESOURCE_LINK_PROBLEMS",
+                "LEARNING_REMINDERS",
+                "STREAK_NUDGES"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateNotificationPreferenceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelPreferenceDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The category is unknown, or the body failed validation"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Update one category of the signed-in user's preferences",
+        "tags": [
+          "Me"
+        ]
+      }
+    },
     "/admin/teams/invites": {
       "post": {
         "description": "Minimum role: ADMIN. Creates a single-use invite (24h TTL) and emails an accept link. Replaces any pending invite for the same email. If the email fails to send, the invite stays and can be re-sent by re-inviting.",
@@ -5341,6 +5433,69 @@
         "required": [
           "unreadCount"
         ]
+      },
+      "ChannelPreferenceDto": {
+        "type": "object",
+        "properties": {
+          "inAppEnabled": {
+            "type": "boolean",
+            "example": true
+          },
+          "emailEnabled": {
+            "type": "boolean",
+            "example": false
+          }
+        },
+        "required": [
+          "inAppEnabled",
+          "emailEnabled"
+        ]
+      },
+      "NotificationPreferencesResponseDto": {
+        "type": "object",
+        "properties": {
+          "ROADMAP_UPDATES": {
+            "$ref": "#/components/schemas/ChannelPreferenceDto"
+          },
+          "NEW_OPENINGS": {
+            "$ref": "#/components/schemas/ChannelPreferenceDto"
+          },
+          "FEEDBACK_REPLIES": {
+            "$ref": "#/components/schemas/ChannelPreferenceDto"
+          },
+          "RESOURCE_LINK_PROBLEMS": {
+            "$ref": "#/components/schemas/ChannelPreferenceDto"
+          },
+          "LEARNING_REMINDERS": {
+            "$ref": "#/components/schemas/ChannelPreferenceDto"
+          },
+          "STREAK_NUDGES": {
+            "$ref": "#/components/schemas/ChannelPreferenceDto"
+          }
+        },
+        "required": [
+          "ROADMAP_UPDATES",
+          "NEW_OPENINGS",
+          "FEEDBACK_REPLIES",
+          "RESOURCE_LINK_PROBLEMS",
+          "LEARNING_REMINDERS",
+          "STREAK_NUDGES"
+        ]
+      },
+      "UpdateNotificationPreferenceDto": {
+        "type": "object",
+        "properties": {
+          "inAppEnabled": {
+            "type": "boolean",
+            "example": true,
+            "description": "Required when emailEnabled is omitted. Cannot be null."
+          },
+          "emailEnabled": {
+            "type": "boolean",
+            "example": false,
+            "description": "Required when inAppEnabled is omitted. Cannot be null."
+          }
+        }
       },
       "CreateStaffInviteDto": {
         "type": "object",

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { join } from 'node:path';
 import { MailerSend } from 'mailersend';
+import { MeNotificationPreferencesController } from './me-notification-preferences.controller';
 import { NotificationService } from './notification.service';
 import { NotificationPreferencesService } from './notification-preferences.service';
 import { NotificationDispatcher } from './notification.dispatcher';
@@ -25,7 +26,7 @@ const moduleDir =
     : join(process.cwd(), 'src', 'notifications');
 
 @Module({
-  controllers: [MeNotificationsController],
+  controllers: [MeNotificationsController, MeNotificationPreferencesController],
   providers: [
     NotificationService,
     NotificationPreferencesService,
