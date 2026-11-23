@@ -50,6 +50,7 @@ interface AssessmentSkillBody {
   skillName: string;
   status: UserSkillStatus;
   rating: number | null;
+  assessedAt: string | null;
 }
 
 interface AssessmentStageBody {
@@ -62,6 +63,7 @@ interface AssessmentStageBody {
 interface AssessmentBody {
   careerId: string;
   pathwayId: string;
+  lastAssessedAt: string | null;
   stages: AssessmentStageBody[];
 }
 
@@ -102,6 +104,23 @@ describe('Me — Skills Assessment (e2e)', () => {
       .put(`${apiPrefix}/me/skills/assessment`)
       .set('Authorization', `Bearer ${user.accessToken}`)
       .send(body);
+
+  const resetAssessment = (user: RegisteredUser) =>
+    request(app.getHttpServer())
+      .delete(`${apiPrefix}/me/skills/assessment`)
+      .set('Authorization', `Bearer ${user.accessToken}`);
+
+  const readAssessment = async (user: RegisteredUser) => {
+    const response = await getAssessment(user).expect(200);
+    const body = response.body as AssessmentBody;
+    const skills = body.stages.flatMap((stage) => stage.skills);
+    return {
+      lastAssessedAt: body.lastAssessedAt,
+      assessedAt: Object.fromEntries(
+        skills.map((skill) => [skill.skillId, skill.assessedAt]),
+      ),
+    };
+  };
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -365,6 +384,26 @@ describe('Me — Skills Assessment (e2e)', () => {
       expect(body.gaps[0].stepTitle).toEqual(expect.any(String));
     });
 
+    it('leaves an unanswered profile skill out of the stats', async () => {
+      const user = await registerUser('stats-profile');
+      await saveActive(user);
+      await request(app.getHttpServer())
+        .put(`${apiPrefix}/me/skills`)
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .send({ skillIds: [skillBId] })
+        .expect(204);
+
+      const first = await putAssessment(user, {
+        skills: [{ skillId: skillAId, status: UserSkillStatus.DONT_HAVE }],
+      }).expect(200);
+      expect(first.body.stats).toEqual({ have: 0, dontHave: 1, notSure: 0 });
+
+      const second = await putAssessment(user, {
+        skills: [{ skillId: skillBId, status: UserSkillStatus.NOT_SURE }],
+      }).expect(200);
+      expect(second.body.stats).toEqual({ have: 0, dontHave: 1, notSure: 1 });
+    });
+
     it('returns the start step title and description', async () => {
       const user = await registerUser('start-step-details');
       await saveActive(user);
@@ -471,6 +510,103 @@ describe('Me — Skills Assessment (e2e)', () => {
         },
       });
       expect(pathwayRow.startStepId).toBeNull();
+    });
+
+    it('moves lastAssessedAt from null to the save date and back to null', async () => {
+      const user = await registerUser('assessed-at');
+      await saveActive(user);
+      const unanswered = { [skillAId]: null, [skillBId]: null };
+
+      expect(await readAssessment(user)).toEqual({
+        lastAssessedAt: null,
+        assessedAt: unanswered,
+      });
+
+      const before = Date.now();
+      await putAssessment(user, {
+        skills: [{ skillId: skillAId, status: UserSkillStatus.NOT_SURE }],
+      }).expect(200);
+      const after = Date.now();
+
+      const saved = await readAssessment(user);
+      const savedAt = new Date(saved.lastAssessedAt!).getTime();
+      expect(savedAt).toBeGreaterThanOrEqual(before);
+      expect(savedAt).toBeLessThanOrEqual(after);
+      expect(saved.assessedAt).toEqual({
+        [skillAId]: saved.lastAssessedAt,
+        [skillBId]: null,
+      });
+
+      await resetAssessment(user).expect(204);
+
+      expect(await readAssessment(user)).toEqual({
+        lastAssessedAt: null,
+        assessedAt: unanswered,
+      });
+    });
+
+    it('keeps profile skills with cleared answers', async () => {
+      const user = await registerUser('reset-profile');
+      await saveActive(user);
+      await request(app.getHttpServer())
+        .put(`${apiPrefix}/me/skills`)
+        .set('Authorization', `Bearer ${user.accessToken}`)
+        .send({ skillIds: [skillAId] })
+        .expect(204);
+      await putAssessment(user, {
+        skills: [
+          { skillId: skillAId, status: UserSkillStatus.HAVE, rating: 4 },
+          { skillId: skillBId, status: UserSkillStatus.DONT_HAVE },
+        ],
+      }).expect(200);
+
+      const select = {
+        skillId: true,
+        onProfile: true,
+        status: true,
+        rating: true,
+        assessedAt: true,
+      };
+      const saved = await prisma.userSkill.findMany({
+        where: { userId: user.id },
+        select,
+        orderBy: { onProfile: 'desc' },
+      });
+      expect(saved).toEqual([
+        {
+          skillId: skillAId,
+          onProfile: true,
+          status: UserSkillStatus.HAVE,
+          rating: 4,
+          assessedAt: expect.any(Date),
+        },
+        {
+          skillId: skillBId,
+          onProfile: false,
+          status: UserSkillStatus.DONT_HAVE,
+          rating: null,
+          assessedAt: saved[0].assessedAt,
+        },
+      ]);
+
+      await resetAssessment(user).expect(204);
+
+      expect(
+        await prisma.userSkill.findMany({ where: { userId: user.id }, select }),
+      ).toEqual([
+        {
+          skillId: skillAId,
+          onProfile: true,
+          status: UserSkillStatus.NOT_SURE,
+          rating: null,
+          assessedAt: null,
+        },
+      ]);
+      expect(
+        await prisma.userSkillProgress.count({
+          where: { userSkill: { userId: user.id } },
+        }),
+      ).toBe(0);
     });
 
     it('does not touch UserPathwayStep rows', async () => {
