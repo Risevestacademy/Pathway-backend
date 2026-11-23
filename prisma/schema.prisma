@@ -207,6 +207,32 @@ enum ReviewDecision {
   REJECTED
 }
 
+enum NotificationType {
+  FEEDBACK_REPLIED
+  FEEDBACK_RESOLVED
+}
+
+enum NotificationCategory {
+  ROADMAP_UPDATES
+  NEW_OPENINGS
+  FEEDBACK_REPLIES
+  RESOURCE_LINK_PROBLEMS
+  LEARNING_REMINDERS
+  STREAK_NUDGES
+}
+
+enum NotificationTargetType {
+  CAREER
+  PATHWAY
+  PATHWAY_STAGE
+  PATHWAY_STEP
+  RESOURCE
+  TASK
+  OPPORTUNITY
+  FEEDBACK
+  OTHER
+}
+
 model User {
   id               String    @id @default(uuid())
   email            String    @unique
@@ -246,6 +272,9 @@ model User {
   activityLedger          ActivityLedger[]
   feedbackNotes           FeedbackNote[]
   revisionSessions        RevisionSession[]
+  submittedFeedback       ContentFeedback[]
+  notifications           Notification[]
+  notificationPreferences NotificationPreference[]
 }
 
 model UserProfile {
@@ -762,27 +791,65 @@ model AssessmentResponse {
 }
 
 model ContentFeedback {
-  id          String              @id @default(uuid())
-  category    FeedbackCategory
-  section     FeedbackSection     @default(GENERAL)
-  careerId    String?
-  description String
-  userEmail   String?
-  platform    FeedbackPlatform?
-  status      FeedbackStatus      @default(NEW)
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
-  targetType  FeedbackTargetType? @default(OTHER)
-  targetId    String?
-  resolution  FeedbackResolution?
+  id            String              @id @default(uuid())
+  category      FeedbackCategory
+  section       FeedbackSection     @default(GENERAL)
+  careerId      String?
+  description   String
+  userEmail     String?
+  platform      FeedbackPlatform?
+  status        FeedbackStatus      @default(NEW)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  targetType    FeedbackTargetType? @default(OTHER)
+  targetId      String?
+  resolution    FeedbackResolution?
+  submittedById String?
 
   notes FeedbackNote[]
 
-  career Career? @relation(fields: [careerId], references: [id], onDelete: SetNull)
+  career      Career? @relation(fields: [careerId], references: [id], onDelete: SetNull)
+  submittedBy User?   @relation(fields: [submittedById], references: [id], onDelete: SetNull)
 
   @@index([targetType, targetId])
   @@index([careerId])
   @@index([status])
+  @@index([submittedById])
+}
+
+model Notification {
+  id         String                  @id @default(uuid())
+  userId     String
+  type       NotificationType
+  category   NotificationCategory
+  title      String
+  body       String
+  isRead     Boolean                 @default(false)
+  readAt     DateTime?
+  targetType NotificationTargetType?
+  targetId   String?
+  metadata   Json?
+  createdAt  DateTime                @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead, createdAt])
+  @@index([userId, createdAt])
+  @@index([targetType, targetId])
+}
+
+model NotificationPreference {
+  id           String               @id @default(uuid())
+  userId       String
+  category     NotificationCategory
+  inAppEnabled Boolean
+  emailEnabled Boolean
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, category])
 }
 
 model Source {
