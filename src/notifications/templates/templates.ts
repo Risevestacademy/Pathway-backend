@@ -25,6 +25,10 @@ export const NOTIFICATION_TEMPLATES = {
     file: 'staff-invite',
     subject: "You've been invited to join Pathway's editorial team",
   },
+  'feedback-replied': {
+    file: 'feedback-replied',
+    subject: 'We replied to your feedback',
+  },
 } as const satisfies Record<string, NotificationTemplateDefinition>;
 
 export type NotificationTemplateName = keyof typeof NOTIFICATION_TEMPLATES;
