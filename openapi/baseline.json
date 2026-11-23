@@ -5555,6 +5555,7 @@
             "enum": [
               "DRAFT",
               "IN_REVIEW",
+              "CHANGES_REQUESTED",
               "APPROVED",
               "REJECTED",
               "PUBLISHED"
@@ -9189,6 +9190,7 @@
             "enum": [
               "DRAFT",
               "IN_REVIEW",
+              "CHANGES_REQUESTED",
               "APPROVED",
               "REJECTED",
               "PUBLISHED"
@@ -9505,6 +9507,7 @@
             "enum": [
               "DRAFT",
               "IN_REVIEW",
+              "CHANGES_REQUESTED",
               "APPROVED",
               "REJECTED",
               "PUBLISHED"
@@ -9546,6 +9549,7 @@
             "enum": [
               "DRAFT",
               "IN_REVIEW",
+              "CHANGES_REQUESTED",
               "APPROVED",
               "REJECTED",
               "PUBLISHED"
@@ -9590,6 +9594,7 @@
             "type": "string",
             "enum": [
               "APPROVED",
+              "CHANGES_REQUESTED",
               "REJECTED"
             ],
             "example": "APPROVED"
@@ -9620,6 +9625,7 @@
             "type": "string",
             "enum": [
               "APPROVED",
+              "CHANGES_REQUESTED",
               "REJECTED"
             ]
           },
@@ -9632,6 +9638,7 @@
             "enum": [
               "DRAFT",
               "IN_REVIEW",
+              "CHANGES_REQUESTED",
               "APPROVED",
               "REJECTED",
               "PUBLISHED"
@@ -9668,6 +9675,7 @@
             "enum": [
               "DRAFT",
               "IN_REVIEW",
+              "CHANGES_REQUESTED",
               "APPROVED",
               "REJECTED",
               "PUBLISHED"
@@ -9720,6 +9728,7 @@
             "enum": [
               "DRAFT",
               "IN_REVIEW",
+              "CHANGES_REQUESTED",
               "APPROVED",
               "REJECTED",
               "PUBLISHED"

@@ -59,6 +59,8 @@ describe('Review revision (e2e)', () => {
         snapshot: { schemaVersion: 1 },
         status: options.status ?? RevisionStatus.IN_REVIEW,
         createdById: ids[createdBy],
+        contentType: 'CAREER',
+        contentId: career.id,
       },
     });
     return { careerId: career.id, revisionId: revision.id };

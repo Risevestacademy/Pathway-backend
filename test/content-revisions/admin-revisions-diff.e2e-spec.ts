@@ -162,6 +162,9 @@ describe('Admin revisions — diff (e2e)', () => {
         baseVersion: 3,
         snapshot: snapshot as unknown as object,
         createdById: editorId,
+        contentType: 'CAREER',
+        status: 'IN_REVIEW',
+        contentId: careerId,
       },
     });
     revisionId = revision.id;

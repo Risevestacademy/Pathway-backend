@@ -55,6 +55,7 @@ const REVISION_SELECT = {
 
 const DECISION_STATUS: Record<ReviewDecision, RevisionStatus> = {
   [ReviewDecision.APPROVED]: RevisionStatus.APPROVED,
+  CHANGES_REQUESTED: RevisionStatus.CHANGES_REQUESTED,
   [ReviewDecision.REJECTED]: RevisionStatus.REJECTED,
 };
 
@@ -740,7 +741,7 @@ export class RevisionsService {
 
     return {
       id: review.id,
-      revisionId: review.revisionId,
+      revisionId: review.revisionId!,
       decision: review.decision,
       note: review.note,
       revisionStatus,

@@ -10,4 +10,4 @@ import { ReviewerDiffFormatter } from './reviewer-diff.formatter';
   providers: [RevisionsService, ReviewerDiffFormatter],
   exports: [RevisionsService],
 })
-export class RevisionsModule {}
+export class ContentRevisionsModule {}

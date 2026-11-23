@@ -205,9 +205,12 @@ describe('Admin careers read (e2e)', () => {
     await prisma.contentRevision.create({
       data: {
         careerId: careerIds.draft,
+        contentId: careerIds.draft,
         baseVersion: 1,
         snapshot: { leak: SNAPSHOT_MARKER },
         createdById: editorId,
+        contentType: 'CAREER',
+        status: 'IN_REVIEW',
       },
     });
   });

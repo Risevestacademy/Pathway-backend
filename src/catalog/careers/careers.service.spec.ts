@@ -353,8 +353,27 @@ describe('CareersService', () => {
     it('creates a DRAFT career at version 1 with its first DRAFT revision', async () => {
       await service.createCareer(dto, 'editor-1');
 
-      expect(mockPrismaService.career.create).toHaveBeenCalledWith({
+      expect(mockPrismaService.career.create).toHaveBeenCalledTimes(1);
+
+      const [[args]] = mockPrismaService.career.create.mock.calls as [
+        [
+          {
+            data: {
+              id: string;
+              revisions: {
+                create: { contentId: string; contentType: string };
+              };
+            };
+          },
+        ],
+      ];
+
+      const careerId = args.data.id;
+      expect(careerId).toEqual(expect.any(String));
+
+      expect(args).toEqual({
         data: {
+          id: careerId,
           title: 'DevOps Engineer',
           slug: 'devops-engineer',
           description: 'Automates how software is built, tested and deployed.',
@@ -367,6 +386,8 @@ describe('CareersService', () => {
             create: {
               baseVersion: 1,
               createdById: 'editor-1',
+              contentType: 'CAREER',
+              contentId: careerId,
               snapshot: {
                 schemaVersion: 1,
                 career: {

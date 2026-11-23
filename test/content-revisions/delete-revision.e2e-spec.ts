@@ -60,6 +60,8 @@ describe('Delete draft revision (e2e)', () => {
         snapshot: { schemaVersion: 1 },
         status,
         createdById: ids[Role.EDITOR],
+        contentType: 'CAREER',
+        contentId: career.id,
       },
     });
     return { careerId: career.id, revisionId: revision.id };

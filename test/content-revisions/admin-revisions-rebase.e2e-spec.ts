@@ -168,6 +168,8 @@ describe('Admin revisions — rebase (e2e)', () => {
         status: args.status ?? 'DRAFT',
         baseVersion: args.baseVersion,
         snapshot: snapshot() as unknown as object,
+        contentType: 'CAREER',
+        contentId: args.careerId,
       },
     });
     revisionIds.push(revision.id);
