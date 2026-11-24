@@ -1,4 +1,4 @@
-import type { PlanSection } from '../../strategy.types';
+import type { PlanSection } from '../../envelope/strategy.types';
 
 /**
  * A field descriptor for a content-type strategy. The strategy's `plan`,

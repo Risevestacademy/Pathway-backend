@@ -7,8 +7,8 @@ import type {
   RevisionStrategy,
   SectionChanges,
   TempIdField,
-} from '../../strategy.types';
-import { isRevisionStale } from '../../strategy.types';
+} from '../../envelope/strategy.types';
+import { isRevisionStale } from '../../envelope/strategy.types';
 import type { CareerSnapshot, LiveCareerForPlan } from './career.types';
 import { buildCareerPlan } from './career.plan';
 import { findSnapshotProblems } from './career.consistency';

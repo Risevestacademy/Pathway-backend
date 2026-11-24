@@ -1,8 +1,8 @@
 import { HttpStatus } from '@nestjs/common';
 import type { Prisma } from '../../../generated/prisma/client';
 import { DomainException } from '../../../common';
-import type { RevisionPlan } from '../../strategy.types';
-import type { ApplyResult } from '../../strategy.types';
+import type { RevisionPlan } from '../../envelope/strategy.types';
+import type { ApplyResult } from '../../envelope/strategy.types';
 import type { LiveCareerForPlan, LiveResource } from './career.types';
 
 const REORDER_OFFSET = 10000;

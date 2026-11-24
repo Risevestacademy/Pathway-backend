@@ -1,18 +1,29 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsEnum, IsString, IsUUID, ValidateIf } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  IsEnum,
+  IsObject,
+  IsOptional,
+  IsUUID,
+  ValidateIf,
+} from 'class-validator';
 import { ContentType } from '../../generated/prisma/client';
 
 /**
  * POST /admin/sessions
  *
- * `contextId` is:
- *   - `null`   → the service generates a UUID and (for CAREER) creates a
- *                DRAFT Career row at that id. Use this to start a new career.
- *   - a UUID   → the context root must already exist. Use this to open a
- *                session against an existing career.
+ * Two modes:
  *
- * The service enforces the existence check and the DRAFT-Career creation;
- * this DTO only guarantees the shape.
+ *   1. Open against an existing context root.
+ *      { contextType: 'CAREER', contextId: '<existing career uuid>' }
+ *
+ *   2. Create a new context root (CAREER only in v1).
+ *      { contextType: 'CAREER', contextId: null, initialSnapshot: { ... } }
+ *
+ * In mode 2, `initialSnapshot` is required and must be a complete career
+ * snapshot (title, slug, description, fieldId all present). The service seeds
+ * the DRAFT Career row from it. The snapshot is NOT saved as a revision here;
+ * the first saveDraft does that. `initialSnapshot` exists only because Career's
+ * required columns need values at creation time.
  */
 export class CreateSessionDto {
   @ApiProperty({ enum: ContentType, example: ContentType.CAREER })
@@ -29,4 +40,15 @@ export class CreateSessionDto {
   @ValidateIf((_, v) => v !== null)
   @IsUUID()
   contextId!: string | null;
+
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: true,
+    description:
+      'Required when contextId is null (mode 2). A complete snapshot of the ' +
+      'context root. Used to seed the DRAFT row. Not saved as a revision.',
+  })
+  @IsOptional()
+  @IsObject()
+  initialSnapshot?: Record<string, unknown>;
 }

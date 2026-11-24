@@ -1,4 +1,4 @@
-import type { ContentType } from '../strategy.types';
+import type { ContentType } from './strategy.types';
 
 /**
  * The publish order for content types when the session's context row does not

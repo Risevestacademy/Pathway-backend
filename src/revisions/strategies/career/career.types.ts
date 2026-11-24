@@ -6,7 +6,7 @@ import type {
   SkillImportance,
   TargetLevel,
 } from '../../../generated/prisma/client';
-import type { PlanOperation, PlanBlocker } from '../../strategy.types';
+import type { PlanOperation, PlanBlocker } from '../../envelope/strategy.types';
 
 // ─────────────────────────────────────────────────────────────────────
 // Snapshot schema version

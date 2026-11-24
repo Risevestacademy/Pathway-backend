@@ -8,7 +8,7 @@ import type {
   PlanBlocker,
   PlanSection,
   SectionChanges,
-} from '../strategy.types';
+} from '../envelope/strategy.types';
 import { ContentType } from '../../generated/prisma/client';
 
 class FieldChangeDoc implements FieldChange {

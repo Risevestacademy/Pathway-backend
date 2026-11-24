@@ -1,4 +1,7 @@
-import type { RevisionPlan, SectionChanges } from '../../strategy.types';
+import type {
+  RevisionPlan,
+  SectionChanges,
+} from '../../envelope/strategy.types';
 import type { CareerSnapshot } from './career.types';
 import type { Prisma } from '../../../generated/prisma/client';
 import { ReviewerDiffFormatter } from '../../../catalog/content-revisions/reviewer-diff.formatter';

@@ -1,5 +1,5 @@
 import type { CareerSnapshot } from './career.types';
-import { isTempId } from '../../strategy.types';
+import { isTempId } from '../../envelope/strategy.types';
 
 const duplicates = <T>(
   items: T[],

@@ -1,4 +1,4 @@
-import type { TempIdField } from '../strategy.types';
+import type { TempIdField } from './strategy.types';
 
 /**
  * Rewrite temp IDs (`new-<n>`) in a strategy snapshot to real IDs.
