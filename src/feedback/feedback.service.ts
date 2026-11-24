@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import {
   CareerStatus,
+  FeedbackStatus,
   FeedbackTargetType,
   NotificationType,
   Prisma,
@@ -243,6 +244,11 @@ export class FeedbackService {
     }
   }
 
+  /**
+   * The change and the resolved notification are written in one transaction.
+   * Only the move into RESOLVED notifies the submitter: saving a resolved
+   * report again, or any other status change, does not.
+   */
   async updateFeedback(
     id: string,
     actorId: string,
@@ -261,12 +267,60 @@ export class FeedbackService {
       );
     }
 
-    let updated: FeedbackStatusChange;
+    let result: {
+      updated: FeedbackStatusChange;
+      recipientUserId: string | null;
+      pending: PendingEmail[];
+    };
     try {
-      updated = await this.prisma.contentFeedback.update({
-        where: { id },
-        data: { status: outcome.status, resolution: outcome.resolution },
-        select: STATUS_CHANGE_SELECT,
+      result = await this.prisma.$transaction(async (tx) => {
+        const data = {
+          status: outcome.status,
+          resolution: outcome.resolution,
+        };
+
+        // Resolving moves only a row that is not resolved yet, so of two
+        // racing requests just one sees the transition. Saving an already
+        // resolved row changes nothing here and notifies nobody.
+        const transitioned =
+          outcome.status === FeedbackStatus.RESOLVED &&
+          (
+            await tx.contentFeedback.updateMany({
+              where: { id, status: { not: FeedbackStatus.RESOLVED } },
+              data,
+            })
+          ).count > 0;
+
+        const updated = await tx.contentFeedback.update({
+          where: { id },
+          data,
+          select: STATUS_CHANGE_SELECT,
+        });
+
+        if (!transitioned) {
+          return { updated, recipientUserId: null, pending: [] };
+        }
+
+        const feedback = await tx.contentFeedback.findUnique({
+          where: { id },
+          select: { submittedById: true },
+        });
+        const submitterId = feedback?.submittedById ?? null;
+
+        if (!submitterId || submitterId === actorId) {
+          return { updated, recipientUserId: null, pending: [] };
+        }
+
+        const pending = await this.dispatcher.feedbackResolved(
+          {
+            feedbackId: id,
+            recipientUserId: submitterId,
+            actorUserId: actorId,
+          },
+          tx,
+        );
+
+        return { updated, recipientUserId: submitterId, pending };
       });
     } catch (error) {
       if (
@@ -278,15 +332,22 @@ export class FeedbackService {
       throw error;
     }
 
+    const { updated, recipientUserId, pending } = result;
+
     this.logger.log(
       {
         feedbackId: id,
         actorId,
         status: updated.status,
         resolution: updated.resolution,
+        ...(recipientUserId
+          ? { recipientUserId, event: NotificationType.FEEDBACK_RESOLVED }
+          : {}),
       },
       'Feedback status changed',
     );
+
+    this.sendEmails(id, pending);
 
     return updated;
   }
