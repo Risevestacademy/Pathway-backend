@@ -1,5 +1,6 @@
 import type {
   CareerStatus,
+  ContentType,
   ReviewDecision,
   Role,
 } from '../generated/prisma/enums';
@@ -49,6 +50,35 @@ export interface AnalyticsEventMap {
     newVersion: number;
   };
   career_status_changed: { oldStatus: CareerStatus; newStatus: CareerStatus };
+  revision_session_created: {
+    sessionId: string;
+    contextType: ContentType;
+    contextId: string;
+  };
+  revision_session_submitted: {
+    sessionId: string;
+    contextType: ContentType;
+    contextId: string;
+    revisionCount: number;
+  };
+  revision_session_reviewed: {
+    sessionId: string;
+    contextType: ContentType;
+    contextId: string;
+    decision: ReviewDecision;
+  };
+  revision_session_rebased: {
+    sessionId: string;
+    contextType: ContentType;
+    contextId: string;
+    rebasedCount: number;
+  };
+  revision_session_published: {
+    sessionId: string;
+    contextType: ContentType;
+    contextId: string;
+    revisionCount: number;
+  };
 }
 
 export type AnalyticsEventName = keyof AnalyticsEventMap;
