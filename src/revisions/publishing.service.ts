@@ -36,6 +36,7 @@ import type {
   DiscardResponseDto,
   ReviewSessionDto,
   SaveDraftDto,
+  SnapshotResponseDto,
 } from './dto';
 
 // ─────────────────────────────────────────────────────────────────────
@@ -1098,6 +1099,68 @@ export class PublishingService {
       sessionId: result.sessionId,
       rebased: result.rebased,
       revisions: result.revisions,
+    };
+  }
+
+  // ───────────────────────────────────────────────────────────────────
+  // getSnapshots
+  // ───────────────────────────────────────────────────────────────────
+
+  /**
+   * The raw saved snapshots for a session, one per revision.
+   *
+   * Passthrough: returns exactly what is stored on ContentRevision.snapshot.
+   * No strategy calls, no live state, no locks, no plan. This is the
+   * editor's view of "what did I save"; reviewers use buildDiff instead.
+   *
+   * Authorization: creator or REVIEWER+ (same as getSession / buildDiff).
+   * No status restriction: a CHANGES_REQUESTED or PUBLISHED session's
+   * snapshots are readable, because the correction and history workflows
+   * need them.
+   */
+  async getSnapshots(
+    sessionId: string,
+    actor: Actor,
+  ): Promise<SnapshotResponseDto> {
+    const session = await this.prisma.revisionSession.findUnique({
+      where: { id: sessionId },
+      select: { id: true, createdById: true },
+    });
+    if (!session) {
+      throw new DomainException(
+        HttpStatus.NOT_FOUND,
+        'SESSION_NOT_FOUND',
+        'Session not found',
+      );
+    }
+    this.assertCanViewSession(session, actor);
+
+    const revisions = await this.prisma.contentRevision.findMany({
+      where: { sessionId: session.id },
+      select: {
+        id: true,
+        contentType: true,
+        contentId: true,
+        snapshot: true,
+        updatedAt: true,
+      },
+      orderBy: [{ contentType: 'asc' as const }, { contentId: 'asc' as const }],
+    });
+
+    this.logger.log(
+      { sessionId, actorUserId: actor.id, revisionCount: revisions.length },
+      'Session snapshots read',
+    );
+
+    return {
+      sessionId: session.id,
+      snapshots: revisions.map((r) => ({
+        revisionId: r.id,
+        contentType: r.contentType,
+        contentId: r.contentId,
+        snapshot: r.snapshot as Record<string, unknown>,
+        updatedAt: r.updatedAt,
+      })),
     };
   }
 

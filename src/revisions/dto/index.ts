@@ -21,3 +21,7 @@ export {
   RebaseResponseDto,
   RebasedRevisionSummaryDto,
 } from './rebase-response.dto';
+export {
+  SnapshotResponseDto,
+  SessionSnapshotDto,
+} from './snapshot-response.dto';
