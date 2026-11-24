@@ -6,6 +6,7 @@ import { NotificationService } from './notification.service';
 import { NotificationPreferencesService } from './notification-preferences.service';
 import { NotificationDispatcher } from './notification.dispatcher';
 import { UserNotificationsService } from './user-notifications.service';
+import { MeNotificationsController } from './me-notifications.controller';
 import { TemplateRenderer, TEMPLATES_DIR } from './template-renderer.service';
 import { MailerSendProvider } from './providers/mailersend.provider';
 import { LogEmailProvider } from './providers/log-email.provider';
@@ -24,6 +25,7 @@ const moduleDir =
     : join(process.cwd(), 'src', 'notifications');
 
 @Module({
+  controllers: [MeNotificationsController],
   providers: [
     NotificationService,
     NotificationPreferencesService,
