@@ -18,6 +18,7 @@ import {
   NotificationDispatcher,
   type PendingEmail,
 } from './notification.dispatcher';
+import { UserNotificationsService } from './user-notifications.service';
 
 describe('NOTIFICATION_EVENT_CATEGORY', () => {
   it('gives every notification type a category', () => {
@@ -52,10 +53,10 @@ describe('NotificationDispatcher', () => {
       ) => Promise<void>
     >(),
   };
+  const mockUserNotifications = {
+    createMany: jest.fn<(rows: unknown, tx: unknown) => Promise<number>>(),
+  };
   const tx = {
-    notification: {
-      createMany: jest.fn<(args: unknown) => Promise<unknown>>(),
-    },
     user: { findUnique: jest.fn<(args: unknown) => Promise<unknown>>() },
   };
   const txClient = tx as unknown as Prisma.TransactionClient;
@@ -75,7 +76,7 @@ describe('NotificationDispatcher', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     withFeedbackPreference({ inAppEnabled: true, emailEnabled: true });
-    tx.notification.createMany.mockResolvedValue({ count: 1 });
+    mockUserNotifications.createMany.mockResolvedValue(1);
     tx.user.findUnique.mockResolvedValue({ email: 'user@example.com' });
     mockNotificationService.send.mockResolvedValue(undefined);
 
@@ -84,6 +85,7 @@ describe('NotificationDispatcher', () => {
         NotificationDispatcher,
         { provide: NotificationPreferencesService, useValue: mockPreferences },
         { provide: NotificationService, useValue: mockNotificationService },
+        { provide: UserNotificationsService, useValue: mockUserNotifications },
       ],
     }).compile();
 
@@ -98,8 +100,8 @@ describe('NotificationDispatcher', () => {
         'user-1',
         txClient,
       );
-      expect(tx.notification.createMany).toHaveBeenCalledWith({
-        data: [
+      expect(mockUserNotifications.createMany).toHaveBeenCalledWith(
+        [
           {
             userId: 'user-1',
             type: NotificationType.FEEDBACK_REPLIED,
@@ -110,7 +112,8 @@ describe('NotificationDispatcher', () => {
             targetId: 'feedback-1',
           },
         ],
-      });
+        txClient,
+      );
     });
 
     it('writes nothing when in-app is off', async () => {
@@ -118,7 +121,7 @@ describe('NotificationDispatcher', () => {
 
       await dispatcher.feedbackReplied(input, txClient);
 
-      expect(tx.notification.createMany).not.toHaveBeenCalled();
+      expect(mockUserNotifications.createMany).not.toHaveBeenCalled();
     });
 
     it('returns a pending email when email is on', async () => {
@@ -146,7 +149,7 @@ describe('NotificationDispatcher', () => {
 
       expect(pending).toEqual([]);
       expect(tx.user.findUnique).not.toHaveBeenCalled();
-      expect(tx.notification.createMany).toHaveBeenCalled();
+      expect(mockUserNotifications.createMany).toHaveBeenCalled();
     });
 
     it('produces nothing when the recipient is the actor', async () => {
@@ -157,7 +160,7 @@ describe('NotificationDispatcher', () => {
 
       expect(pending).toEqual([]);
       expect(mockPreferences.getForUser).not.toHaveBeenCalled();
-      expect(tx.notification.createMany).not.toHaveBeenCalled();
+      expect(mockUserNotifications.createMany).not.toHaveBeenCalled();
     });
 
     it('sends nothing itself', async () => {
