@@ -16,6 +16,7 @@ import { NotificationService } from './notification.service';
 import { NOTIFICATION_EVENT_CATEGORY } from './notification-events';
 import { NotificationPreferencesService } from './notification-preferences.service';
 import type { NotificationTemplateName } from './templates/templates';
+import { UserNotificationsService } from './user-notifications.service';
 
 export interface PendingEmail {
   userId: string;
@@ -38,6 +39,7 @@ export class NotificationDispatcher {
   constructor(
     private readonly preferences: NotificationPreferencesService,
     private readonly notificationService: NotificationService,
+    private readonly userNotifications: UserNotificationsService,
   ) {}
 
   async feedbackReplied(
@@ -53,8 +55,8 @@ export class NotificationDispatcher {
     ];
 
     if (preference.inAppEnabled) {
-      await tx.notification.createMany({
-        data: [
+      await this.userNotifications.createMany(
+        [
           {
             userId: recipientUserId,
             type,
@@ -65,7 +67,8 @@ export class NotificationDispatcher {
             targetId: feedbackId,
           },
         ],
-      });
+        tx,
+      );
       this.logger.debug(
         { userId: recipientUserId, type, category },
         'Notification written',
