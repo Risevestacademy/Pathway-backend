@@ -29,6 +29,10 @@ export const NOTIFICATION_TEMPLATES = {
     file: 'feedback-replied',
     subject: 'We replied to your feedback',
   },
+  'feedback-resolved': {
+    file: 'feedback-resolved',
+    subject: 'Your feedback was resolved',
+  },
 } as const satisfies Record<string, NotificationTemplateDefinition>;
 
 export type NotificationTemplateName = keyof typeof NOTIFICATION_TEMPLATES;
