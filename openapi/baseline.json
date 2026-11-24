@@ -682,6 +682,175 @@
         ]
       }
     },
+    "/me/notifications": {
+      "get": {
+        "description": "Newest first. Pass the returned nextCursor as cursor to read the next page.",
+        "operationId": "MeNotificationsController_listMyNotifications",
+        "parameters": [
+          {
+            "name": "filter",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "all",
+              "type": "string",
+              "enum": [
+                "all",
+                "unread"
+              ]
+            }
+          },
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "description": "The nextCursor of the previous page.",
+            "schema": {
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationPageDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid filter or limit (VALIDATION_ERROR), or a malformed cursor (INVALID_CURSOR)"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the signed-in user's notifications",
+        "tags": [
+          "Me"
+        ]
+      }
+    },
+    "/me/notifications/unread-count": {
+      "get": {
+        "operationId": "MeNotificationsController_getUnreadCount",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationUnreadCountDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Count the signed-in user's unread notifications",
+        "tags": [
+          "Me"
+        ]
+      }
+    },
+    "/me/notifications/read-all": {
+      "patch": {
+        "operationId": "MeNotificationsController_markAllRead",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarkAllNotificationsReadDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Mark all the signed-in user's notifications read",
+        "tags": [
+          "Me"
+        ]
+      }
+    },
+    "/me/notifications/{id}/read": {
+      "patch": {
+        "description": "Marking a notification that is already read succeeds.",
+        "operationId": "MeNotificationsController_markRead",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Notification marked read."
+          },
+          "400": {
+            "description": "id is not a UUID"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "404": {
+            "description": "No notification with this id belongs to the caller"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Mark one notification read",
+        "tags": [
+          "Me"
+        ]
+      }
+    },
     "/admin/teams/invites": {
       "post": {
         "description": "Minimum role: ADMIN. Creates a single-use invite (24h TTL) and emails an accept link. Replaces any pending invite for the same email. If the email fails to send, the invite stays and can be re-sent by re-inviting.",
@@ -2622,7 +2791,7 @@
     },
     "/feedback": {
       "post": {
-        "description": "Public and anonymous. Say what the report is about with targetType and targetId, for example PATHWAY_STEP with the step id, or CERTIFICATION for a certification. The item must exist and be visible. OTHER needs no targetId. Older clients can still send only careerId, which is read as a CAREER target. The optional contact email is stored but never logged.",
+        "description": "Open to anonymous callers. Send an access token to be notified when the team replies or resolves the report; without one the report is stored as before and nobody is notified. Say what the report is about with targetType and targetId, for example PATHWAY_STEP with the step id, or CERTIFICATION for a certification. The item must exist and be visible. OTHER needs no targetId. Older clients can still send only careerId, which is read as a CAREER target. The optional contact email is stored but never logged.",
         "operationId": "FeedbackController_submitFeedback",
         "parameters": [],
         "requestBody": {
@@ -2656,6 +2825,11 @@
             "description": "Rate limit exceeded"
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "summary": "Submit feedback or report an issue",
         "tags": [
           "Feedback"
@@ -4400,6 +4574,137 @@
         },
         "required": [
           "token"
+        ]
+      },
+      "NotificationItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "0b7a6f3e-2c1d-4e5f-8a9b-1c2d3e4f5a6b"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "FEEDBACK_REPLIED",
+              "FEEDBACK_RESOLVED"
+            ],
+            "example": "FEEDBACK_REPLIED"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "ROADMAP_UPDATES",
+              "NEW_OPENINGS",
+              "FEEDBACK_REPLIES",
+              "RESOURCE_LINK_PROBLEMS",
+              "LEARNING_REMINDERS",
+              "STREAK_NUDGES"
+            ],
+            "example": "FEEDBACK_REPLIES"
+          },
+          "title": {
+            "type": "string",
+            "example": "We replied to your feedback"
+          },
+          "body": {
+            "type": "string",
+            "example": "Our team replied to feedback you sent. Open it to read the reply."
+          },
+          "isRead": {
+            "type": "boolean",
+            "example": false
+          },
+          "readAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true,
+            "example": null
+          },
+          "targetType": {
+            "type": "string",
+            "enum": [
+              "CAREER",
+              "PATHWAY",
+              "PATHWAY_STAGE",
+              "PATHWAY_STEP",
+              "RESOURCE",
+              "TASK",
+              "OPPORTUNITY",
+              "FEEDBACK",
+              "OTHER"
+            ],
+            "nullable": true,
+            "example": "FEEDBACK"
+          },
+          "targetId": {
+            "type": "string",
+            "nullable": true,
+            "example": "5d2c8a41-7e3b-4f6a-9c0d-2b1e4f7a8c93"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-11-24T09:15:30.123Z"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "category",
+          "title",
+          "body",
+          "isRead",
+          "readAt",
+          "targetType",
+          "targetId",
+          "createdAt"
+        ]
+      },
+      "NotificationPageDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NotificationItemDto"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true,
+            "example": "MjAyNi0xMS0yNFQwOToxNTozMC4xMjNaXzBiN2E2ZjNlLTJjMWQtNGU1Zi04YTliLTFjMmQzZTRmNWE2Yg",
+            "description": "Pass as `cursor` to read the next page; null on the last page."
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "NotificationUnreadCountDto": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "number",
+            "example": 3
+          }
+        },
+        "required": [
+          "count"
+        ]
+      },
+      "MarkAllNotificationsReadDto": {
+        "type": "object",
+        "properties": {
+          "unreadCount": {
+            "type": "number",
+            "example": 0,
+            "description": "Always 0 after marking all read."
+          }
+        },
+        "required": [
+          "unreadCount"
         ]
       },
       "CreateStaffInviteDto": {

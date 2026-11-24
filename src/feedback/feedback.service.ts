@@ -8,11 +8,13 @@ import {
 import {
   CareerStatus,
   FeedbackTargetType,
+  NotificationType,
   Prisma,
   ResourceStatus,
   ResourceType,
 } from '../generated/prisma/client';
-import { DomainException } from '../common';
+import { DomainException, type AuthenticatedUser } from '../common';
+import { NotificationDispatcher, type PendingEmail } from '../notifications';
 import { PrismaService } from '../prisma';
 import { CreateFeedbackDto } from './dto/create-feedback.dto';
 import { CreateFeedbackResponseDto } from './dto/create-feedback-response.dto';
@@ -74,10 +76,18 @@ const byTitle = (rows: { id: string; title: string }[]): TargetLabel[] =>
 export class FeedbackService {
   private readonly logger = new Logger(FeedbackService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly dispatcher: NotificationDispatcher,
+  ) {}
 
+  /**
+   * Anonymous callers pass no actor and are stored with no submitter. A signed
+   * in caller is recorded as the submitter, so they can be notified later.
+   */
   async submitFeedback(
     dto: CreateFeedbackDto,
+    actor: AuthenticatedUser | null = null,
   ): Promise<CreateFeedbackResponseDto> {
     const { targetType, targetId } = resolveFeedbackTarget(dto);
     await this.assertTargetVisible(targetType, targetId);
@@ -94,6 +104,7 @@ export class FeedbackService {
           platform: dto.platform,
           targetType,
           targetId,
+          submittedById: actor?.id ?? null,
         },
         select: { id: true },
       });
@@ -280,16 +291,49 @@ export class FeedbackService {
     return updated;
   }
 
+  /**
+   * The note and the reply notification are written in one transaction, so a
+   * failure leaves neither. Nobody is notified for an anonymous report or when
+   * the author is the submitter. The email goes out after the commit and a
+   * failed email never undoes the note.
+   */
   async addNote(
     feedbackId: string,
     actorId: string,
     body: string,
   ): Promise<FeedbackNoteDto> {
-    let note: FeedbackNoteDto;
+    let result: {
+      note: FeedbackNoteDto;
+      recipientUserId: string | null;
+      pending: PendingEmail[];
+    };
     try {
-      note = await this.prisma.feedbackNote.create({
-        data: { feedbackId, authorId: actorId, body },
-        select: FEEDBACK_NOTE_SELECT,
+      result = await this.prisma.$transaction(async (tx) => {
+        const note = await tx.feedbackNote.create({
+          data: { feedbackId, authorId: actorId, body },
+          select: FEEDBACK_NOTE_SELECT,
+        });
+
+        const feedback = await tx.contentFeedback.findUnique({
+          where: { id: feedbackId },
+          select: { submittedById: true },
+        });
+        const submitterId = feedback?.submittedById ?? null;
+
+        if (!submitterId || submitterId === actorId) {
+          return { note, recipientUserId: null, pending: [] };
+        }
+
+        const pending = await this.dispatcher.feedbackReplied(
+          {
+            feedbackId,
+            recipientUserId: submitterId,
+            actorUserId: actorId,
+          },
+          tx,
+        );
+
+        return { note, recipientUserId: submitterId, pending };
       });
     } catch (error) {
       if (
@@ -301,9 +345,38 @@ export class FeedbackService {
       throw error;
     }
 
-    this.logger.log({ feedbackId, actorId }, 'Feedback note added');
+    const { note, recipientUserId, pending } = result;
+
+    this.logger.log(
+      {
+        feedbackId,
+        actorId,
+        ...(recipientUserId
+          ? { recipientUserId, event: NotificationType.FEEDBACK_REPLIED }
+          : {}),
+      },
+      'Feedback note added',
+    );
+
+    this.sendEmails(feedbackId, pending);
 
     return note;
+  }
+
+  // After the commit, and never awaited: a failed email must not fail the call
+  private sendEmails(feedbackId: string, pending: PendingEmail[]): void {
+    if (pending.length === 0) return;
+
+    void this.dispatcher.sendPendingEmails(pending).catch((error: unknown) => {
+      this.logger.warn(
+        {
+          feedbackId,
+          reason: 'EMAIL_DISPATCH_FAILED',
+          error: error instanceof Error ? error.name : 'Unknown',
+        },
+        'Feedback notification email failed',
+      );
+    });
   }
 
   // Reports keep no foreign key to their target, so labels are looked up per
