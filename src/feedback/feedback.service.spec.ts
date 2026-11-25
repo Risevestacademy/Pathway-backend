@@ -3,8 +3,13 @@ import { BadRequestException, Logger, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { FeedbackService } from './feedback.service';
 import { PrismaService } from '../prisma';
-import { DomainException } from '../common';
-import { Prisma } from '../generated/prisma/client';
+import { DomainException, type AuthenticatedUser } from '../common';
+import { NotificationType, Prisma, Role } from '../generated/prisma/client';
+import {
+  NotificationDispatcher,
+  type FeedbackRepliedInput,
+  type PendingEmail,
+} from '../notifications';
 import type { FeedbackResponseDto } from './dto/feedback-response.dto';
 import { buildFeedbackListWhere, FEEDBACK_LIST_SELECT } from './feedback-list';
 import { FEEDBACK_DETAIL_SELECT } from './feedback-detail';
@@ -36,9 +41,23 @@ describe('FeedbackService', () => {
     pathwayStepTask: { findFirst: findFirst(), findMany: findMany() },
     resource: { findFirst: findFirst(), findMany: findMany() },
     outlookData: { findFirst: findFirst(), findMany: findMany() },
-    $transaction: jest.fn((operations: Promise<unknown>[]) =>
-      Promise.all(operations),
+    // Runs a callback with this mock as the transaction client, and awaits a
+    // list of operations
+    $transaction: jest.fn(
+      async (work: Promise<unknown>[] | ((tx: unknown) => Promise<unknown>)) =>
+        typeof work === 'function'
+          ? work(mockPrismaService)
+          : Promise.all(work),
     ),
+  };
+
+  const mockDispatcher = {
+    feedbackReplied:
+      jest.fn<
+        (input: FeedbackRepliedInput, tx: unknown) => Promise<PendingEmail[]>
+      >(),
+    sendPendingEmails:
+      jest.fn<(pending: readonly PendingEmail[]) => Promise<void>>(),
   };
 
   const feedback: FeedbackResponseDto = {
@@ -59,6 +78,8 @@ describe('FeedbackService', () => {
     mockPrismaService.contentFeedback.create.mockResolvedValue({
       id: 'feedback-1',
     });
+    mockDispatcher.feedbackReplied.mockResolvedValue([]);
+    mockDispatcher.sendPendingEmails.mockResolvedValue(undefined);
     logSpy = jest
       .spyOn(Logger.prototype, 'log')
       .mockImplementation(() => undefined);
@@ -70,6 +91,7 @@ describe('FeedbackService', () => {
       providers: [
         FeedbackService,
         { provide: PrismaService, useValue: mockPrismaService },
+        { provide: NotificationDispatcher, useValue: mockDispatcher },
       ],
     }).compile();
 
@@ -106,6 +128,7 @@ describe('FeedbackService', () => {
           platform: undefined,
           targetType: 'OTHER',
           targetId: null,
+          submittedById: null,
         },
         select: { id: true },
       });
@@ -139,6 +162,7 @@ describe('FeedbackService', () => {
           platform: 'IOS',
           targetType: 'CAREER',
           targetId: 'career-1',
+          submittedById: null,
         },
         select: { id: true },
       });
@@ -222,6 +246,65 @@ describe('FeedbackService', () => {
 
       expect(create()).not.toHaveBeenCalled();
       expect(logSpy).not.toHaveBeenCalled();
+    });
+
+    const signedIn: AuthenticatedUser = {
+      id: 'user-1',
+      email: 'user@example.com',
+      role: Role.USER,
+    };
+
+    it('records the signed-in caller as the submitter', async () => {
+      await service.submitFeedback(
+        {
+          category: 'USABILITY',
+          description: 'The filters are hard to find.',
+          section: 'GENERAL',
+        },
+        signedIn,
+      );
+
+      expect(create()).toHaveBeenCalledWith({
+        data: expect.objectContaining({ submittedById: 'user-1' }),
+        select: { id: true },
+      });
+    });
+
+    it.each([
+      ['no caller', undefined],
+      ['a null caller', null],
+    ])('stores no submitter for %s, as before', async (_label, actor) => {
+      const result = await service.submitFeedback(
+        {
+          category: 'USABILITY',
+          description: 'The filters are hard to find.',
+          section: 'GENERAL',
+        },
+        actor,
+      );
+
+      expect(create()).toHaveBeenCalledWith({
+        data: expect.objectContaining({ submittedById: null }),
+        select: { id: true },
+      });
+      expect(result).toEqual({ message: 'Feedback received' });
+    });
+
+    it('does not log or return who submitted', async () => {
+      const result = await service.submitFeedback(
+        {
+          category: 'USABILITY',
+          description: 'The filters are hard to find.',
+          section: 'GENERAL',
+        },
+        signedIn,
+      );
+
+      expect(result).toEqual({ message: 'Feedback received' });
+      expect(logSpy).toHaveBeenCalledWith(
+        { feedbackId: 'feedback-1', targetType: 'OTHER' },
+        'Feedback submitted',
+      );
     });
 
     it('logs the feedback id and target type but never the email or description', async () => {
@@ -730,6 +813,17 @@ describe('FeedbackService', () => {
       createdAt: new Date('2026-11-12T10:00:00.000Z'),
     };
 
+    beforeEach(() => {
+      mockPrismaService.contentFeedback.findUnique.mockResolvedValue({
+        submittedById: null,
+      });
+    });
+
+    const submittedBy = (submittedById: string | null) =>
+      mockPrismaService.contentFeedback.findUnique.mockResolvedValue({
+        submittedById,
+      });
+
     it('stores the note against the feedback and the author', async () => {
       mockPrismaService.feedbackNote.create.mockResolvedValue(note);
 
@@ -794,6 +888,173 @@ describe('FeedbackService', () => {
       await expect(
         service.addNote('feedback-1', 'admin-1', 'hello'),
       ).rejects.toBe(failure);
+    });
+    describe('reply notification', () => {
+      const pending: PendingEmail[] = [
+        {
+          userId: 'user-1',
+          type: NotificationType.FEEDBACK_REPLIED,
+          to: 'user@example.com',
+          template: 'feedback-replied',
+          data: {},
+        },
+      ];
+
+      beforeEach(() => {
+        mockPrismaService.feedbackNote.create.mockResolvedValue(note);
+      });
+
+      it('notifies the submitter through the transaction, in the same one as the note', async () => {
+        submittedBy('user-1');
+
+        await service.addNote('feedback-1', 'admin-1', 'Checked.');
+
+        expect(mockPrismaService.$transaction).toHaveBeenCalledTimes(1);
+        expect(mockDispatcher.feedbackReplied).toHaveBeenCalledTimes(1);
+        expect(mockDispatcher.feedbackReplied).toHaveBeenCalledWith(
+          {
+            feedbackId: 'feedback-1',
+            recipientUserId: 'user-1',
+            actorUserId: 'admin-1',
+          },
+          mockPrismaService,
+        );
+        expect(
+          mockPrismaService.feedbackNote.create.mock.invocationCallOrder[0],
+        ).toBeLessThan(
+          mockDispatcher.feedbackReplied.mock.invocationCallOrder[0],
+        );
+      });
+
+      it('reads the submitter of this feedback inside the transaction', async () => {
+        submittedBy('user-1');
+
+        await service.addNote('feedback-1', 'admin-1', 'Checked.');
+
+        expect(
+          mockPrismaService.contentFeedback.findUnique,
+        ).toHaveBeenCalledWith({
+          where: { id: 'feedback-1' },
+          select: { submittedById: true },
+        });
+      });
+
+      it('skips an anonymous report: the note saves and nobody is notified', async () => {
+        submittedBy(null);
+
+        const result = await service.addNote('feedback-1', 'admin-1', 'Hi');
+
+        expect(result).toEqual(note);
+        expect(mockDispatcher.feedbackReplied).not.toHaveBeenCalled();
+        expect(mockDispatcher.sendPendingEmails).not.toHaveBeenCalled();
+      });
+
+      it('skips a reply from the submitter themselves', async () => {
+        submittedBy('admin-1');
+
+        const result = await service.addNote('feedback-1', 'admin-1', 'Hi');
+
+        expect(result).toEqual(note);
+        expect(mockDispatcher.feedbackReplied).not.toHaveBeenCalled();
+        expect(mockDispatcher.sendPendingEmails).not.toHaveBeenCalled();
+      });
+
+      it('sends the pending emails after the transaction has resolved', async () => {
+        submittedBy('user-1');
+        mockDispatcher.feedbackReplied.mockResolvedValue(pending);
+
+        await service.addNote('feedback-1', 'admin-1', 'Checked.');
+
+        expect(mockDispatcher.sendPendingEmails).toHaveBeenCalledWith(pending);
+        expect(
+          mockDispatcher.feedbackReplied.mock.invocationCallOrder[0],
+        ).toBeLessThan(
+          mockDispatcher.sendPendingEmails.mock.invocationCallOrder[0],
+        );
+      });
+
+      it('sends nothing when no email is pending', async () => {
+        submittedBy('user-1');
+        mockDispatcher.feedbackReplied.mockResolvedValue([]);
+
+        await service.addNote('feedback-1', 'admin-1', 'Checked.');
+
+        expect(mockDispatcher.sendPendingEmails).not.toHaveBeenCalled();
+      });
+
+      it('returns the note and warns when the email fails, without rejecting', async () => {
+        submittedBy('user-1');
+        mockDispatcher.feedbackReplied.mockResolvedValue(pending);
+        mockDispatcher.sendPendingEmails.mockRejectedValue(
+          new Error('provider down for user@example.com'),
+        );
+
+        await expect(
+          service.addNote('feedback-1', 'admin-1', 'Checked.'),
+        ).resolves.toEqual(note);
+        await new Promise((resolve) => setImmediate(resolve));
+
+        expect(warnSpy).toHaveBeenCalledWith(
+          {
+            feedbackId: 'feedback-1',
+            reason: 'EMAIL_DISPATCH_FAILED',
+            error: 'Error',
+          },
+          'Feedback notification email failed',
+        );
+        expect(JSON.stringify(warnSpy.mock.calls)).not.toContain(
+          'user@example.com',
+        );
+      });
+
+      it('rejects, and sends no email, when the dispatcher fails inside the transaction', async () => {
+        submittedBy('user-1');
+        const failure = new Error('notification write failed');
+        mockDispatcher.feedbackReplied.mockRejectedValue(failure);
+
+        await expect(
+          service.addNote('feedback-1', 'admin-1', 'Checked.'),
+        ).rejects.toBe(failure);
+
+        expect(mockDispatcher.sendPendingEmails).not.toHaveBeenCalled();
+        expect(logSpy).not.toHaveBeenCalled();
+      });
+
+      it('does not notify anyone when the feedback does not exist', async () => {
+        mockPrismaService.feedbackNote.create.mockRejectedValue(
+          new Prisma.PrismaClientKnownRequestError('Foreign key failed', {
+            code: 'P2003',
+            clientVersion: 'test',
+          }),
+        );
+
+        await expect(
+          service.addNote('missing', 'admin-1', 'hello'),
+        ).rejects.toThrow(new NotFoundException('Feedback not found'));
+
+        expect(mockDispatcher.feedbackReplied).not.toHaveBeenCalled();
+      });
+
+      it('logs the feedback id, actor, recipient and event, never the body or the email', async () => {
+        submittedBy('user-1');
+        mockDispatcher.feedbackReplied.mockResolvedValue(pending);
+
+        await service.addNote('feedback-1', 'admin-1', 'Checked.');
+
+        expect(logSpy).toHaveBeenCalledTimes(1);
+        expect(logSpy).toHaveBeenCalledWith(
+          {
+            feedbackId: 'feedback-1',
+            actorId: 'admin-1',
+            recipientUserId: 'user-1',
+            event: NotificationType.FEEDBACK_REPLIED,
+          },
+          'Feedback note added',
+        );
+        const logged = JSON.stringify([logSpy.mock.calls, warnSpy.mock.calls]);
+        expect(logged).not.toContain('Checked.');
+        expect(logged).not.toContain('user@example.com');
+      });
     });
   });
 
