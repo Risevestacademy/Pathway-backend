@@ -113,31 +113,39 @@ export class PublishingService {
       );
     }
 
-    // Friendly pre-check (the FOR UPDATE inside the tx closes the race).
-    const existing = await this.prisma.revisionSession.findFirst({
-      where: {
-        contextType: dto.contextType,
-        contextId: dto.contextId ?? undefined,
-        createdById: actorUserId,
-        status: { in: OPEN_SESSION_STATUSES },
-      },
-      select: SESSION_SELECT,
-    });
-    if (existing) {
-      this.logger.warn(
-        {
+    // Friendly pre-check, ONLY for the case where contextId is known.
+    // When contextId is null, no pre-check is possible: the real contextId
+    // is generated inside the transaction (ensureContextRoot), and the
+    // authoritative "is there already an open session?" check runs after
+    // that, under the Career FOR UPDATE. A pre-check with `contextId: null`
+    // would translate to `contextId: undefined` in Prisma (skip filter) and
+    // falsely match any open session this user has on ANY career.
+    if (dto.contextId !== null) {
+      const existing = await this.prisma.revisionSession.findFirst({
+        where: {
           contextType: dto.contextType,
-          actorUserId,
-          reason: 'SESSION_ALREADY_OPEN',
+          contextId: dto.contextId,
+          createdById: actorUserId,
+          status: { in: OPEN_SESSION_STATUSES },
         },
-        'Session creation rejected',
-      );
-      throw new DomainException(
-        HttpStatus.CONFLICT,
-        'SESSION_ALREADY_OPEN',
-        'An open session already exists for this context',
-        { sessionId: existing.id },
-      );
+        select: SESSION_SELECT,
+      });
+      if (existing) {
+        this.logger.warn(
+          {
+            contextType: dto.contextType,
+            actorUserId,
+            reason: 'SESSION_ALREADY_OPEN',
+          },
+          'Session creation rejected',
+        );
+        throw new DomainException(
+          HttpStatus.CONFLICT,
+          'SESSION_ALREADY_OPEN',
+          'An open session already exists for this context',
+          { sessionId: existing.id },
+        );
+      }
     }
 
     const session = await this.prisma.$transaction(async (tx) => {
@@ -281,6 +289,9 @@ export class PublishingService {
       if (!session) return { failure: 'SESSION_NOT_FOUND' } as const;
       if (session.status !== RevisionStatus.DRAFT) {
         return { failure: 'INVALID_SESSION_STATE' } as const;
+      }
+      if (session.createdById !== actorUserId) {
+        return { failure: 'NOT_SESSION_CREATOR' } as const;
       }
 
       // Current versions, one query per root. Small N (one per changed model),
@@ -799,6 +810,7 @@ export class PublishingService {
           );
         }
       }
+
       const sorted = [...revisions].sort((a, b) => {
         const pa = positionByType.get(a.contentType)!;
         const pb = positionByType.get(b.contentType)!;
@@ -806,7 +818,9 @@ export class PublishingService {
         return a.contentId.localeCompare(b.contentId);
       });
 
-      // Staleness re-check BEFORE any locks on live rows.
+      // ── Staleness re-check. READ-ONLY. No writes here. ──
+      // A stale session must return SESSION_STALE with the transaction
+      // committing zero rows. Every write below happens after this gate.
       for (const rev of sorted) {
         const current = await currentVersion(
           tx,
@@ -832,7 +846,7 @@ export class PublishingService {
         }
       }
 
-      // Apply.
+      // ── Apply loop. All writes happen here, after the staleness gate. ──
       const tempIdMap = new Map<string, string>();
       const published: PublishedRevisionDto[] = [];
 
@@ -869,7 +883,22 @@ export class PublishingService {
           tempIdMap.set(tempId, realId);
         }
 
-        // 5. Publish event for the revision's root.
+        // 5. Bump Career.version per published revision, post-apply.
+        //    A mid-loop failure rolls this back with the rest of the tx.
+        //    For a create, also transition Career to PUBLISHED + publishedAt.
+        if (session.contextType === 'CAREER') {
+          await tx.career.update({
+            where: { id: session.contextId },
+            data: {
+              version: { increment: 1 },
+              ...(session.createdCareer
+                ? { status: CareerStatus.PUBLISHED, publishedAt: new Date() }
+                : {}),
+            },
+          });
+        }
+
+        // 6. Publish event for the revision's root.
         //    For a create, the strategy returned the real id keyed by the
         //    contentId itself (e.g. new-1 -> real-resource-uuid). The publish
         //    event must use the real id, not the temp one, because the count
@@ -884,7 +913,7 @@ export class PublishingService {
           },
         });
 
-        // 6. Nested roots touched (T0.4: career returns []; T1 will return
+        // 7. Nested roots touched (T0.4: career returns []; T1 will return
         //    the pathway/step roots the career snapshot's nested content owns).
         const nestedRoots = strategy.nestedRootsTouched(plan);
         for (const ref of nestedRoots) {
@@ -898,7 +927,7 @@ export class PublishingService {
           });
         }
 
-        // 7. Mark the revision PUBLISHED.
+        // 8. Mark the revision PUBLISHED.
         await tx.contentRevision.update({
           where: { id: rev.id },
           data: {
@@ -914,7 +943,7 @@ export class PublishingService {
         });
       }
 
-      // Session transition (after all applies).
+      // ── Session transition. Once, after all applies. ──
       const now = new Date();
       await tx.revisionSession.update({
         where: { id: session.id },
@@ -978,6 +1007,9 @@ export class PublishingService {
       if (session.status !== RevisionStatus.DRAFT) {
         return { failure: 'INVALID_SESSION_STATE' } as const;
       }
+      if (session.createdById !== actorUserId) {
+        return { failure: 'NOT_SESSION_CREATOR' } as const;
+      }
 
       // Delete the session (cascades revisions via sessionId FK).
       await tx.revisionSession.delete({ where: { id: session.id } });
@@ -998,6 +1030,13 @@ export class PublishingService {
     });
 
     if ('failure' in result) {
+      if (result.failure === 'NOT_SESSION_CREATOR') {
+        throw new DomainException(
+          HttpStatus.FORBIDDEN,
+          'NOT_SESSION_CREATOR',
+          'Only the session creator can discard it',
+        );
+      }
       this.throwSessionFailure(result.failure, sessionId);
     }
 

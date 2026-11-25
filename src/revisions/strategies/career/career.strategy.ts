@@ -2,7 +2,6 @@ import type { Prisma } from '../../../generated/prisma/client';
 import type {
   ApplyResult,
   ContentRef,
-  DiffContext,
   RevisionPlan,
   RevisionStrategy,
   SectionChanges,
@@ -110,16 +109,8 @@ export class CareerRevisionStrategy implements RevisionStrategy<CareerSnapshot> 
   async diff(
     plan: RevisionPlan,
     snapshot: CareerSnapshot,
-    ctx: DiffContext,
   ): Promise<SectionChanges[]> {
-    return careerDiffSections(
-      ctx.revisionId,
-      plan,
-      snapshot,
-      ctx.baseVersion,
-      ctx.liveVersion,
-      ctx.prisma,
-    );
+    return careerDiffSections(plan, snapshot);
   }
 
   async apply(
