@@ -8,6 +8,7 @@ import { NotificationType, Prisma, Role } from '../generated/prisma/client';
 import {
   NotificationDispatcher,
   type FeedbackRepliedInput,
+  type FeedbackResolvedInput,
   type PendingEmail,
 } from '../notifications';
 import type { FeedbackResponseDto } from './dto/feedback-response.dto';
@@ -30,6 +31,7 @@ describe('FeedbackService', () => {
       findUnique: jest.fn<(args: unknown) => Promise<unknown>>(),
       count: jest.fn<(args: unknown) => Promise<number>>(),
       update: jest.fn<(args: unknown) => Promise<unknown>>(),
+      updateMany: jest.fn<(args: unknown) => Promise<{ count: number }>>(),
     },
     feedbackNote: {
       create: jest.fn<(args: unknown) => Promise<unknown>>(),
@@ -56,6 +58,10 @@ describe('FeedbackService', () => {
       jest.fn<
         (input: FeedbackRepliedInput, tx: unknown) => Promise<PendingEmail[]>
       >(),
+    feedbackResolved:
+      jest.fn<
+        (input: FeedbackResolvedInput, tx: unknown) => Promise<PendingEmail[]>
+      >(),
     sendPendingEmails:
       jest.fn<(pending: readonly PendingEmail[]) => Promise<void>>(),
   };
@@ -79,7 +85,11 @@ describe('FeedbackService', () => {
       id: 'feedback-1',
     });
     mockDispatcher.feedbackReplied.mockResolvedValue([]);
+    mockDispatcher.feedbackResolved.mockResolvedValue([]);
     mockDispatcher.sendPendingEmails.mockResolvedValue(undefined);
+    mockPrismaService.contentFeedback.updateMany.mockResolvedValue({
+      count: 0,
+    });
     logSpy = jest
       .spyOn(Logger.prototype, 'log')
       .mockImplementation(() => undefined);
@@ -801,6 +811,214 @@ describe('FeedbackService', () => {
       await expect(
         service.updateFeedback('feedback-1', 'admin-1', { status: 'NEW' }),
       ).rejects.toBe(failure);
+    });
+
+    describe('resolved notification', () => {
+      const resolve = {
+        status: 'RESOLVED' as const,
+        resolution: 'FIXED' as const,
+      };
+      const pending: PendingEmail[] = [
+        {
+          userId: 'user-1',
+          type: NotificationType.FEEDBACK_RESOLVED,
+          to: 'user@example.com',
+          template: 'feedback-resolved',
+          data: {},
+        },
+      ];
+
+      const transition = (moved: boolean, submittedById: string | null) => {
+        mockPrismaService.contentFeedback.updateMany.mockResolvedValue({
+          count: moved ? 1 : 0,
+        });
+        mockPrismaService.contentFeedback.findUnique.mockResolvedValue({
+          submittedById,
+        });
+      };
+
+      beforeEach(() => {
+        mockPrismaService.contentFeedback.update.mockResolvedValue(
+          changed('RESOLVED', 'FIXED'),
+        );
+      });
+
+      it('notifies the submitter on the move into RESOLVED, in the same transaction', async () => {
+        transition(true, 'user-1');
+
+        await service.updateFeedback('feedback-1', 'admin-1', resolve);
+
+        expect(mockPrismaService.$transaction).toHaveBeenCalledTimes(1);
+        expect(mockDispatcher.feedbackResolved).toHaveBeenCalledTimes(1);
+        expect(mockDispatcher.feedbackResolved).toHaveBeenCalledWith(
+          {
+            feedbackId: 'feedback-1',
+            recipientUserId: 'user-1',
+            actorUserId: 'admin-1',
+          },
+          mockPrismaService,
+        );
+        expect(mockDispatcher.feedbackReplied).not.toHaveBeenCalled();
+      });
+
+      it('moves only a row that is not resolved yet', async () => {
+        transition(true, 'user-1');
+
+        await service.updateFeedback('feedback-1', 'admin-1', resolve);
+
+        expect(
+          mockPrismaService.contentFeedback.updateMany,
+        ).toHaveBeenCalledWith({
+          where: { id: 'feedback-1', status: { not: 'RESOLVED' } },
+          data: { status: 'RESOLVED', resolution: 'FIXED' },
+        });
+      });
+
+      it('does not notify when the report was already resolved, and still saves it', async () => {
+        transition(false, 'user-1');
+
+        const result = await service.updateFeedback('feedback-1', 'admin-1', {
+          status: 'RESOLVED',
+          resolution: 'NOT_AN_ISSUE',
+        });
+
+        expect(mockPrismaService.contentFeedback.update).toHaveBeenCalledWith({
+          where: { id: 'feedback-1' },
+          data: { status: 'RESOLVED', resolution: 'NOT_AN_ISSUE' },
+          select: { id: true, status: true, resolution: true, updatedAt: true },
+        });
+        expect(result).toEqual(changed('RESOLVED', 'FIXED'));
+        expect(mockDispatcher.feedbackResolved).not.toHaveBeenCalled();
+        expect(mockDispatcher.sendPendingEmails).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        ['NEW', { status: 'NEW' as const }],
+        ['UNDER_REVIEW', { status: 'UNDER_REVIEW' as const }],
+      ])(
+        'does not notify, or look for a transition, for %s',
+        async (_s, input) => {
+          mockPrismaService.contentFeedback.update.mockResolvedValue(
+            changed(input.status, null),
+          );
+          transition(true, 'user-1');
+
+          await service.updateFeedback('feedback-1', 'admin-1', input);
+
+          expect(
+            mockPrismaService.contentFeedback.updateMany,
+          ).not.toHaveBeenCalled();
+          expect(mockDispatcher.feedbackResolved).not.toHaveBeenCalled();
+        },
+      );
+
+      it('skips an anonymous report', async () => {
+        transition(true, null);
+
+        await service.updateFeedback('feedback-1', 'admin-1', resolve);
+
+        expect(mockDispatcher.feedbackResolved).not.toHaveBeenCalled();
+        expect(mockDispatcher.sendPendingEmails).not.toHaveBeenCalled();
+      });
+
+      it('skips a resolution by the submitter themselves', async () => {
+        transition(true, 'admin-1');
+
+        await service.updateFeedback('feedback-1', 'admin-1', resolve);
+
+        expect(mockDispatcher.feedbackResolved).not.toHaveBeenCalled();
+        expect(mockDispatcher.sendPendingEmails).not.toHaveBeenCalled();
+      });
+
+      it('sends the pending emails only after the transaction has resolved', async () => {
+        transition(true, 'user-1');
+        mockDispatcher.feedbackResolved.mockResolvedValue(pending);
+
+        await service.updateFeedback('feedback-1', 'admin-1', resolve);
+
+        expect(mockDispatcher.sendPendingEmails).toHaveBeenCalledWith(pending);
+        expect(
+          mockDispatcher.feedbackResolved.mock.invocationCallOrder[0],
+        ).toBeLessThan(
+          mockDispatcher.sendPendingEmails.mock.invocationCallOrder[0],
+        );
+      });
+
+      it('returns the change and warns when the email fails, without rejecting', async () => {
+        transition(true, 'user-1');
+        mockDispatcher.feedbackResolved.mockResolvedValue(pending);
+        mockDispatcher.sendPendingEmails.mockRejectedValue(
+          new Error('provider down for user@example.com'),
+        );
+
+        await expect(
+          service.updateFeedback('feedback-1', 'admin-1', resolve),
+        ).resolves.toEqual(changed('RESOLVED', 'FIXED'));
+        await new Promise((done) => setImmediate(done));
+
+        expect(warnSpy).toHaveBeenCalledWith(
+          {
+            feedbackId: 'feedback-1',
+            reason: 'EMAIL_DISPATCH_FAILED',
+            error: 'Error',
+          },
+          'Feedback notification email failed',
+        );
+        expect(JSON.stringify(warnSpy.mock.calls)).not.toContain(
+          'user@example.com',
+        );
+      });
+
+      it('rejects, logs nothing and sends no email when the dispatcher fails inside the transaction', async () => {
+        transition(true, 'user-1');
+        const failure = new Error('notification write failed');
+        mockDispatcher.feedbackResolved.mockRejectedValue(failure);
+
+        await expect(
+          service.updateFeedback('feedback-1', 'admin-1', resolve),
+        ).rejects.toBe(failure);
+
+        expect(mockDispatcher.sendPendingEmails).not.toHaveBeenCalled();
+        expect(logSpy).not.toHaveBeenCalled();
+      });
+
+      it('does not notify anyone when the feedback does not exist', async () => {
+        mockPrismaService.contentFeedback.update.mockRejectedValue(
+          new Prisma.PrismaClientKnownRequestError('Record not found', {
+            code: 'P2025',
+            clientVersion: 'test',
+          }),
+        );
+
+        await expect(
+          service.updateFeedback('missing', 'admin-1', resolve),
+        ).rejects.toThrow(new NotFoundException('Feedback not found'));
+
+        expect(mockDispatcher.feedbackResolved).not.toHaveBeenCalled();
+      });
+
+      it('logs the feedback id, actor, recipient and event, never the email', async () => {
+        transition(true, 'user-1');
+        mockDispatcher.feedbackResolved.mockResolvedValue(pending);
+
+        await service.updateFeedback('feedback-1', 'admin-1', resolve);
+
+        expect(logSpy).toHaveBeenCalledTimes(1);
+        expect(logSpy).toHaveBeenCalledWith(
+          {
+            feedbackId: 'feedback-1',
+            actorId: 'admin-1',
+            status: 'RESOLVED',
+            resolution: 'FIXED',
+            recipientUserId: 'user-1',
+            event: NotificationType.FEEDBACK_RESOLVED,
+          },
+          'Feedback status changed',
+        );
+        expect(
+          JSON.stringify([logSpy.mock.calls, warnSpy.mock.calls]),
+        ).not.toContain('user@example.com');
+      });
     });
   });
 

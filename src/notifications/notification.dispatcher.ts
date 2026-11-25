@@ -32,6 +32,12 @@ export interface FeedbackRepliedInput {
   actorUserId: string;
 }
 
+export interface FeedbackResolvedInput {
+  feedbackId: string;
+  recipientUserId: string;
+  actorUserId: string;
+}
+
 @Injectable()
 export class NotificationDispatcher {
   private readonly logger = new Logger(NotificationDispatcher.name);
@@ -89,6 +95,58 @@ export class NotificationDispatcher {
         type,
         to: recipient.email,
         template: 'feedback-replied',
+        data: {},
+      },
+    ];
+  }
+
+  async feedbackResolved(
+    { feedbackId, recipientUserId, actorUserId }: FeedbackResolvedInput,
+    tx: Prisma.TransactionClient,
+  ): Promise<PendingEmail[]> {
+    if (recipientUserId === actorUserId) return [];
+
+    const type = NotificationType.FEEDBACK_RESOLVED;
+    const category = NOTIFICATION_EVENT_CATEGORY[type];
+    const preference = (await this.preferences.getForUser(recipientUserId, tx))[
+      category
+    ];
+
+    if (preference.inAppEnabled) {
+      await this.userNotifications.createMany(
+        [
+          {
+            userId: recipientUserId,
+            type,
+            category,
+            title: 'Your feedback was resolved',
+            body: 'Our team resolved feedback you sent. Open it to see the outcome.',
+            targetType: NotificationTargetType.FEEDBACK,
+            targetId: feedbackId,
+          },
+        ],
+        tx,
+      );
+      this.logger.debug(
+        { userId: recipientUserId, type, category },
+        'Notification written',
+      );
+    }
+
+    if (!preference.emailEnabled) return [];
+
+    const recipient = await tx.user.findUnique({
+      where: { id: recipientUserId },
+      select: { email: true },
+    });
+    if (!recipient) return [];
+
+    return [
+      {
+        userId: recipientUserId,
+        type,
+        to: recipient.email,
+        template: 'feedback-resolved',
         data: {},
       },
     ];

@@ -170,6 +170,95 @@ describe('NotificationDispatcher', () => {
     });
   });
 
+  describe('feedbackResolved', () => {
+    it('writes one row of the resolved type, with its own copy, through the transaction', async () => {
+      await dispatcher.feedbackResolved(input, txClient);
+
+      expect(mockPreferences.getForUser).toHaveBeenCalledWith(
+        'user-1',
+        txClient,
+      );
+      expect(mockUserNotifications.createMany).toHaveBeenCalledWith(
+        [
+          {
+            userId: 'user-1',
+            type: NotificationType.FEEDBACK_RESOLVED,
+            category: NotificationCategory.FEEDBACK_REPLIES,
+            title: 'Your feedback was resolved',
+            body: 'Our team resolved feedback you sent. Open it to see the outcome.',
+            targetType: NotificationTargetType.FEEDBACK,
+            targetId: 'feedback-1',
+          },
+        ],
+        txClient,
+      );
+    });
+
+    it('has different copy from the reply notification', async () => {
+      await dispatcher.feedbackReplied(input, txClient);
+      await dispatcher.feedbackResolved(input, txClient);
+
+      const [[replied], [resolved]] = mockUserNotifications.createMany.mock
+        .calls as unknown as [
+        [Array<{ type: string; title: string; body: string }>],
+        [Array<{ type: string; title: string; body: string }>],
+      ];
+
+      expect(replied[0].type).not.toBe(resolved[0].type);
+      expect(replied[0].title).not.toBe(resolved[0].title);
+      expect(replied[0].body).not.toBe(resolved[0].body);
+    });
+
+    it('writes nothing when in-app is off', async () => {
+      withFeedbackPreference({ inAppEnabled: false, emailEnabled: true });
+
+      await dispatcher.feedbackResolved(input, txClient);
+
+      expect(mockUserNotifications.createMany).not.toHaveBeenCalled();
+    });
+
+    it('returns a pending email with its own template when email is on', async () => {
+      const pending = await dispatcher.feedbackResolved(input, txClient);
+
+      expect(pending).toEqual([
+        {
+          userId: 'user-1',
+          type: NotificationType.FEEDBACK_RESOLVED,
+          to: 'user@example.com',
+          template: 'feedback-resolved',
+          data: {},
+        },
+      ]);
+    });
+
+    it('returns no email, and reads no address, when email is off', async () => {
+      withFeedbackPreference({ inAppEnabled: true, emailEnabled: false });
+
+      const pending = await dispatcher.feedbackResolved(input, txClient);
+
+      expect(pending).toEqual([]);
+      expect(tx.user.findUnique).not.toHaveBeenCalled();
+      expect(mockUserNotifications.createMany).toHaveBeenCalled();
+    });
+
+    it('produces nothing when the recipient is the actor', async () => {
+      const pending = await dispatcher.feedbackResolved(
+        { ...input, actorUserId: 'user-1' },
+        txClient,
+      );
+
+      expect(pending).toEqual([]);
+      expect(mockPreferences.getForUser).not.toHaveBeenCalled();
+      expect(mockUserNotifications.createMany).not.toHaveBeenCalled();
+    });
+
+    it('sends nothing itself', async () => {
+      await dispatcher.feedbackResolved(input, txClient);
+
+      expect(mockNotificationService.send).not.toHaveBeenCalled();
+    });
+  });
+
   describe('sendPendingEmails', () => {
     const email = (userId: string): PendingEmail => ({
       userId,
