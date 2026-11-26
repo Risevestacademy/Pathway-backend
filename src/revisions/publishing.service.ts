@@ -407,6 +407,7 @@ export class PublishingService {
           contentId: true,
           baseVersion: true,
           snapshot: true,
+          careerId: true,
         },
         orderBy: [{ contentType: 'asc' }, { contentId: 'asc' }],
       });
@@ -459,7 +460,9 @@ export class PublishingService {
       for (const rev of revisions) {
         const strategy = getStrategy(rev.contentType);
         const live = await strategy.loadLive(tx, rev.contentId);
-        const plan = strategy.plan(live, rev.snapshot, rev.baseVersion);
+        const plan = strategy.plan(live, rev.snapshot, rev.baseVersion, {
+          careerId: rev.careerId,
+        });
         for (const b of plan.blockers) {
           blockers.push({
             ...b,
@@ -556,6 +559,7 @@ export class PublishingService {
           contentId: true,
           baseVersion: true,
           snapshot: true,
+          careerId: true,
           createdBy: {
             select: {
               profile: { select: { firstName: true, lastName: true } },
@@ -576,7 +580,9 @@ export class PublishingService {
       for (const rev of revisions) {
         const strategy = getStrategy(rev.contentType);
         const live = await strategy.loadLive(tx, rev.contentId);
-        const plan = strategy.plan(live, rev.snapshot, rev.baseVersion);
+        const plan = strategy.plan(live, rev.snapshot, rev.baseVersion, {
+          careerId: rev.careerId,
+        });
         const current = await currentVersion(
           tx,
           rev.contentType,
@@ -785,6 +791,7 @@ export class PublishingService {
           contentId: true,
           baseVersion: true,
           snapshot: true,
+          careerId: true,
         },
         orderBy: [{ contentType: 'asc' }, { contentId: 'asc' }],
       });
@@ -865,6 +872,7 @@ export class PublishingService {
           live,
           rewrittenSnapshot,
           rev.baseVersion,
+          { careerId: rev.careerId },
         );
         if (plan.blockers.length > 0) {
           return {

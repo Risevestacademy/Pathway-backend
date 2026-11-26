@@ -33,6 +33,7 @@ describe('PublishingService › publish', () => {
       contentId: string;
       baseVersion: number;
       snapshot: unknown;
+      careerId?: string;
     }>,
   ) => {
     txMock.contentRevision.findMany.mockResolvedValue(rows);
@@ -251,6 +252,36 @@ describe('PublishingService › publish', () => {
       'revision_session_published',
       'actor-1',
       expect.objectContaining({ sessionId: 'session-1', revisionCount: 1 }),
+    );
+  });
+
+  it("plans each revision with its session's career", async () => {
+    const { service, txMock, fakeCareerStrategy } = ctx();
+    const session = sessionRow({
+      status: RevisionStatus.APPROVED,
+      createdCareer: false,
+    });
+    lockTo(txMock, session);
+    seedRevisions(txMock, [
+      {
+        id: 'rev-1',
+        contentType: 'CAREER',
+        contentId: 'career-1',
+        baseVersion: 0,
+        snapshot: { title: 'x' },
+        careerId: 'career-1',
+      },
+    ]);
+    txMock.contentRevisionPublishEvent.count.mockResolvedValue(0);
+    txMock.revisionSession.update.mockResolvedValue(session);
+
+    await service.publish('session-1', { id: 'actor-1', role: Role.EDITOR });
+
+    expect(fakeCareerStrategy.plan).toHaveBeenCalledWith(
+      null,
+      { title: 'x' },
+      0,
+      { careerId: 'career-1' },
     );
   });
 
