@@ -125,13 +125,15 @@ The `kind` set and its comparison semantics:
 |---|---|---|
 | `scalar` | `!==` | strings, booleans, nulls |
 | `array` | element-wise `===` (**order-sensitive**) | `string[]` columns |
-| `decimal` | normalize both sides via `.toString()`, then `!==` | Prisma `Decimal`, enum-like columns with runtime type drift |
+| `decimal` | parse both sides as `Prisma.Decimal`, round to `scale` when set, then compare by value | Prisma `Decimal`, enum-like columns with runtime type drift |
+| `date` | normalize both sides to an ISO string, then `!==` | `DateTime` columns |
 | `move` | emit a `move` op with `before`/`after` order | `order Int` columns |
 | `link-set` | set comparison; IDs must be real | many-to-many where the child pre-exists |
 | `temp-link-set` | set comparison; `new-*` allowed on the snapshot side | many-to-many where the child can be created in the same session |
 
 `compareFields(config, live, snapshot, entityId, ops)` handles
-scalar/array/decimal. `compareMove` and `compareLinkSet` are separate
+scalar/array/decimal/date. A field the snapshot omits is unchanged; only an
+explicit `null` clears it. `compareMove` and `compareLinkSet` are separate
 helpers for `move` and `link-set`/`temp-link-set`. The config interpreter
 skips `move`/`link-set`/`temp-link-set` entries in `compareFields`; you
 call the specific helper for those.
@@ -144,6 +146,21 @@ compared as a `scalar` (string), not as a link. It is in the config, so
 editing it emits an `update` op. It is **not** in `tempIdFields`
 (`tempIdFields` is for rows the strategy creates, not for FKs it points
 at).
+
+### Value checks
+
+`findFieldProblems(config, snapshot)` reports a missing required field
+and any value of the wrong type, so `validate` can return it directly.
+The checks come from the config entry:
+
+- `valueType: 'string'` or a list of allowed values for `scalar` fields;
+  `valueType: 'int'` also rejects values outside the 32-bit `Int` range.
+- `scale` and `precision` mirror a `Decimal(p, s)` column. `scale` sets
+  the rounding used for comparison; `precision` rejects values the
+  column cannot hold, so they fail at submit rather than at publish.
+- `date` values must be ISO 8601 date-times with seconds and a real
+  calendar date; Prisma rejects `2026-03-01T10:00Z`, and JavaScript
+  rolls `2026-02-30` over into March.
 
 ### Order-sensitive arrays — the footgun
 
