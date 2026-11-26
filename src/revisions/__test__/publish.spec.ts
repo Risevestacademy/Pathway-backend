@@ -131,6 +131,33 @@ describe('PublishingService › publish', () => {
     expect(txMock.contentRevisionPublishEvent.create).not.toHaveBeenCalled();
   });
 
+  it('locks every revision root before reading versions or live rows', async () => {
+    const { service, txMock, fakeCareerStrategy } = ctx();
+    lockTo(txMock, approvedSession);
+    seedRevisions(txMock, [
+      {
+        id: 'rev-1',
+        contentType: 'CAREER',
+        contentId: 'career-1',
+        baseVersion: 0,
+        snapshot: {},
+      },
+    ]);
+    txMock.contentRevisionPublishEvent.count.mockResolvedValue(0);
+    txMock.revisionSession.update.mockResolvedValue(approvedSession);
+
+    await service.publish('session-1', { id: 'actor-1', role: Role.EDITOR });
+
+    const lockOrder = m(fakeCareerStrategy.lock).mock.invocationCallOrder[0];
+    expect(fakeCareerStrategy.lock).toHaveBeenCalledWith(txMock, 'career-1');
+    expect(lockOrder).toBeLessThan(
+      txMock.contentRevisionPublishEvent.count.mock.invocationCallOrder[0],
+    );
+    expect(lockOrder).toBeLessThan(
+      m(fakeCareerStrategy.loadLive).mock.invocationCallOrder[0],
+    );
+  });
+
   it('returns INVALID_SESSION_STATE when the session is not APPROVED', async () => {
     const { service, txMock } = ctx();
     lockTo(txMock, sessionRow({ status: RevisionStatus.DRAFT }));

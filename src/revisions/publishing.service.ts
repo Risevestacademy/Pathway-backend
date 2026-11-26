@@ -817,6 +817,10 @@ export class PublishingService {
         return a.contentId.localeCompare(b.contentId);
       });
 
+      for (const rev of sorted) {
+        await getStrategy(rev.contentType).lock(tx, rev.contentId);
+      }
+
       // ── Staleness re-check. READ-ONLY. No writes here. ──
       // A stale session must return SESSION_STALE with the transaction
       // committing zero rows. Every write below happens after this gate.
@@ -872,9 +876,6 @@ export class PublishingService {
             details: { blockers: plan.blockers },
           } as const;
         }
-
-        // 3. Lock the live row (no-op for creates).
-        await strategy.lock(tx, rev.contentId);
 
         // 4. Apply.
         const applyResult = await strategy.apply(tx, plan, live, rev.contentId);
