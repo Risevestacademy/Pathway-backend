@@ -52,6 +52,7 @@ export const makeTxMock = () => ({
     delete: jest.fn(),
   },
   outlookData: {
+    findUnique: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
     delete: jest.fn(),
