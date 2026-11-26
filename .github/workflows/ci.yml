@@ -76,7 +76,7 @@ jobs:
       - run: npx prisma migrate deploy
       - run: npm run db:seed
       - run: npm test
-      - run: npm run test:e2e
+      - run: npm run test:e2e:ci
 
   build:
     name: Build
