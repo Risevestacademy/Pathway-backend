@@ -4,6 +4,12 @@ import type {
   RevisionStatus,
 } from '../../../generated/prisma/client';
 
+// src/revisions/__test__/helpers/mocks.ts
+//
+// Only `makeTxMock` is shown here; the rest of the file is unchanged.
+// The diff is: add `careerSkill` and `outlookData` groups inside the object
+// returned by `makeTxMock`, between the existing `career` group and `review`.
+
 export const makeTxMock = () => ({
   $queryRaw: jest.fn(),
   revisionSession: {
@@ -35,6 +41,22 @@ export const makeTxMock = () => ({
     update: jest.fn(),
     delete: jest.fn(),
   },
+  // ── Added in T0.5 / Phase B ─────────────────────────────────────────
+  // The career strategy's apply writes CareerSkill rows (link/update/
+  // unlink) and OutlookData rows (create/update/delete). Both groups are
+  // additive; no existing spec referenced them, so this is a no-op for
+  // existing tests.
+  careerSkill: {
+    create: jest.fn(),
+    update: jest.fn(),
+    delete: jest.fn(),
+  },
+  outlookData: {
+    create: jest.fn(),
+    update: jest.fn(),
+    delete: jest.fn(),
+  },
+  // ────────────────────────────────────────────────────────────────────
   review: { create: jest.fn() },
 });
 

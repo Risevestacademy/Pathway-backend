@@ -595,7 +595,6 @@ export class PublishingService {
           baseVersion: rev.baseVersion,
           liveVersion: current,
           sessionId: session.id,
-          prisma: tx,
         });
         sections.push(...sectionChanges);
       }

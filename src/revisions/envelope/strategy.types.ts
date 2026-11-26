@@ -218,8 +218,6 @@ export interface DiffContext {
   baseVersion: number;
   liveVersion: number;
   sessionId: string | null;
-  /** For strategies that resolve labels via Prisma. */
-  prisma: Prisma.TransactionClient;
 }
 
 /**
