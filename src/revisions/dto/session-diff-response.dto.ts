@@ -18,10 +18,20 @@ class FieldChangeDoc implements FieldChange {
   @ApiProperty({ example: 'Title' })
   label!: string;
 
-  @ApiProperty({ example: 'Frontend Engineer' })
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: true,
+    nullable: true,
+    example: { value: 'Frontend Engineer' },
+  })
   before!: unknown;
 
-  @ApiProperty({ example: 'Senior Frontend Engineer' })
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: true,
+    nullable: true,
+    example: { value: 'Senior Frontend Engineer' },
+  })
   after!: unknown;
 
   @ApiProperty({ required: false, example: 'Jobberman 2025' })
@@ -108,7 +118,24 @@ class PlanBlockerDoc implements PlanBlocker {
   @ApiProperty({ example: 'Step 3 has 4 learners in progress' })
   message!: string;
 
-  @ApiProperty({ example: 'steps' })
+  @ApiProperty({
+    enum: [
+      'career',
+      'pathway',
+      'stages',
+      'steps',
+      'stepSkills',
+      'stepResources',
+      'skills',
+      'outlook',
+      'sources',
+      'resources',
+      'tasks',
+      'quiz',
+      'quizQuestions',
+    ] satisfies PlanSection[],
+    example: 'steps',
+  })
   section!: PlanSection;
 
   @ApiProperty({ required: false })
@@ -128,7 +155,24 @@ class PlanAdvisoryDoc implements PlanAdvisory {
   @ApiProperty({ example: 'Used by 3 careers' })
   message!: string;
 
-  @ApiProperty({ example: 'resources' })
+  @ApiProperty({
+    enum: [
+      'career',
+      'pathway',
+      'stages',
+      'steps',
+      'stepSkills',
+      'stepResources',
+      'skills',
+      'outlook',
+      'sources',
+      'resources',
+      'tasks',
+      'quiz',
+      'quizQuestions',
+    ] satisfies PlanSection[],
+    example: 'resources',
+  })
   section!: PlanSection;
 
   @ApiProperty({ required: false })
