@@ -1,6 +1,7 @@
 import { registerStrategy } from '../envelope/registry';
 import { CareerRevisionStrategy } from './career/career.strategy';
 import { ResourceRevisionStrategy } from './resource/resource.strategy';
+import { SkillRevisionStrategy } from './skill/skill.strategy';
 
 /**
  * Register every strategy. Called by the module bootstrap provider.
@@ -23,4 +24,5 @@ export function registerStrategies(): void {
   registered = true;
   registerStrategy(new CareerRevisionStrategy());
   registerStrategy(new ResourceRevisionStrategy());
+  registerStrategy(new SkillRevisionStrategy());
 }
