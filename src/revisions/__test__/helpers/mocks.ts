@@ -64,6 +64,10 @@ export const makeTxMock = () => ({
     findUnique: jest.fn(),
     update: jest.fn(),
   },
+  source: {
+    findUnique: jest.fn(),
+    update: jest.fn(),
+  },
   // ────────────────────────────────────────────────────────────────────
   review: { create: jest.fn() },
 });
