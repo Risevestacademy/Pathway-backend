@@ -871,10 +871,9 @@ export class PublishingService {
           rev.baseVersion,
         );
         if (plan.blockers.length > 0) {
-          return {
-            failure: 'PLAN_BLOCKED',
-            details: { blockers: plan.blockers },
-          } as const;
+          this.throwSessionFailure('PLAN_BLOCKED', sessionId, {
+            blockers: plan.blockers,
+          });
         }
 
         // 4. Apply.
