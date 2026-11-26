@@ -118,6 +118,12 @@ describe('POST /admin/sessions/:id/rebase — rebase (e2e)', () => {
     }
   });
 
+  afterEach(async () => {
+    await prisma.contentRevisionPublishEvent.deleteMany({
+      where: { contentId: { startsWith: 'placeholder-' } },
+    });
+  });
+
   it('rebases a stale DRAFT session: baseVersion updated, rebased true', async () => {
     const fixture = await seedDraft([0]);
     await setPublishEvents(fixture.revisionIds[0], 'placeholder-0', 2);
@@ -146,68 +152,68 @@ describe('POST /admin/sessions/:id/rebase — rebase (e2e)', () => {
     expect(dbRev.baseVersion).toBe(2);
   });
 
-  //   it('returns rebased: false when nothing is stale; no writes', async () => {
-  //     const fixture = await seedDraft([0]);
-  //     // No publish events → currentVersion = 0 → baseVersion 0 not stale.
+  it('returns rebased: false when nothing is stale; no writes', async () => {
+    const fixture = await seedDraft([0]);
+    // No publish events → currentVersion = 0 → baseVersion 0 not stale.
 
-  //     const before = await prisma.contentRevision.findUniqueOrThrow({
-  //       where: { id: fixture.revisionIds[0] },
-  //     });
+    const before = await prisma.contentRevision.findUniqueOrThrow({
+      where: { id: fixture.revisionIds[0] },
+    });
 
-  //     const res = await rebaseApi(
-  //       app,
-  //       apiPrefix,
-  //       users.tokens[Role.EDITOR],
-  //       fixture.sessionId,
-  //     ).expect(200);
+    const res = await rebaseApi(
+      app,
+      apiPrefix,
+      users.tokens[Role.EDITOR],
+      fixture.sessionId,
+    ).expect(200);
 
-  //     expect(res.body.rebased).toBe(false);
-  //     expect(res.body.revisions[0].baseVersion).toBe(0);
-  //     expect(res.body.revisions[0].wasStale).toBe(false);
+    expect(res.body.rebased).toBe(false);
+    expect(res.body.revisions[0].baseVersion).toBe(0);
+    expect(res.body.revisions[0].wasStale).toBe(false);
 
-  //     const after = await prisma.contentRevision.findUniqueOrThrow({
-  //       where: { id: fixture.revisionIds[0] },
-  //     });
-  //     expect(after.updatedAt.getTime()).toBe(before.updatedAt.getTime());
-  //     expect(after.baseVersion).toBe(before.baseVersion);
-  //   });
+    const after = await prisma.contentRevision.findUniqueOrThrow({
+      where: { id: fixture.revisionIds[0] },
+    });
+    expect(after.updatedAt.getTime()).toBe(before.updatedAt.getTime());
+    expect(after.baseVersion).toBe(before.baseVersion);
+  });
 
-  //   it('rebases only the stale revisions; fresh ones are untouched', async () => {
-  //     // Two revisions: one at baseVersion 0 (stale against 2 events), one at
-  //     // baseVersion 3 (current is 3 events, so not stale).
-  //     const fixture = await seedDraft([0, 3]);
-  //     await setPublishEvents(fixture.revisionIds[0], 'placeholder-0', 2);
-  //     await setPublishEvents(fixture.revisionIds[1], 'placeholder-1', 3);
+  it('rebases only the stale revisions; fresh ones are untouched', async () => {
+    // Two revisions: one at baseVersion 0 (stale against 2 events), one at
+    // baseVersion 3 (current is 3 events, so not stale).
+    const fixture = await seedDraft([0, 3]);
+    await setPublishEvents(fixture.revisionIds[0], 'placeholder-0', 2);
+    await setPublishEvents(fixture.revisionIds[1], 'placeholder-1', 3);
 
-  //     const res = await rebaseApi(
-  //       app,
-  //       apiPrefix,
-  //       users.tokens[Role.EDITOR],
-  //       fixture.sessionId,
-  //     ).expect(200);
+    const res = await rebaseApi(
+      app,
+      apiPrefix,
+      users.tokens[Role.EDITOR],
+      fixture.sessionId,
+    ).expect(200);
 
-  //     expect(res.body.rebased).toBe(true);
-  //     expect(res.body.revisions).toHaveLength(2);
+    expect(res.body.rebased).toBe(true);
+    expect(res.body.revisions).toHaveLength(2);
 
-  //     const byContentId = new Map(
-  //       (
-  //         res.body.revisions as Array<{
-  //           contentId: string;
-  //           baseVersion: number;
-  //           wasStale: boolean;
-  //         }>
-  //       ).map((r) => [r.contentId, r]),
-  //     );
+    const byContentId = new Map(
+      (
+        res.body.revisions as Array<{
+          contentId: string;
+          baseVersion: number;
+          wasStale: boolean;
+        }>
+      ).map((r) => [r.contentId, r]),
+    );
 
-  //     expect(byContentId.get('placeholder-0')).toMatchObject({
-  //       baseVersion: 2,
-  //       wasStale: true,
-  //     });
-  //     expect(byContentId.get('placeholder-1')).toMatchObject({
-  //       baseVersion: 3,
-  //       wasStale: false,
-  //     });
-  //   });
+    expect(byContentId.get('placeholder-0')).toMatchObject({
+      baseVersion: 2,
+      wasStale: true,
+    });
+    expect(byContentId.get('placeholder-1')).toMatchObject({
+      baseVersion: 3,
+      wasStale: false,
+    });
+  });
 
   it('forbids a non-creator EDITOR with 403 NOT_SESSION_CREATOR', async () => {
     const fixture = await seedDraft([0]);

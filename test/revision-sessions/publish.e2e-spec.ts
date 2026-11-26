@@ -51,39 +51,28 @@ describe('POST /admin/sessions/:id/publish — publish (e2e)', () => {
     return { fieldId: field.id, skillId: skill.id };
   };
 
+  // CHUNK 5: shrunk to the career aggregate's post-Phase-A shape:
+  // `{ schemaVersion, career, skills }`. No pathway, steps, outlook, or
+  // resources. The career strategy no longer owns them; their own strategies
+  // will cover them in later tickets.
   const cleanCareerSnapshot = (opts: {
     title: string;
     fieldId: string;
     skillId: string;
   }) => ({
+    schemaVersion: 1 as const,
     career: {
       title: opts.title,
       slug: opts.title.toLowerCase().replace(/\s+/g, '-'),
       description: 'A description.',
       roleSummary: 'What the role involves.',
       fieldId: opts.fieldId,
-      targetLevels: ['STUDENT'],
+      targetLevels: ['STUDENT' as const],
       exampleActivities: ['Build things'],
       typicalEducationNote: 'A degree helps.',
       certificationsNote: 'Not required.',
     },
-    pathway: { title: 'Pathway', description: null },
-    steps: [
-      {
-        id: 'new-step-1',
-        order: 1,
-        title: 'Step 1',
-        description: null,
-        learningObjective: 'Learn the thing',
-        prerequisites: null,
-        expectedActivity: 'Do the thing',
-        skillIds: [opts.skillId],
-        resourceIds: [],
-      },
-    ],
     skills: [{ skillId: opts.skillId, importance: 'REQUIRED' as const }],
-    outlook: [],
-    resources: [],
   });
 
   // Seeds a session whose Career was created by createSession (createdCareer: true).
@@ -290,26 +279,14 @@ describe('POST /admin/sessions/:id/publish — publish (e2e)', () => {
     expect(revision.publishedAt).not.toBeNull();
   });
 
-  it('publishes a createdCareer session with a new pathway and step (temp step id in idMap)', async () => {
-    const { fixture } = await seedApprovedNewCareer();
-
-    const res = await publishApi(
-      app,
-      apiPrefix,
-      users.tokens[Role.PUBLISHER],
-      fixture.sessionId,
-    ).expect(200);
-
-    const pathway = await prisma.pathway.findUnique({
-      where: { careerId: fixture.contextId },
-      include: { steps: true },
-    });
-    expect(pathway).not.toBeNull();
-    expect(pathway!.steps).toHaveLength(1);
-
-    expect(res.body.idMap['new-step-1']).toBeTruthy();
-    expect(pathway!.steps[0].id).toBe(res.body.idMap['new-step-1']);
-  });
+  // CHUNK 5: deleted test
+  //   'publishes a createdCareer session with a new pathway and step
+  //    (temp step id in idMap)'
+  // Reason: asserts on Pathway + PathwayStep rows created by a career
+  // publish. Career no longer owns pathway/steps (README §Aggregate
+  // boundaries, ADR-7, Phase A). The equivalent behaviour moves to
+  // `test/revision-sessions/pathway-step.e2e-spec.ts` in Phase D.
+  // Recorded in the PR deletion list.
 
   // ───────────────────────────────────────────────────────────────────
   // createdCareer: false (existing career)
@@ -365,43 +342,43 @@ describe('POST /admin/sessions/:id/publish — publish (e2e)', () => {
   // Staleness
   // ───────────────────────────────────────────────────────────────────
 
-  //   it('returns 409 SESSION_STALE and writes nothing when a revision is stale', async () => {
-  //     const { fixture } = await seedApprovedNewCareer({ baseVersion: 1 });
-  //     await prisma.contentRevisionPublishEvent.createMany({
-  //       data: [
-  //         { contentType: 'CAREER', contentId: fixture.contextId },
-  //         { contentType: 'CAREER', contentId: fixture.contextId },
-  //       ],
-  //     });
+  it('returns 409 SESSION_STALE and writes nothing when a revision is stale', async () => {
+    const { fixture } = await seedApprovedNewCareer({ baseVersion: 1 });
+    await prisma.contentRevisionPublishEvent.createMany({
+      data: [
+        { contentType: 'CAREER', contentId: fixture.contextId },
+        { contentType: 'CAREER', contentId: fixture.contextId },
+      ],
+    });
 
-  //     const careerBefore = await prisma.career.findUniqueOrThrow({
-  //       where: { id: fixture.contextId },
-  //     });
+    const careerBefore = await prisma.career.findUniqueOrThrow({
+      where: { id: fixture.contextId },
+    });
 
-  //     const res = await publishApi(
-  //       app,
-  //       apiPrefix,
-  //       users.tokens[Role.PUBLISHER],
-  //       fixture.sessionId,
-  //     ).expect(409);
-  //     expect(res.body.code).toBe('SESSION_STALE');
+    const res = await publishApi(
+      app,
+      apiPrefix,
+      users.tokens[Role.PUBLISHER],
+      fixture.sessionId,
+    ).expect(409);
+    expect(res.body.code).toBe('SESSION_STALE');
 
-  //     const careerAfter = await prisma.career.findUniqueOrThrow({
-  //       where: { id: fixture.contextId },
-  //     });
-  //     expect(careerAfter.title).toBe(careerBefore.title);
-  //     expect(careerAfter.version).toBe(careerBefore.version); // no bump on failure
+    const careerAfter = await prisma.career.findUniqueOrThrow({
+      where: { id: fixture.contextId },
+    });
+    expect(careerAfter.title).toBe(careerBefore.title);
+    expect(careerAfter.version).toBe(careerBefore.version); // no bump on failure
 
-  //     const session = await prisma.revisionSession.findUniqueOrThrow({
-  //       where: { id: fixture.sessionId },
-  //     });
-  //     expect(session.status).toBe(RevisionStatus.APPROVED);
+    const session = await prisma.revisionSession.findUniqueOrThrow({
+      where: { id: fixture.sessionId },
+    });
+    expect(session.status).toBe(RevisionStatus.APPROVED);
 
-  //     const events = await prisma.contentRevisionPublishEvent.count({
-  //       where: { contentType: 'CAREER', contentId: fixture.contextId },
-  //     });
-  //     expect(events).toBe(2); // the 2 seeded, none added
-  //   });
+    const events = await prisma.contentRevisionPublishEvent.count({
+      where: { contentType: 'CAREER', contentId: fixture.contextId },
+    });
+    expect(events).toBe(2); // the 2 seeded, none added
+  });
 
   // ───────────────────────────────────────────────────────────────────
   // State machine

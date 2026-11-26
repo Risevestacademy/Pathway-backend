@@ -1,3 +1,14 @@
+// ─────────────────────────────────────────────────────────────────────
+// Phase A amendment (T0.5): the career plan now emits only `career`,
+// `skills`, and `outlook` operations. The `pathway` branch is removed.
+// The `steps`/`resources` branches are kept as generic fall-throughs
+// (they cost nothing and the PATHWAY_STEP/RESOURCE strategies will copy
+// this file); they simply never fire for a career plan anymore.
+//
+// This function is pure — no DB. `DiffContext` no longer carries `prisma`
+// after Phase C, and this file never used it.
+// ─────────────────────────────────────────────────────────────────────
+
 import type {
   EntityChange,
   PlanOperation,
@@ -15,11 +26,6 @@ import type { CareerSnapshot } from './career.types';
  * response shape and is being retired. The new session diff contract
  * (SectionChanges[] with contentType, grouping by entity) is what we emit
  * here, from the plan's own data.
- *
- * The strategy's `diff` interface allows this function to be pure (no DB
- * access); `ctx.prisma` is unused here because the career strategy does not
- * need to resolve any foreign-key labels. When T1 splits other strategies
- * out, those strategies may query for labels; this one does not.
  */
 export function careerDiffSections(
   plan: RevisionPlan,
@@ -67,9 +73,8 @@ export function careerDiffSections(
 
     switch (op.kind) {
       case 'update': {
-        // A field change on an existing entity. The strategy's plan emits
-        // `update` for scalar fields on career, pathway, outlook, and step
-        // entities. Group by entity so the frontend sees one row per entity.
+        // A field change on an existing entity. Group by entity so the
+        // frontend sees one row per entity.
         if (!op.field) break; // safety: an update without a field is a plan bug
         const entityId = op.entityId ?? section.section;
         const entityTitle = titleForOperation(op, snapshot);
@@ -84,8 +89,6 @@ export function careerDiffSections(
       }
 
       case 'create': {
-        // A new entity. `entityId` may be a temp ID (new-N) for resources
-        // or steps; for outlook it's the same. Title comes from `after`.
         const id = op.entityId ?? '';
         section.added.push({
           id,
@@ -117,8 +120,6 @@ export function careerDiffSections(
       }
 
       case 'link': {
-        // A new link (skill, resource, step-skill, step-resource). Render
-        // as an `added` entity in that section.
         const id = op.entityId ?? '';
         section.added.push({
           id,
@@ -151,11 +152,8 @@ export function careerDiffSections(
 
 /**
  * Human-readable label for a field change. Uses the operation's `label`
- * when the plan sets it (the old config-driven plan doesn't, so we fall
- * back to a title-cased field name). The career strategy's
- * `CAREER_STRATEGY_FIELD_LABELS` has the canonical labels and could be
- * used here if the strategy passes them through; until it does, this is
- * good enough and only affects display.
+ * when the plan sets it; the config-driven plan doesn't set it, so we fall
+ * back to a title-cased field name.
  */
 function labelFor(op: PlanOperation): string {
   if (op.label) return op.label;
@@ -167,11 +165,13 @@ function labelFor(op: PlanOperation): string {
  * entries.
  *
  * - career: the snapshot's career title.
- * - pathway: the snapshot's pathway title.
- * - steps/outlook/resources: the entity's own title, from `after` (for
- *   created/updated) or `before` (for deleted).
- * - skills: no title in scope; use the skill ID.
- * - any other section: the entity ID.
+ * - any other section: the entity's own `title` from `after` (created or
+ *   updated entity) or `before` (deleted entity), falling back to the
+ *   entity ID.
+ *
+ * `skills` and `outlook` entities have no `title` field; they fall back to
+ * the entity ID. That is the honest fallback — the diff renderer will
+ * resolve real labels when those strategies exist.
  */
 function titleForOperation(
   op: PlanOperation,
@@ -180,29 +180,12 @@ function titleForOperation(
   if (op.section === 'career') {
     return snapshot.career.title;
   }
-  if (op.section === 'pathway') {
-    if (snapshot.pathway?.title) return snapshot.pathway.title;
-    if (isRecord(op.after) && typeof op.after.title === 'string') {
-      return op.after.title;
-    }
-    if (isRecord(op.before) && typeof op.before.title === 'string') {
-      return op.before.title;
-    }
-    return 'Pathway';
-  }
 
-  // For entity-bearing sections, prefer `after.title` (created/updated
-  // entity), then `before.title` (removed entity), then the entity ID.
   if (isRecord(op.after) && typeof op.after.title === 'string') {
     return op.after.title;
   }
   if (isRecord(op.before) && typeof op.before.title === 'string') {
     return op.before.title;
-  }
-
-  if (op.section === 'skills') {
-    // No skill name in scope; the ID is the honest fallback.
-    return op.entityId ?? 'Skill';
   }
 
   return op.entityId ?? 'Unknown';

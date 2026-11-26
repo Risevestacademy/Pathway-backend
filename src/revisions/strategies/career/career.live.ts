@@ -1,13 +1,16 @@
+// ─────────────────────────────────────────────────────────────────────
+// Phase A amendment (T0.5): the career aggregate no longer includes
+// pathway, steps, resources, or outlook-as-its-own-root. This loader
+// therefore no longer traverses `pathway → steps → resources`, and no
+// longer gathers resource rows. Outlook still loads because outlook is
+// still in the career aggregate for now (OUTLOOK is a later ticket).
+// ─────────────────────────────────────────────────────────────────────
+
 import type { Prisma } from '../../../generated/prisma/client';
 import type { LiveCareerForPlan } from './career.types';
 
 /**
  * Load a live career in the shape `plan` expects.
- *
- * This is the moved `loadLiveCareerForPlan` from the old
- * `content-revisions.service.ts` (it was a private method there). The old
- * service still has its own copy, the duplication is
- * intentional.
  *
  * MUST be called inside a transaction whose `tx` is passed in. The caller
  * (the publisher / session service) owns the transaction boundary.
@@ -20,29 +23,9 @@ export async function loadLiveCareer(
     where: { id: careerId },
     include: {
       skills: true,
-      outlook: true,
-      pathway: {
-        include: {
-          steps: {
-            include: {
-              skills: { select: { skillId: true } },
-              resources: { select: { resourceId: true } },
-            },
-          },
-        },
-      },
     },
   });
   if (!career) return null;
-
-  const resourceIds = new Set<string>();
-  for (const step of career.pathway?.steps ?? [])
-    for (const r of step.resources) resourceIds.add(r.resourceId);
-
-  const resources =
-    resourceIds.size > 0
-      ? await tx.resource.findMany({ where: { id: { in: [...resourceIds] } } })
-      : [];
 
   return {
     id: career.id,
@@ -59,37 +42,6 @@ export async function loadLiveCareer(
     skills: career.skills.map((s) => ({
       skillId: s.skillId,
       importance: s.importance,
-    })),
-    outlook: career.outlook,
-    pathway: career.pathway
-      ? {
-          id: career.pathway.id,
-          title: career.pathway.title,
-          description: career.pathway.description,
-        }
-      : null,
-    steps: (career.pathway?.steps ?? []).map((s) => ({
-      id: s.id,
-      order: s.order,
-      title: s.title,
-      description: s.description,
-      learningObjective: s.learningObjective,
-      prerequisites: s.prerequisites,
-      expectedActivity: s.expectedActivity,
-      skills: s.skills.map((sk) => ({ skillId: sk.skillId })),
-      resources: s.resources.map((r) => ({ resourceId: r.resourceId })),
-    })),
-    resources: resources.map((r) => ({
-      id: r.id,
-      title: r.title,
-      description: r.description,
-      url: r.url,
-      type: r.type,
-      provider: r.provider,
-      costStatus: r.costStatus,
-      certificationCost: r.certificationCost,
-      curationRationale: r.curationRationale,
-      lastCheckedDate: r.lastCheckedDate,
     })),
   };
 }
