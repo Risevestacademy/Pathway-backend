@@ -12200,6 +12200,21 @@
           },
           "section": {
             "type": "string",
+            "enum": [
+              "career",
+              "pathway",
+              "stages",
+              "steps",
+              "stepSkills",
+              "stepResources",
+              "skills",
+              "outlook",
+              "sources",
+              "resources",
+              "tasks",
+              "quiz",
+              "quizQuestions"
+            ],
             "example": "steps"
           },
           "entityId": {
@@ -12232,6 +12247,21 @@
           },
           "section": {
             "type": "string",
+            "enum": [
+              "career",
+              "pathway",
+              "stages",
+              "steps",
+              "stepSkills",
+              "stepResources",
+              "skills",
+              "outlook",
+              "sources",
+              "resources",
+              "tasks",
+              "quiz",
+              "quizQuestions"
+            ],
             "example": "resources"
           },
           "entityId": {
@@ -12257,11 +12287,19 @@
           },
           "before": {
             "type": "object",
-            "example": "Frontend Engineer"
+            "additionalProperties": true,
+            "nullable": true,
+            "example": {
+              "value": "Frontend Engineer"
+            }
           },
           "after": {
             "type": "object",
-            "example": "Senior Frontend Engineer"
+            "additionalProperties": true,
+            "nullable": true,
+            "example": {
+              "value": "Senior Frontend Engineer"
+            }
           },
           "beforeLabel": {
             "type": "string",
