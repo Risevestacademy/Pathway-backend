@@ -7,7 +7,13 @@ import {
   Put,
   UseGuards,
 } from '@nestjs/common';
-import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiOperation,
+  ApiParam,
+  ApiResponse,
+  ApiTags,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import {
   type AuthenticatedUser,
   CurrentUser,
@@ -21,6 +27,7 @@ import { SetStartingPointDto } from './dto/set-starting-point.dto';
 import { StartingPointResponseDto } from './dto/starting-point-response.dto';
 
 @ApiTags('Me')
+@ApiBearerAuth()
 @Controller('me')
 @UseGuards(JwtAuthGuard)
 export class MeController {

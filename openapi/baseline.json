@@ -597,6 +597,11 @@
             "description": "Access token missing or invalid, or the user no longer exists"
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "summary": "Get the signed-in user",
         "tags": [
           "Auth"
@@ -1375,6 +1380,11 @@
             "description": "The title or slug is taken (CONFLICT, code CAREER_TITLE_TAKEN or CAREER_SLUG_TAKEN)"
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "summary": "Create a draft career",
         "tags": [
           "Admin"
@@ -1452,6 +1462,11 @@
             "description": "The user is below EDITOR"
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "summary": "List careers in any status",
         "tags": [
           "Admin"
@@ -1499,6 +1514,11 @@
             "description": "The career is published, retired, was published before, or has been saved by a user"
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "summary": "Delete a never-published draft career",
         "tags": [
           "Admin"
@@ -1541,6 +1561,11 @@
             "description": "Career not found"
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "summary": "Get a career in any status",
         "tags": [
           "Admin"
@@ -1588,6 +1613,11 @@
             "description": "The career is not PUBLISHED (CONFLICT, code CAREER_NOT_PUBLISHED)"
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "summary": "Retire a published career",
         "tags": [
           "Admin"
@@ -2503,6 +2533,11 @@
             "description": "The career has no pathway yet"
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "summary": "Set the signed-in user's active pathway",
         "tags": [
           "Me"
@@ -2523,6 +2558,11 @@
             }
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "summary": "Get the signed-in user's active pathway",
         "tags": [
           "Me"
@@ -2548,6 +2588,11 @@
             }
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "summary": "List the signed-in user's saved, visible pathways",
         "tags": [
           "Me"
@@ -2599,6 +2644,11 @@
             "description": "The user hasn't saved this career, or it isn't visible"
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "summary": "Set, change or clear the starting step of a saved pathway",
         "tags": [
           "Me"
@@ -3994,6 +4044,591 @@
         "summary": "Everything the signed-in user's dashboard renders",
         "tags": [
           "Me"
+        ]
+      }
+    },
+    "/admin/sessions": {
+      "post": {
+        "description": "Minimum role: EDITOR.\n\nTwo modes:\n\n- **Open against an existing context root.** Send `contextId` as a UUID. For `contextType: \"CAREER\"`, the Career row must already exist.\n\n- **Create a new context root.** Send `contextId: null` and `initialSnapshot` with a complete snapshot (title, slug, description, fieldId at minimum for a career). The service creates a DRAFT Career row seeded from the snapshot and stores its UUID as the session contextId. The snapshot is NOT saved as a revision; the first `saveDraft` does that.\n\nA user has at most one open session per context. If one already exists, the response is `409 SESSION_ALREADY_OPEN` with `details.sessionId`.",
+        "operationId": "PublishingController_createSession",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSessionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevisionSessionResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request. `VALIDATION_FAILED` (initialSnapshot failed validation or was missing with contextId: null), or `UNSUPPORTED_CONTENT_TYPE`."
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "403": {
+            "description": "The user is below EDITOR"
+          },
+          "404": {
+            "description": "contextId was provided but the root row does not exist"
+          },
+          "409": {
+            "description": "SESSION_ALREADY_OPEN (details.sessionId identifies the open session)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Create a revision session",
+        "tags": [
+          "Admin - Sessions"
+        ]
+      },
+      "get": {
+        "description": "Minimum role: EDITOR.\n\nScoped to the authenticated user (the creator). Returns the open DRAFT session for the given `(contextType, contextId)`, or `null` if there is none. `null` is a valid answer, not a 404 — the frontend uses this to detect \"you have an unsaved draft\" on the editor screen.",
+        "operationId": "PublishingController_findOpenSession",
+        "parameters": [
+          {
+            "name": "contextType",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "example": "CAREER",
+              "type": "string",
+              "enum": [
+                "CAREER",
+                "PATHWAY",
+                "PATHWAY_STAGE",
+                "PATHWAY_STEP",
+                "PATHWAY_STEP_TASK",
+                "RESOURCE",
+                "SKILL",
+                "OUTLOOK",
+                "SOURCE",
+                "STAGE_QUIZ",
+                "QUIZ_QUESTION"
+              ]
+            }
+          },
+          {
+            "name": "contextId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "example": "d4e5f6a7-0000-0000-0000-000000000000",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The open DRAFT session, or null if none exists.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevisionSessionResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "403": {
+            "description": "The user is below EDITOR"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Find the current user's open DRAFT session for a context",
+        "tags": [
+          "Admin - Sessions"
+        ]
+      }
+    },
+    "/admin/sessions/{sessionId}": {
+      "get": {
+        "description": "Creator or REVIEWER+. Returns the session with its revisions (summaries only — no snapshots). Use `GET .../diff` to see the actual changes.",
+        "operationId": "PublishingController_getSession",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevisionSessionResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "403": {
+            "description": "FORBIDDEN — not the creator and below REVIEWER"
+          },
+          "404": {
+            "description": "SESSION_NOT_FOUND"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get a revision session and its revision summaries",
+        "tags": [
+          "Admin - Sessions"
+        ]
+      },
+      "delete": {
+        "description": "Minimum role: EDITOR.\n\nDeletes the session and cascades its revisions. If the session created the DRAFT Career row (`createdCareer: true`) and the Career is still in DRAFT, the Career row is deleted too. A promoted Career is never deleted by discard.\n\nOnly DRAFT sessions can be discarded. IN_REVIEW, APPROVED, and PUBLISHED sessions are permanent history.",
+        "operationId": "PublishingController_discard",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscardResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "403": {
+            "description": "The user is below EDITOR"
+          },
+          "404": {
+            "description": "SESSION_NOT_FOUND"
+          },
+          "409": {
+            "description": "INVALID_SESSION_STATE (not DRAFT)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Discard a DRAFT session",
+        "tags": [
+          "Admin - Sessions"
+        ]
+      }
+    },
+    "/admin/sessions/{sessionId}/draft": {
+      "post": {
+        "description": "Minimum role: EDITOR.\n\nReplace semantics: the payload is the complete set of drafts for the session. Revisions not in the payload are deleted in the same transaction (ADR-2). There is no separate delete-revision endpoint.\n\nValidation warnings are returned but do NOT fail the save. Submit hard-fails on them. The same `strategy.validate` runs in both places; only the enforcement differs.\n\nSession must be in DRAFT. Save never touches the live tables.",
+        "operationId": "PublishingController_saveDraft",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveDraftDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SaveDraftResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Body failed validation, or a contentType has no registered strategy (UNSUPPORTED_CONTENT_TYPE)."
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "403": {
+            "description": "The user is below EDITOR"
+          },
+          "404": {
+            "description": "SESSION_NOT_FOUND"
+          },
+          "409": {
+            "description": "INVALID_SESSION_STATE — session is not DRAFT"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Save the session draft (batch, replace semantics)",
+        "tags": [
+          "Admin - Sessions"
+        ]
+      }
+    },
+    "/admin/sessions/{sessionId}/submit": {
+      "post": {
+        "description": "Minimum role: EDITOR.\n\nMoves the session (and every revision in it) from DRAFT to IN_REVIEW in one transaction. Sets `submittedAt`.\n\n**All-or-nothing.** If any revision fails structural validation, has a plan blocker, or is stale, nothing transitions:\n\n- `400 VALIDATION_FAILED` — per-revision problems.\n- `400 PLAN_BLOCKED` — per-revision blockers (e.g. a removed step with learner progress).\n- `409 SESSION_STALE` — one or more revisions are behind the current version of their root. Rebase and re-check.\n\nSession must be in DRAFT and contain at least one revision.",
+        "operationId": "PublishingController_submit",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmitResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDATION_FAILED or PLAN_BLOCKED"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "403": {
+            "description": "The user is below EDITOR"
+          },
+          "404": {
+            "description": "SESSION_NOT_FOUND"
+          },
+          "409": {
+            "description": "INVALID_SESSION_STATE (not DRAFT or empty) or SESSION_STALE"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Submit a DRAFT session for review",
+        "tags": [
+          "Admin - Sessions"
+        ]
+      }
+    },
+    "/admin/sessions/{sessionId}/diff": {
+      "get": {
+        "description": "Creator or REVIEWER+. Returns the same plan that submit, review, and publish use, rendered for review. Any divergence would let a reviewer approve something publish cannot safely apply.\n\n**stale** — `true` if ANY revision is behind its root. Rebase before approving.\n\n**blockers** — hard stops. Non-empty means publish would fail.\n\n**advisories** — soft warnings shown as info banners. Do not block approval.\n\n**sections** — an array of `SectionChanges`, one per section that has changes. Multiple entries may share a section when different content types contribute; the frontend groups by `section` for display.\n\nRead-only. No writes. The `diff` call may query the DB (FK label resolution), so it runs inside a transaction.",
+        "operationId": "PublishingController_buildDiff",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionDiffResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "403": {
+            "description": "FORBIDDEN — not the creator and below REVIEWER"
+          },
+          "404": {
+            "description": "SESSION_NOT_FOUND"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Preview the reviewer diff for a session",
+        "tags": [
+          "Admin - Sessions"
+        ]
+      }
+    },
+    "/admin/sessions/{sessionId}/review": {
+      "post": {
+        "description": "Minimum role: REVIEWER.\n\nRecords a session-scoped Review (revisionId is always null) and sets the session (and its revisions) to APPROVED, REJECTED, or CHANGES_REQUESTED. Approving publishes nothing; publishing is a separate step.\n\n**Separation of duties:** a reviewer cannot review their own session unless they are ADMIN. `403 SELF_REVIEW_NOT_ALLOWED`.\n\n**Staleness:** approving is blocked with `409 SESSION_STALE` if any revision is behind its root. Rejecting and requesting changes are always allowed.\n\n**The note is never logged or sent to analytics.** It lives only on the Review row. Capped at 2000 characters.",
+        "operationId": "PublishingController_review",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewSessionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Body failed validation"
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "403": {
+            "description": "Below REVIEWER, or SELF_REVIEW_NOT_ALLOWED"
+          },
+          "404": {
+            "description": "SESSION_NOT_FOUND"
+          },
+          "409": {
+            "description": "INVALID_SESSION_STATE (not IN_REVIEW) or SESSION_STALE"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Approve, reject, or request changes on a session in review",
+        "tags": [
+          "Admin - Sessions"
+        ]
+      }
+    },
+    "/admin/sessions/{sessionId}/publish": {
+      "post": {
+        "description": "Minimum role: PUBLISHER.\n\nApplies every revision in the session in publish order, in one transaction. Nothing changes on any failure path; the session stays APPROVED.\n\nPublish order is chosen by `isCreate` (`session.createdCareer`):\n\n- New career session → PUBLISH_ORDER_CREATE (parents before children).\n- Existing career session → PUBLISH_ORDER_UPDATE (leaves before parents).\n\n**Temp IDs** in each snapshot are rewritten before apply, driven by `strategy.tempIdFields`. The response includes `idMap` so the frontend can reconcile local `new-<n>` IDs.\n\n**On failure:** the transaction rolls back, the session stays APPROVED, and the error is surfaced (`SESSION_STALE`, `PLAN_BLOCKED`, `INVALID_SESSION_STATE`, or `INTERNAL_SERVER_ERROR` for an unknown content type in the publish order).\n\nThe publisher may be the same person as the reviewer. Approval records intent; publish is the mechanical apply.",
+        "operationId": "PublishingController_publish",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublishResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "403": {
+            "description": "The user is below PUBLISHER"
+          },
+          "404": {
+            "description": "SESSION_NOT_FOUND"
+          },
+          "409": {
+            "description": "INVALID_SESSION_STATE, SESSION_STALE, or PLAN_BLOCKED (returned as 400 by the service; listed here for completeness — check the specific code)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Publish an APPROVED session",
+        "tags": [
+          "Admin - Sessions"
+        ]
+      }
+    },
+    "/admin/sessions/{sessionId}/rebase": {
+      "post": {
+        "description": "Minimum role: EDITOR. **Creator only** — ADMIN does not bypass.\n\nFor each revision in the session, sets `baseVersion = currentVersion` for its root. Does NOT merge: the editor's snapshots are preserved as-is; only the anchors move forward. The editor then re-checks their work against the new live state.\n\n**Fresh session** (no revision is stale): returns 200 with `rebased: false`. No write, no event.\n\n**Stale session:** writes new baseVersions, returns 200 with `rebased: true`, emits `revision_session_rebased`.\n\nSession must be DRAFT.",
+        "operationId": "PublishingController_rebase",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RebaseResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "403": {
+            "description": "Below EDITOR, or NOT_SESSION_CREATOR"
+          },
+          "404": {
+            "description": "SESSION_NOT_FOUND"
+          },
+          "409": {
+            "description": "INVALID_SESSION_STATE (not DRAFT)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Re-anchor a stale DRAFT session to the current versions",
+        "tags": [
+          "Admin - Sessions"
+        ]
+      }
+    },
+    "/admin/sessions/{sessionId}/snapshots": {
+      "get": {
+        "description": "Creator or REVIEWER+. Returns the exact snapshots the editor saved via saveDraft, one per revision, ordered by contentType then contentId.\n\n**Use this to populate edit forms when resuming a draft** — for example, after closing the tab, or when seeding a new session from a CHANGES_REQUESTED session. Also useful for inspecting a historical session.\n\n**Not for reviewer display** — use GET .../diff for the derived change report. The snapshot is the raw editor state, not a diff.\n\n**Temp IDs.** A model created in this session has `contentId: \"new-<n>\"`. The frontend reconciles against the publish response's `idMap`.\n\n**No status restriction.** Reads a session in any state, including PUBLISHED and CHANGES_REQUESTED.",
+        "operationId": "PublishingController_getSnapshots",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Access token missing or invalid"
+          },
+          "403": {
+            "description": "FORBIDDEN — not the creator and below REVIEWER"
+          },
+          "404": {
+            "description": "SESSION_NOT_FOUND"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get the raw saved snapshots for a session",
+        "tags": [
+          "Admin - Sessions"
         ]
       }
     }
@@ -11396,6 +12031,1162 @@
           "activePathway",
           "currentProject",
           "goals"
+        ]
+      },
+      "CreateSessionDto": {
+        "type": "object",
+        "properties": {
+          "contextType": {
+            "type": "string",
+            "enum": [
+              "CAREER",
+              "PATHWAY",
+              "PATHWAY_STAGE",
+              "PATHWAY_STEP",
+              "PATHWAY_STEP_TASK",
+              "RESOURCE",
+              "SKILL",
+              "OUTLOOK",
+              "SOURCE",
+              "STAGE_QUIZ",
+              "QUIZ_QUESTION"
+            ],
+            "example": "CAREER"
+          },
+          "contextId": {
+            "type": "string",
+            "nullable": true,
+            "example": null,
+            "description": "null to create a new context root; a UUID to open against an existing one."
+          },
+          "initialSnapshot": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Required when contextId is null (mode 2). A complete snapshot of the context root. Used to seed the DRAFT row. Not saved as a revision."
+          }
+        },
+        "required": [
+          "contextType",
+          "contextId"
+        ]
+      },
+      "RevisionSummaryDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "a3f2c1d4-0000-0000-0000-000000000000"
+          },
+          "contentType": {
+            "type": "string",
+            "enum": [
+              "CAREER",
+              "PATHWAY",
+              "PATHWAY_STAGE",
+              "PATHWAY_STEP",
+              "PATHWAY_STEP_TASK",
+              "RESOURCE",
+              "SKILL",
+              "OUTLOOK",
+              "SOURCE",
+              "STAGE_QUIZ",
+              "QUIZ_QUESTION"
+            ],
+            "example": "CAREER"
+          },
+          "contentId": {
+            "type": "string",
+            "example": "b7e2d1a9-0000-0000-0000-000000000000",
+            "description": "The content root being changed. For a new career, this is the session's contextId (the DRAFT Career row created at createSession)."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "IN_REVIEW",
+              "CHANGES_REQUESTED",
+              "APPROVED",
+              "REJECTED",
+              "PUBLISHED"
+            ],
+            "example": "DRAFT"
+          },
+          "baseVersion": {
+            "type": "number",
+            "example": 3,
+            "description": "The publish-event version this draft was anchored against. A revision is stale when baseVersion < currentVersion."
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-10-30T12:00:00.000Z"
+          }
+        },
+        "required": [
+          "id",
+          "contentType",
+          "contentId",
+          "status",
+          "baseVersion",
+          "updatedAt"
+        ]
+      },
+      "RevisionSessionResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "c1e2d3f4-0000-0000-0000-000000000000"
+          },
+          "contextType": {
+            "type": "string",
+            "enum": [
+              "CAREER",
+              "PATHWAY",
+              "PATHWAY_STAGE",
+              "PATHWAY_STEP",
+              "PATHWAY_STEP_TASK",
+              "RESOURCE",
+              "SKILL",
+              "OUTLOOK",
+              "SOURCE",
+              "STAGE_QUIZ",
+              "QUIZ_QUESTION"
+            ],
+            "example": "CAREER"
+          },
+          "contextId": {
+            "type": "string",
+            "example": "d4e5f6a7-0000-0000-0000-000000000000",
+            "description": "The career aggregate root. For a new career, a UUID generated at createSession; a DRAFT Career row exists with this id."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "IN_REVIEW",
+              "CHANGES_REQUESTED",
+              "APPROVED",
+              "REJECTED",
+              "PUBLISHED"
+            ],
+            "example": "DRAFT"
+          },
+          "createdById": {
+            "type": "string",
+            "example": "e5f6a7b8-0000-0000-0000-000000000000"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-10-30T11:00:00.000Z"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-10-30T12:00:00.000Z"
+          },
+          "submittedAt": {
+            "type": "string",
+            "nullable": true,
+            "example": "2026-10-30T12:30:00.000Z",
+            "description": "Set on submit, in the same transaction as the status flip."
+          },
+          "publishedAt": {
+            "type": "string",
+            "nullable": true,
+            "example": null,
+            "description": "Set on publish."
+          },
+          "revisions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevisionSummaryDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "contextType",
+          "contextId",
+          "status",
+          "createdById",
+          "createdAt",
+          "updatedAt",
+          "submittedAt",
+          "publishedAt",
+          "revisions"
+        ]
+      },
+      "RevisionChangeInputDto": {
+        "type": "object",
+        "properties": {
+          "contentType": {
+            "type": "string",
+            "enum": [
+              "CAREER",
+              "PATHWAY",
+              "PATHWAY_STAGE",
+              "PATHWAY_STEP",
+              "PATHWAY_STEP_TASK",
+              "RESOURCE",
+              "SKILL",
+              "OUTLOOK",
+              "SOURCE",
+              "STAGE_QUIZ",
+              "QUIZ_QUESTION"
+            ],
+            "example": "CAREER"
+          },
+          "contentId": {
+            "type": "string",
+            "example": "b7e2d1a9-0000-0000-0000-000000000000",
+            "description": "The content root's id. For a newly-created resource in this session, this may be a temp id (`new-1`); the publisher rewrites it at publish."
+          },
+          "snapshot": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "The full proposed snapshot. Shape is strategy-defined."
+          }
+        },
+        "required": [
+          "contentType",
+          "contentId",
+          "snapshot"
+        ]
+      },
+      "SaveDraftDto": {
+        "type": "object",
+        "properties": {
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevisionChangeInputDto"
+            }
+          }
+        },
+        "required": [
+          "changes"
+        ]
+      },
+      "ValidationWarningDto": {
+        "type": "object",
+        "properties": {
+          "contentType": {
+            "type": "string",
+            "enum": [
+              "CAREER",
+              "PATHWAY",
+              "PATHWAY_STAGE",
+              "PATHWAY_STEP",
+              "PATHWAY_STEP_TASK",
+              "RESOURCE",
+              "SKILL",
+              "OUTLOOK",
+              "SOURCE",
+              "STAGE_QUIZ",
+              "QUIZ_QUESTION"
+            ],
+            "example": "PATHWAY_STEP"
+          },
+          "contentId": {
+            "type": "string",
+            "example": "new-1"
+          },
+          "problems": {
+            "example": [
+              "learningObjective is required",
+              "expectedActivity is required"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "contentType",
+          "contentId",
+          "problems"
+        ]
+      },
+      "SaveDraftResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "c1e2d3f4-0000-0000-0000-000000000000"
+          },
+          "contextType": {
+            "type": "string",
+            "enum": [
+              "CAREER",
+              "PATHWAY",
+              "PATHWAY_STAGE",
+              "PATHWAY_STEP",
+              "PATHWAY_STEP_TASK",
+              "RESOURCE",
+              "SKILL",
+              "OUTLOOK",
+              "SOURCE",
+              "STAGE_QUIZ",
+              "QUIZ_QUESTION"
+            ],
+            "example": "CAREER"
+          },
+          "contextId": {
+            "type": "string",
+            "example": "d4e5f6a7-0000-0000-0000-000000000000",
+            "description": "The career aggregate root. For a new career, a UUID generated at createSession; a DRAFT Career row exists with this id."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "IN_REVIEW",
+              "CHANGES_REQUESTED",
+              "APPROVED",
+              "REJECTED",
+              "PUBLISHED"
+            ],
+            "example": "DRAFT"
+          },
+          "createdById": {
+            "type": "string",
+            "example": "e5f6a7b8-0000-0000-0000-000000000000"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-10-30T11:00:00.000Z"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-10-30T12:00:00.000Z"
+          },
+          "submittedAt": {
+            "type": "string",
+            "nullable": true,
+            "example": "2026-10-30T12:30:00.000Z",
+            "description": "Set on submit, in the same transaction as the status flip."
+          },
+          "publishedAt": {
+            "type": "string",
+            "nullable": true,
+            "example": null,
+            "description": "Set on publish."
+          },
+          "revisions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevisionSummaryDto"
+            }
+          },
+          "validation": {
+            "description": "Changes with warnings. Empty array when every change validates clean. Changes that validate clean are omitted.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ValidationWarningDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "contextType",
+          "contextId",
+          "status",
+          "createdById",
+          "createdAt",
+          "updatedAt",
+          "submittedAt",
+          "publishedAt",
+          "revisions",
+          "validation"
+        ]
+      },
+      "SubmitResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "c1e2d3f4-0000-0000-0000-000000000000"
+          },
+          "contextType": {
+            "type": "string",
+            "enum": [
+              "CAREER",
+              "PATHWAY",
+              "PATHWAY_STAGE",
+              "PATHWAY_STEP",
+              "PATHWAY_STEP_TASK",
+              "RESOURCE",
+              "SKILL",
+              "OUTLOOK",
+              "SOURCE",
+              "STAGE_QUIZ",
+              "QUIZ_QUESTION"
+            ],
+            "example": "CAREER"
+          },
+          "contextId": {
+            "type": "string",
+            "example": "d4e5f6a7-0000-0000-0000-000000000000",
+            "description": "The career aggregate root. For a new career, a UUID generated at createSession; a DRAFT Career row exists with this id."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "IN_REVIEW",
+              "CHANGES_REQUESTED",
+              "APPROVED",
+              "REJECTED",
+              "PUBLISHED"
+            ],
+            "example": "DRAFT"
+          },
+          "createdById": {
+            "type": "string",
+            "example": "e5f6a7b8-0000-0000-0000-000000000000"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-10-30T11:00:00.000Z"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-10-30T12:00:00.000Z"
+          },
+          "submittedAt": {
+            "type": "string",
+            "nullable": true,
+            "example": "2026-10-30T12:30:00.000Z",
+            "description": "Set on submit, in the same transaction as the status flip."
+          },
+          "publishedAt": {
+            "type": "string",
+            "nullable": true,
+            "example": null,
+            "description": "Set on publish."
+          },
+          "revisions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevisionSummaryDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "contextType",
+          "contextId",
+          "status",
+          "createdById",
+          "createdAt",
+          "updatedAt",
+          "submittedAt",
+          "publishedAt",
+          "revisions"
+        ]
+      },
+      "PlanBlockerDoc": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "example": "STEP_HAS_PROGRESS"
+          },
+          "message": {
+            "type": "string",
+            "example": "Step 3 has 4 learners in progress"
+          },
+          "section": {
+            "type": "string",
+            "enum": [
+              "career",
+              "pathway",
+              "stages",
+              "steps",
+              "stepSkills",
+              "stepResources",
+              "skills",
+              "outlook",
+              "sources",
+              "resources",
+              "tasks",
+              "quiz",
+              "quizQuestions"
+            ],
+            "example": "steps"
+          },
+          "entityId": {
+            "type": "string"
+          },
+          "entityTitle": {
+            "type": "string"
+          },
+          "learnersAffected": {
+            "type": "number",
+            "example": 4
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "section"
+        ]
+      },
+      "PlanAdvisoryDoc": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "example": "SHARED_RESOURCE"
+          },
+          "message": {
+            "type": "string",
+            "example": "Used by 3 careers"
+          },
+          "section": {
+            "type": "string",
+            "enum": [
+              "career",
+              "pathway",
+              "stages",
+              "steps",
+              "stepSkills",
+              "stepResources",
+              "skills",
+              "outlook",
+              "sources",
+              "resources",
+              "tasks",
+              "quiz",
+              "quizQuestions"
+            ],
+            "example": "resources"
+          },
+          "entityId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "section"
+        ]
+      },
+      "FieldChangeDoc": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "example": "title"
+          },
+          "label": {
+            "type": "string",
+            "example": "Title"
+          },
+          "before": {
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true,
+            "example": {
+              "value": "Frontend Engineer"
+            }
+          },
+          "after": {
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true,
+            "example": {
+              "value": "Senior Frontend Engineer"
+            }
+          },
+          "beforeLabel": {
+            "type": "string",
+            "example": "Jobberman 2025"
+          },
+          "afterLabel": {
+            "type": "string",
+            "example": "Jobberman 2026"
+          }
+        },
+        "required": [
+          "field",
+          "label",
+          "before",
+          "after"
+        ]
+      },
+      "EntityChangeDoc": {
+        "type": "object",
+        "properties": {
+          "entityId": {
+            "type": "string",
+            "example": "b7e2d1a9-0000-0000-0000-000000000000"
+          },
+          "entityTitle": {
+            "type": "string",
+            "example": "UX Designer"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FieldChangeDoc"
+            }
+          }
+        },
+        "required": [
+          "entityId",
+          "entityTitle",
+          "changes"
+        ]
+      },
+      "EntityRefDoc": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "new-1"
+          },
+          "title": {
+            "type": "string",
+            "example": "Intro to Docker"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ]
+      },
+      "MovedEntityDoc": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "b7e2d1a9-0000-0000-0000-000000000000"
+          },
+          "title": {
+            "type": "string",
+            "example": "Step 3: Build a portfolio"
+          },
+          "fromOrder": {
+            "type": "number",
+            "example": 3
+          },
+          "toOrder": {
+            "type": "number",
+            "example": 1
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "fromOrder",
+          "toOrder"
+        ]
+      },
+      "SectionChangesDoc": {
+        "type": "object",
+        "properties": {
+          "section": {
+            "type": "string",
+            "example": "steps",
+            "enum": [
+              "career",
+              "pathway",
+              "stages",
+              "steps",
+              "stepSkills",
+              "stepResources",
+              "skills",
+              "outlook",
+              "sources",
+              "resources",
+              "tasks",
+              "quiz",
+              "quizQuestions"
+            ]
+          },
+          "contentType": {
+            "type": "string",
+            "enum": [
+              "CAREER",
+              "PATHWAY",
+              "PATHWAY_STAGE",
+              "PATHWAY_STEP",
+              "PATHWAY_STEP_TASK",
+              "RESOURCE",
+              "SKILL",
+              "OUTLOOK",
+              "SOURCE",
+              "STAGE_QUIZ",
+              "QUIZ_QUESTION"
+            ],
+            "example": "PATHWAY_STEP"
+          },
+          "changed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EntityChangeDoc"
+            }
+          },
+          "added": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EntityRefDoc"
+            }
+          },
+          "removed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EntityRefDoc"
+            }
+          },
+          "moved": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MovedEntityDoc"
+            }
+          }
+        },
+        "required": [
+          "section",
+          "contentType",
+          "changed",
+          "added",
+          "removed",
+          "moved"
+        ]
+      },
+      "SessionDiffResponseDto": {
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "example": "c1e2d3f4-0000-0000-0000-000000000000"
+          },
+          "contextType": {
+            "type": "string",
+            "enum": [
+              "CAREER",
+              "PATHWAY",
+              "PATHWAY_STAGE",
+              "PATHWAY_STEP",
+              "PATHWAY_STEP_TASK",
+              "RESOURCE",
+              "SKILL",
+              "OUTLOOK",
+              "SOURCE",
+              "STAGE_QUIZ",
+              "QUIZ_QUESTION"
+            ],
+            "example": "CAREER"
+          },
+          "contextId": {
+            "type": "string",
+            "example": "d4e5f6a7-0000-0000-0000-000000000000"
+          },
+          "contextTitle": {
+            "type": "string",
+            "example": "Senior Frontend Engineer"
+          },
+          "submittedBy": {
+            "type": "string",
+            "nullable": true,
+            "example": "Chidi E.",
+            "description": "Full name of the session creator, or null if unset."
+          },
+          "submittedAt": {
+            "type": "string",
+            "nullable": true,
+            "example": "2026-10-30T12:30:00.000Z"
+          },
+          "baseVersion": {
+            "type": "number",
+            "example": 3,
+            "description": "Max baseVersion across the session revisions. Zero-revision sessions report 0. This is the version the reviewer is approving against."
+          },
+          "liveVersion": {
+            "type": "number",
+            "example": 3,
+            "description": "Max currentVersion across the session revisions."
+          },
+          "stale": {
+            "type": "boolean",
+            "example": false
+          },
+          "blockers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlanBlockerDoc"
+            }
+          },
+          "advisories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlanAdvisoryDoc"
+            }
+          },
+          "sections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SectionChangesDoc"
+            }
+          }
+        },
+        "required": [
+          "sessionId",
+          "contextType",
+          "contextId",
+          "contextTitle",
+          "submittedBy",
+          "submittedAt",
+          "baseVersion",
+          "liveVersion",
+          "stale",
+          "blockers",
+          "advisories",
+          "sections"
+        ]
+      },
+      "ReviewSessionDto": {
+        "type": "object",
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "APPROVED",
+              "CHANGES_REQUESTED",
+              "REJECTED"
+            ],
+            "example": "APPROVED"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 2000,
+            "example": "Looks good, but the salary range needs a source."
+          }
+        },
+        "required": [
+          "decision"
+        ]
+      },
+      "ReviewResponseDto": {
+        "type": "object",
+        "properties": {
+          "reviewId": {
+            "type": "string",
+            "example": "f6a7b8c9-0000-0000-0000-000000000000"
+          },
+          "revisionId": {
+            "type": "string",
+            "nullable": true,
+            "example": null
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "APPROVED",
+              "CHANGES_REQUESTED",
+              "REJECTED"
+            ],
+            "example": "APPROVED"
+          },
+          "note": {
+            "type": "string",
+            "nullable": true,
+            "example": "Looks good.",
+            "description": "Echoed back from the request. Never logged."
+          },
+          "sessionStatus": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "IN_REVIEW",
+              "CHANGES_REQUESTED",
+              "APPROVED",
+              "REJECTED",
+              "PUBLISHED"
+            ],
+            "example": "APPROVED",
+            "description": "The session status after the decision. APPROVED, REJECTED, or CHANGES_REQUESTED. Never PUBLISHED (that is publish's job)."
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-10-30T13:00:00.000Z"
+          }
+        },
+        "required": [
+          "reviewId",
+          "revisionId",
+          "decision",
+          "note",
+          "sessionStatus",
+          "createdAt"
+        ]
+      },
+      "PublishedRevisionDto": {
+        "type": "object",
+        "properties": {
+          "contentType": {
+            "type": "string",
+            "enum": [
+              "CAREER",
+              "PATHWAY",
+              "PATHWAY_STAGE",
+              "PATHWAY_STEP",
+              "PATHWAY_STEP_TASK",
+              "RESOURCE",
+              "SKILL",
+              "OUTLOOK",
+              "SOURCE",
+              "STAGE_QUIZ",
+              "QUIZ_QUESTION"
+            ],
+            "example": "RESOURCE"
+          },
+          "contentId": {
+            "type": "string",
+            "example": "new-1",
+            "description": "The id the draft used for this root. May be a temp id (`new-*`) when the draft created the root."
+          },
+          "realId": {
+            "type": "string",
+            "example": "b7e2d1a9-0000-0000-0000-000000000000",
+            "description": "Present only when the root was created by this publish."
+          }
+        },
+        "required": [
+          "contentType",
+          "contentId"
+        ]
+      },
+      "PublishResponseDto": {
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "example": "c1e2d3f4-0000-0000-0000-000000000000"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "IN_REVIEW",
+              "CHANGES_REQUESTED",
+              "APPROVED",
+              "REJECTED",
+              "PUBLISHED"
+            ],
+            "example": "PUBLISHED"
+          },
+          "publishedAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-10-30T13:30:00.000Z"
+          },
+          "idMap": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "example": {
+              "new-1": "b7e2d1a9-0000-0000-0000-000000000000"
+            },
+            "description": "Full temp-ID → real-ID map accumulated across this publish. Includes entries for roots created by this session."
+          },
+          "published": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublishedRevisionDto"
+            }
+          }
+        },
+        "required": [
+          "sessionId",
+          "status",
+          "publishedAt",
+          "idMap",
+          "published"
+        ]
+      },
+      "DiscardResponseDto": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "example": "Draft discarded"
+          }
+        },
+        "required": [
+          "message"
+        ]
+      },
+      "RebasedRevisionSummaryDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "a3f2c1d4-0000-0000-0000-000000000000"
+          },
+          "contentType": {
+            "type": "string",
+            "enum": [
+              "CAREER",
+              "PATHWAY",
+              "PATHWAY_STAGE",
+              "PATHWAY_STEP",
+              "PATHWAY_STEP_TASK",
+              "RESOURCE",
+              "SKILL",
+              "OUTLOOK",
+              "SOURCE",
+              "STAGE_QUIZ",
+              "QUIZ_QUESTION"
+            ],
+            "example": "CAREER"
+          },
+          "contentId": {
+            "type": "string",
+            "example": "b7e2d1a9-0000-0000-0000-000000000000",
+            "description": "The content root being changed. For a new career, this is the session's contextId (the DRAFT Career row created at createSession)."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "IN_REVIEW",
+              "CHANGES_REQUESTED",
+              "APPROVED",
+              "REJECTED",
+              "PUBLISHED"
+            ],
+            "example": "DRAFT"
+          },
+          "baseVersion": {
+            "type": "number",
+            "example": 3,
+            "description": "The publish-event version this draft was anchored against. A revision is stale when baseVersion < currentVersion."
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-10-30T12:00:00.000Z"
+          },
+          "wasStale": {
+            "type": "boolean",
+            "example": true,
+            "description": "Whether this revision was stale before the rebase (baseVersion moved)."
+          }
+        },
+        "required": [
+          "id",
+          "contentType",
+          "contentId",
+          "status",
+          "baseVersion",
+          "updatedAt",
+          "wasStale"
+        ]
+      },
+      "RebaseResponseDto": {
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "example": "c1e2d3f4-0000-0000-0000-000000000000"
+          },
+          "rebased": {
+            "type": "boolean",
+            "example": true
+          },
+          "revisions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RebasedRevisionSummaryDto"
+            }
+          }
+        },
+        "required": [
+          "sessionId",
+          "rebased",
+          "revisions"
+        ]
+      },
+      "SessionSnapshotDto": {
+        "type": "object",
+        "properties": {
+          "revisionId": {
+            "type": "string",
+            "example": "a3f2c1d4-0000-0000-0000-000000000000",
+            "description": "The ContentRevision.id this snapshot belongs to."
+          },
+          "contentType": {
+            "type": "string",
+            "enum": [
+              "CAREER",
+              "PATHWAY",
+              "PATHWAY_STAGE",
+              "PATHWAY_STEP",
+              "PATHWAY_STEP_TASK",
+              "RESOURCE",
+              "SKILL",
+              "OUTLOOK",
+              "SOURCE",
+              "STAGE_QUIZ",
+              "QUIZ_QUESTION"
+            ],
+            "example": "CAREER"
+          },
+          "contentId": {
+            "type": "string",
+            "example": "b7e2d1a9-0000-0000-0000-000000000000",
+            "description": "The content root this revision changes. May be a temp ID (`new-<n>`) when the editor created the model in this session."
+          },
+          "snapshot": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "The exact snapshot the editor saved via saveDraft. Shape is defined by the strategy for `contentType`; this DTO does not interpret it."
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string",
+            "example": "2026-10-30T12:00:00.000Z",
+            "description": "Last time this revision was saved."
+          }
+        },
+        "required": [
+          "revisionId",
+          "contentType",
+          "contentId",
+          "snapshot",
+          "updatedAt"
+        ]
+      },
+      "SnapshotResponseDto": {
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string",
+            "example": "c1e2d3f4-0000-0000-0000-000000000000"
+          },
+          "snapshots": {
+            "description": "One entry per revision in the session, ordered by contentType then contentId. Empty when the session has no revisions saved yet.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SessionSnapshotDto"
+            }
+          }
+        },
+        "required": [
+          "sessionId",
+          "snapshots"
         ]
       },
       "StageQuizStatusNotTaken": {

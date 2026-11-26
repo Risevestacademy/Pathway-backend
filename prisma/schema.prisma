@@ -907,6 +907,7 @@ model RevisionSession {
   updatedAt   DateTime       @updatedAt
   submittedAt DateTime?
   publishedAt DateTime?
+  createdCareer Boolean      @default(false)
 
   createdBy User              @relation(fields: [createdById], references: [id])
   revisions ContentRevision[]

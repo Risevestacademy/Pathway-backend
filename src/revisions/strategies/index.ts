@@ -1,4 +1,4 @@
-import { registerStrategy } from './registry';
+import { registerStrategy } from '../envelope/registry';
 import { CareerRevisionStrategy } from './career/career.strategy';
 
 /**

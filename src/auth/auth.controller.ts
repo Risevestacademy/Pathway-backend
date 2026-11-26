@@ -415,6 +415,7 @@ export class AuthController {
     await this.authService.confirmPasswordResetOtp(dto);
   }
 
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Get the signed-in user' })
   @ApiResponse({ status: 200, type: UserResponseDto })
   @ApiResponse({

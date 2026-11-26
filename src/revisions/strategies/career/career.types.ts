@@ -1,12 +1,16 @@
+// ─────────────────────────────────────────────────────────────────────
+//
+// Per README §"Aggregate boundaries" and ADR-7, the career aggregate owns
+// ONLY career-level fields plus its own skill link-set. Pathway is its own
+// content root (its strategy is a later ticket). Steps, resources, and
+// outlook are likewise their own roots.
+// ─────────────────────────────────────────────────────────────────────
+
 import type {
-  Demand,
-  OutlookType,
-  ResourceCostStatus,
-  ResourceType,
   SkillImportance,
   TargetLevel,
 } from '../../../generated/prisma/client';
-import type { PlanOperation, PlanBlocker } from '../../strategy.types';
+import type { PlanOperation, PlanBlocker } from '../../envelope/strategy.types';
 
 // ─────────────────────────────────────────────────────────────────────
 // Snapshot schema version
@@ -30,121 +34,20 @@ export type CareerSnapshotCareer = {
   certificationsNote: string | null;
 };
 
-export type CareerSnapshotOutlook = {
-  id: string;
-  type: OutlookType;
-  geography: string;
-  period: string;
-  sourceId: string | null;
-  median: string | null;
-  percentile25: string | null;
-  percentile75: string | null;
-  currency: string | null;
-  payPeriod: string | null;
-  grossOrNet: string | null;
-  experienceLevel: string | null;
-  baseYear: number | null;
-  baseValue: number | null;
-  projectedYear: number | null;
-  projectedValue: number | null;
-  growthPercent: string | null;
-  demandLevel: Demand | null;
-};
-
 export type CareerSnapshotSkill = {
   skillId: string;
   importance: SkillImportance;
 };
 
-export type CareerSnapshotPathway = {
-  title: string;
-  description: string | null;
-};
-
-export type CareerSnapshotStep = {
-  id: string;
-  order: number;
-  title: string;
-  description: string | null;
-  learningObjective: string;
-  prerequisites: string | null;
-  expectedActivity: string;
-  skillIds: string[];
-  resourceIds: string[];
-};
-
-export type CareerSnapshotResource = {
-  id: string;
-  title: string;
-  description: string | null;
-  url: string;
-  type: ResourceType;
-  provider: string;
-  costStatus: ResourceCostStatus;
-  certificationCost: string | null;
-  curationRationale: string;
-  lastCheckedDate: string;
-};
-
 export type CareerSnapshot = {
   schemaVersion: typeof CAREER_SNAPSHOT_SCHEMA_VERSION;
   career: CareerSnapshotCareer;
-  pathway: CareerSnapshotPathway | null;
-  steps: CareerSnapshotStep[];
   skills: CareerSnapshotSkill[];
-  outlook: CareerSnapshotOutlook[];
-  resources: CareerSnapshotResource[];
 };
 
 // ─────────────────────────────────────────────────────────────────────
 // Live-shape types (subset of Prisma's Career + relations)
 // ─────────────────────────────────────────────────────────────────────
-
-export interface LiveOutlook {
-  id: string;
-  type: string;
-  geography: string;
-  period: string;
-  sourceId: string | null;
-  median: { toString(): string } | null;
-  percentile25: { toString(): string } | null;
-  percentile75: { toString(): string } | null;
-  currency: string | null;
-  payPeriod: string | null;
-  grossOrNet: string | null;
-  experienceLevel: string | null;
-  baseYear: number | null;
-  baseValue: number | null;
-  projectedYear: number | null;
-  projectedValue: number | null;
-  growthPercent: { toString(): string } | null;
-  demandLevel: string | null;
-}
-
-export interface LiveStep {
-  id: string;
-  order: number;
-  title: string;
-  description: string | null;
-  learningObjective: string;
-  prerequisites: string | null;
-  expectedActivity: string;
-  skills: { skillId: string }[];
-  resources: { resourceId: string }[];
-}
-
-export interface LiveResource {
-  id: string;
-  title: string;
-  description: string | null;
-  url: string;
-  type: string;
-  provider: string;
-  costStatus: string;
-  certificationCost: { toString(): string } | null;
-  curationRationale: string;
-  lastCheckedDate: Date;
-}
 
 export interface LiveCareerForPlan {
   id: string;
@@ -159,10 +62,6 @@ export interface LiveCareerForPlan {
   typicalEducationNote: string | null;
   certificationsNote: string | null;
   skills: { skillId: string; importance: string }[];
-  outlook: LiveOutlook[];
-  pathway: { id: string; title: string; description: string | null } | null;
-  steps: LiveStep[];
-  resources: LiveResource[];
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -173,7 +72,6 @@ export interface CareerPlanInput {
   liveCareer: LiveCareerForPlan;
   snapshot: CareerSnapshot;
   baseVersion: number;
-  stepLearnerCounts?: Record<string, number>;
 }
 
 // Re-export the envelope's plan types so callers can import from here

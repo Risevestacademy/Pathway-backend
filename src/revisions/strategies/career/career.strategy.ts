@@ -1,3 +1,11 @@
+// ─────────────────────────────────────────────────────────────────────
+// Phase A amendment (T0.5): the career strategy owns exactly one root
+// (`CAREER`) plus its `CareerSkill` link-set. No temp IDs (no creates in
+// this strategy), no nested roots touched. `applyCareerPlan` no longer
+// takes `live` (nothing in the apply re-reads the live shape), so the
+// call site drops it.
+// ─────────────────────────────────────────────────────────────────────
+
 import type { Prisma } from '../../../generated/prisma/client';
 import type {
   ApplyResult,
@@ -7,8 +15,8 @@ import type {
   RevisionStrategy,
   SectionChanges,
   TempIdField,
-} from '../../strategy.types';
-import { isRevisionStale } from '../../strategy.types';
+} from '../../envelope/strategy.types';
+import { isRevisionStale } from '../../envelope/strategy.types';
 import type { CareerSnapshot, LiveCareerForPlan } from './career.types';
 import { buildCareerPlan } from './career.plan';
 import { findSnapshotProblems } from './career.consistency';
@@ -20,22 +28,11 @@ import { CAREER_STRATEGY_FIELD_LABELS } from './career.config';
 /**
  * The career revision strategy.
  *
- * This is the reference implementation for every other strategy. It:
- *   - owns one content root (`CAREER`),
- *   - declares its temp-ID paths,
- *   - delegates to the config-driven plan builder, the consistency validator,
- *     the moved apply/live functions, and the adapter over the old diff
- *     formatter.
- *
- * The class holds a `PrismaService` for two reasons: `loadLive`/`lock`/`apply`
- * receive a `tx` from the caller and don't need it, but the `CareerDiffAdapter`
- * (which wraps the old `ReviewerDiffFormatter`) does, and the adapter's
- * constructor takes a `PrismaService`. Passing it through the strategy keeps
- * the adapter's dependency explicit.
- *
- * Tests: this class's behaviour is proven by the existing plan/apply/consistency
- * tests (which now go through the strategy's methods) and, from T0.5, by
- * `runStrategyConformanceTests`.
+ * This is the reference implementation for every other strategy. It owns
+ * one content root (`CAREER`) plus its `CareerSkill` link-set, declares no
+ * temp-ID paths (it creates no rows), and delegates to the config-driven
+ * plan builder, the consistency validator, the apply function, the live
+ * loader, and the diff renderer.
  */
 export class CareerRevisionStrategy implements RevisionStrategy<CareerSnapshot> {
   readonly contentType = 'CAREER' as const;
@@ -44,22 +41,13 @@ export class CareerRevisionStrategy implements RevisionStrategy<CareerSnapshot> 
   readonly fieldLabels = CAREER_STRATEGY_FIELD_LABELS;
 
   /**
-   * Paths in `CareerSnapshot` where a `new-*` ID can appear.
-   *
-   * - `resources[].id` — a new resource created in this session.
-   * - `steps[].id` — a new step created in this session.
-   * - `steps[].resourceIds[]` — a step referencing a new resource.
-   * - `outlook[].id` — a new outlook row created in this session.
-   *
-   * NOTE: `steps[].skillIds[]` is NOT a temp-ID path: skills are real rows,
-   * never created in a career session. `career.fieldId` is a real `Field` row.
+   * No temp-ID paths. A career snapshot contains only real IDs:
+   * `career.fieldId` is a real `Field` row, and `skills[].skillId` is a
+   * real `Skill` row (skills are created via the SKILL strategy, not in a
+   * career session). The career strategy creates no rows, so it can never
+   * introduce a `new-*` ID.
    */
-  readonly tempIdFields: readonly TempIdField[] = [
-    { path: 'resources[].id', kind: 'scalar' },
-    { path: 'steps[].id', kind: 'scalar' },
-    { path: 'steps[].resourceIds[]', kind: 'array' },
-    { path: 'outlook[].id', kind: 'scalar' },
-  ];
+  readonly tempIdFields: readonly TempIdField[] = [];
 
   validate(snapshot: CareerSnapshot): string[] {
     return findSnapshotProblems(snapshot);
@@ -81,11 +69,12 @@ export class CareerRevisionStrategy implements RevisionStrategy<CareerSnapshot> 
     snapshot: CareerSnapshot,
     baseVersion: number,
   ): RevisionPlan {
-    // A career revision always has a live career to plan against — the career
-    // itself exists even when the editor is creating it (the session's
-    // contextId is a pre-allocated UUID, and the row exists as DRAFT). The
-    // only case where `live` is null is a bug: the session service must have
-    // created the career before opening the session. Guard loudly.
+    // A career revision always has a live career to plan against — the
+    // career itself exists even when the editor is creating it (the
+    // session's contextId is a pre-allocated UUID, and the row exists as
+    // DRAFT). The only case where `live` is null is a bug: the session
+    // service must have created the career before opening a session
+    // against it. Guard loudly.
     if (!live) {
       throw new Error(
         'CareerRevisionStrategy.plan: live career is null. The session ' +
@@ -110,25 +99,18 @@ export class CareerRevisionStrategy implements RevisionStrategy<CareerSnapshot> 
   async diff(
     plan: RevisionPlan,
     snapshot: CareerSnapshot,
-    ctx: DiffContext,
+    _ctx: DiffContext,
   ): Promise<SectionChanges[]> {
-    return careerDiffSections(
-      ctx.revisionId,
-      plan,
-      snapshot,
-      ctx.baseVersion,
-      ctx.liveVersion,
-      ctx.prisma,
-    );
+    return careerDiffSections(plan, snapshot);
   }
 
   async apply(
     tx: Prisma.TransactionClient,
     plan: RevisionPlan,
-    live: LiveCareerForPlan | null,
+    _live: LiveCareerForPlan | null,
     contentId: string,
   ): Promise<ApplyResult> {
-    return applyCareerPlan(tx, plan, live, contentId);
+    return applyCareerPlan(tx, plan, contentId);
   }
 
   isStale(baseVersion: number, currentVersion: number): boolean {
@@ -136,11 +118,9 @@ export class CareerRevisionStrategy implements RevisionStrategy<CareerSnapshot> 
   }
 
   titleFor(entity: unknown): string {
-    // A career snapshot-shaped entity has a `.career.title`; a step/outlook/
-    // resource snapshot-shaped entity has a `.title`. The diff renderer only
-    // calls `titleFor` with the operation's `before`/`after`, which for
-    // career-level operations is the full `CareerSnapshot` (has `.career`),
-    // and for nested entities is the entity itself (has `.title`).
+    // A career snapshot-shaped entity has a `.career.title`; an entity-
+    // shaped snapshot (e.g. a future pathway or outlook snapshot) has a
+    // `.title`. Anything else falls back to 'Unknown'.
     if (!entity || typeof entity !== 'object') return 'Unknown';
     const obj = entity as Record<string, unknown>;
     if (typeof obj.career === 'object' && obj.career !== null) {
@@ -151,7 +131,10 @@ export class CareerRevisionStrategy implements RevisionStrategy<CareerSnapshot> 
     return 'Unknown';
   }
 
-  nestedRootsTouched(): ContentRef[] {
+  nestedRootsTouched(_plan: RevisionPlan): ContentRef[] {
+    // The career strategy owns exactly one root (`CAREER`). When the career
+    // plan publishes, its own publish event bumps the CAREER version — the
+    // strategy does not need to declare any nested root.
     return [];
   }
 }

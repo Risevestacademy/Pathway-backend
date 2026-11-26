@@ -1,4 +1,4 @@
-import type { ContentType, RevisionStrategy } from '../strategy.types';
+import type { ContentType, RevisionStrategy } from '../envelope/strategy.types';
 
 /**
  * The registry of content types that have a strategy.
