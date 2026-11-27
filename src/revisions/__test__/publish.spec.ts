@@ -132,6 +132,81 @@ describe('PublishingService › publish', () => {
     expect(txMock.contentRevisionPublishEvent.create).not.toHaveBeenCalled();
   });
 
+  it('rolls back the transaction when a later revision is blocked', async () => {
+    const { service, txMock, prismaMock, fakeCareerStrategy } = ctx();
+    lockTo(txMock, approvedSession);
+    seedRevisions(txMock, [
+      {
+        id: 'rev-1',
+        contentType: 'CAREER',
+        contentId: 'career-1',
+        baseVersion: 0,
+        snapshot: {},
+      },
+      {
+        id: 'rev-2',
+        contentType: 'CAREER',
+        contentId: 'career-2',
+        baseVersion: 0,
+        snapshot: {},
+      },
+    ]);
+    txMock.contentRevisionPublishEvent.count.mockResolvedValue(0);
+    m(fakeCareerStrategy.plan)
+      .mockReturnValueOnce({
+        operations: [],
+        blockers: [],
+        advisories: [],
+        stale: false,
+      })
+      .mockReturnValueOnce({
+        operations: [],
+        blockers: [{ code: 'NOT_FOUND', message: 'x', section: 'career' }],
+        advisories: [],
+        stale: false,
+      });
+
+    const error = await service
+      .publish('session-1', { id: 'actor-1', role: Role.EDITOR })
+      .catch((e: unknown) => e);
+
+    expect(error).toMatchObject({
+      code: 'PLAN_BLOCKED',
+      details: { blockers: [{ code: 'NOT_FOUND' }] },
+    });
+    expect(fakeCareerStrategy.apply).toHaveBeenCalledTimes(1);
+    await expect(
+      prismaMock.$transaction.mock.results[0].value,
+    ).rejects.toMatchObject({ code: 'PLAN_BLOCKED' });
+  });
+
+  it('locks every revision root before reading versions or live rows', async () => {
+    const { service, txMock, fakeCareerStrategy } = ctx();
+    lockTo(txMock, approvedSession);
+    seedRevisions(txMock, [
+      {
+        id: 'rev-1',
+        contentType: 'CAREER',
+        contentId: 'career-1',
+        baseVersion: 0,
+        snapshot: {},
+      },
+    ]);
+    txMock.contentRevisionPublishEvent.count.mockResolvedValue(0);
+    txMock.revisionSession.update.mockResolvedValue(approvedSession);
+
+    await service.publish('session-1', { id: 'actor-1', role: Role.EDITOR });
+
+    const lockOrder = m(fakeCareerStrategy.lock).mock.invocationCallOrder[0];
+    expect(fakeCareerStrategy.lock).toHaveBeenCalledWith(txMock, 'career-1');
+    expect(lockOrder).toBeLessThan(
+      txMock.contentRevisionPublishEvent.count.mock.invocationCallOrder[0],
+    );
+    expect(lockOrder).toBeLessThan(
+      m(fakeCareerStrategy.loadLive).mock.invocationCallOrder[0],
+    );
+  });
+
   it('returns INVALID_SESSION_STATE when the session is not APPROVED', async () => {
     const { service, txMock } = ctx();
     lockTo(txMock, sessionRow({ status: RevisionStatus.DRAFT }));
