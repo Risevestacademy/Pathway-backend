@@ -158,6 +158,6 @@ makes any open revision against that root stale on submit and publish.
 
 ## Migration status
 
-This module serves `CAREER`, `RESOURCE` and `SKILL`. The old module at
+This module serves `CAREER`, `RESOURCE`, `SKILL`, `SOURCE` and `OUTLOOK`. The old module at
 `src/catalog/content-revisions/` is deprecated and will be deleted once the new
 system has been exercised in a real workflow. See its `DEPRECATED.md`.
