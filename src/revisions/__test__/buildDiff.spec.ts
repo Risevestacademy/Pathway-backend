@@ -148,4 +148,37 @@ describe('PublishingService › buildDiff', () => {
     // submittedBy is null when both name parts are absent.
     expect(result.submittedBy).toBeNull();
   });
+
+  it("plans each revision with its session's career", async () => {
+    const { service, txMock, prismaMock, fakeCareerStrategy } = ctx();
+    txMock.revisionSession.findUnique.mockResolvedValue(inReviewSession);
+    txMock.contentRevision.findMany.mockResolvedValue([
+      {
+        id: 'rev-1',
+        contentType: 'CAREER',
+        contentId: 'career-1',
+        baseVersion: 0,
+        snapshot: { title: 'x' },
+        careerId: 'career-1',
+        createdBy: { profile: { firstName: null, lastName: null } },
+      },
+    ]);
+    txMock.contentRevisionPublishEvent.count.mockResolvedValue(0);
+    m(fakeCareerStrategy.diff).mockResolvedValue([]);
+    prismaMock.revisionSession.findUniqueOrThrow.mockResolvedValue({
+      createdById: 'creator-1',
+    });
+
+    await service.buildDiff('session-1', {
+      id: 'creator-1',
+      role: Role.EDITOR,
+    });
+
+    expect(fakeCareerStrategy.plan).toHaveBeenCalledWith(
+      null,
+      { title: 'x' },
+      0,
+      { careerId: 'career-1' },
+    );
+  });
 });
