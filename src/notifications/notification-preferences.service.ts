@@ -36,20 +36,24 @@ export class NotificationPreferencesService {
     patch: Partial<ChannelPreference>,
     tx: PreferenceClient = this.prisma,
   ): Promise<ChannelPreference> {
+    const changes: Partial<ChannelPreference> = Object.fromEntries(
+      Object.entries(patch).filter(([, enabled]) => enabled !== undefined),
+    );
+
     const preference = await tx.notificationPreference.upsert({
       where: { userId_category: { userId, category } },
       create: {
         userId,
         category,
         ...NOTIFICATION_CATEGORY_DEFAULTS[category],
-        ...patch,
+        ...changes,
       },
-      update: patch,
+      update: changes,
       select: { inAppEnabled: true, emailEnabled: true },
     });
 
     this.logger.log(
-      { userId, category, channels: Object.keys(patch) },
+      { userId, category, channels: Object.keys(changes) },
       'Notification preference updated',
     );
 
