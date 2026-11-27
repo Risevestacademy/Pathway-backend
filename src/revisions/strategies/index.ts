@@ -6,6 +6,7 @@ import { PathwayStageRevisionStrategy } from './pathway-stage/pathway-stage.stra
 import { ResourceRevisionStrategy } from './resource/resource.strategy';
 import { SkillRevisionStrategy } from './skill/skill.strategy';
 import { SourceRevisionStrategy } from './source/source.strategy';
+import { PathwayStepRevisionStrategy } from './pathway-step/pathway-step.strategy';
 
 /**
  * Register every strategy. Called by the module bootstrap provider.
@@ -33,4 +34,5 @@ export function registerStrategies(): void {
   registerStrategy(new OutlookRevisionStrategy());
   registerStrategy(new PathwayRevisionStrategy());
   registerStrategy(new PathwayStageRevisionStrategy());
+  registerStrategy(new PathwayStepRevisionStrategy());
 }
