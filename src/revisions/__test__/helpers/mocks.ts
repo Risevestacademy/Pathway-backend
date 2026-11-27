@@ -73,6 +73,10 @@ export const makeTxMock = () => ({
     findUnique: jest.fn(),
     update: jest.fn(),
   },
+  pathwayStage: {
+    findUnique: jest.fn(),
+    update: jest.fn(),
+  },
   // ────────────────────────────────────────────────────────────────────
   review: { create: jest.fn() },
 });
