@@ -1,3 +1,4 @@
+import { Prisma } from '../../generated/prisma/client';
 import type { PlanOperation } from './strategy.types';
 
 /**
@@ -28,7 +29,13 @@ import type { PlanOperation } from './strategy.types';
  * check; the two agree because they read the same config.
  */
 export type FieldKind =
-  'scalar' | 'array' | 'decimal' | 'move' | 'link-set' | 'temp-link-set';
+  | 'scalar'
+  | 'array'
+  | 'decimal'
+  | 'date'
+  | 'move'
+  | 'link-set'
+  | 'temp-link-set';
 
 export interface FieldConfigEntry {
   field: string;
@@ -43,6 +50,9 @@ export interface FieldConfigEntry {
    */
   linkLive?: string;
   linkSnapshot?: string;
+  scale?: number;
+  precision?: number;
+  valueType?: 'string' | 'int' | readonly string[];
 }
 
 // `PlanSection` is imported below with the type import to keep the config
@@ -58,10 +68,42 @@ import type { PlanSection } from './strategy.types';
  * `Decimal` objects for numeric columns; the snapshot side has strings.
  * Both sides normalise to a string (or null). Non-object values pass through.
  */
-export const normalizeDecimal = (v: unknown): unknown =>
-  v && typeof v === 'object' && 'toString' in v
+const parseDecimal = (v: unknown): Prisma.Decimal | null => {
+  if (Prisma.Decimal.isDecimal(v)) return v;
+  if (typeof v === 'number' && Number.isFinite(v)) {
+    return new Prisma.Decimal(v);
+  }
+  if (typeof v === 'string' && v.trim() !== '') {
+    try {
+      const parsed = new Prisma.Decimal(v.trim());
+      return parsed.isFinite() ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+};
+
+export const normalizeDecimal = (v: unknown, scale?: number): unknown => {
+  const parsed = parseDecimal(v);
+  if (parsed) {
+    return (
+      scale === undefined ? parsed : parsed.toDecimalPlaces(scale)
+    ).toString();
+  }
+  return v && typeof v === 'object' && 'toString' in v
     ? (v as { toString(): string }).toString()
     : v;
+};
+
+export const normalizeDate = (v: unknown): unknown => {
+  if (v instanceof Date) return v.toISOString();
+  if (typeof v === 'string') {
+    const parsed = new Date(v);
+    return Number.isNaN(parsed.getTime()) ? v : parsed.toISOString();
+  }
+  return v;
+};
 
 export const arraysEqual = (a: unknown[], b: unknown[]): boolean =>
   a.length === b.length && a.every((v, i) => v === b[i]);
@@ -99,13 +141,19 @@ export function compareFields(
 
     const before = readField(live, entry.field);
     const after = readField(snapshot, entry.field);
+    if (after === undefined) continue;
 
     const equal =
       entry.kind === 'array'
-        ? arraysEqual(before as unknown[], after as unknown[])
+        ? Array.isArray(before) && Array.isArray(after)
+          ? arraysEqual(before, after)
+          : before === after
         : entry.kind === 'decimal'
-          ? normalizeDecimal(before) === normalizeDecimal(after)
-          : before === after;
+          ? normalizeDecimal(before, entry.scale) ===
+            normalizeDecimal(after, entry.scale)
+          : entry.kind === 'date'
+            ? normalizeDate(before) === normalizeDate(after)
+            : before === after;
 
     if (!equal) {
       operations.push({
@@ -225,4 +273,113 @@ export function labelsFrom(
     for (const entry of config) out[entry.field] = entry.label;
   }
   return out;
+}
+
+export function missingRequiredFields(
+  config: readonly FieldConfigEntry[],
+  source: unknown,
+): FieldConfigEntry[] {
+  return config.filter((entry) => {
+    if (!entry.required) return false;
+    const value = readField(source, entry.field);
+    return value === null || value === undefined || value === '';
+  });
+}
+
+const ISO_DATE_TIME =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
+
+const INT4_MIN = -2147483648;
+const INT4_MAX = 2147483647;
+
+function isCalendarDateTime(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  const match = ISO_DATE_TIME.exec(value);
+  if (!match) return false;
+  const [year, month, day, hour, minute, second] = match
+    .slice(1, 7)
+    .map(Number);
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return (
+    month >= 1 &&
+    month <= 12 &&
+    day >= 1 &&
+    day <= daysInMonth &&
+    hour <= 23 &&
+    minute <= 59 &&
+    second <= 59 &&
+    !Number.isNaN(new Date(value).getTime())
+  );
+}
+
+function decimalRangeProblem(
+  value: Prisma.Decimal,
+  precision: number,
+  scale: number,
+): string | null {
+  const nines = (count: number) => '9'.repeat(count);
+  const max =
+    scale > 0
+      ? `${nines(precision - scale)}.${nines(scale)}`
+      : nines(precision);
+  if (value.toDecimalPlaces(scale).abs().lte(max)) return null;
+  return `must be between -${max} and ${max}`;
+}
+
+function typeProblem(entry: FieldConfigEntry, value: unknown): string | null {
+  switch (entry.kind) {
+    case 'decimal': {
+      const parsed = parseDecimal(value);
+      if (!parsed) return 'must be a decimal number';
+      return entry.precision === undefined
+        ? null
+        : decimalRangeProblem(parsed, entry.precision, entry.scale ?? 0);
+    }
+    case 'date':
+      return isCalendarDateTime(value) ? null : 'must be an ISO 8601 date-time';
+    case 'array':
+      return Array.isArray(value) &&
+        value.every((item) => typeof item === 'string')
+        ? null
+        : 'must be a list of strings';
+    case 'scalar':
+      if (entry.valueType === 'string') {
+        return typeof value === 'string' ? null : 'must be a string';
+      }
+      if (entry.valueType === 'int') {
+        if (!Number.isInteger(value)) return 'must be an integer';
+        return (value as number) >= INT4_MIN && (value as number) <= INT4_MAX
+          ? null
+          : `must be between ${INT4_MIN} and ${INT4_MAX}`;
+      }
+      if (Array.isArray(entry.valueType)) {
+        return entry.valueType.includes(value as string)
+          ? null
+          : `must be one of ${entry.valueType.join(', ')}`;
+      }
+      return null;
+    default:
+      return null;
+  }
+}
+
+export function findFieldProblems(
+  config: readonly FieldConfigEntry[],
+  snapshot: unknown,
+): string[] {
+  const missing = new Set(
+    missingRequiredFields(config, snapshot).map((entry) => entry.field),
+  );
+  const problems: string[] = [];
+  for (const entry of config) {
+    if (missing.has(entry.field)) {
+      problems.push(`${entry.field}: required`);
+      continue;
+    }
+    const value = readField(snapshot, entry.field);
+    if (value === undefined || value === null) continue;
+    const problem = typeProblem(entry, value);
+    if (problem) problems.push(`${entry.field}: ${problem}`);
+  }
+  return problems;
 }
