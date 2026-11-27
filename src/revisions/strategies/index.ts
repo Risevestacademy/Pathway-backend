@@ -1,10 +1,11 @@
 import { registerStrategy } from '../envelope/registry';
 import { CareerRevisionStrategy } from './career/career.strategy';
 import { OutlookRevisionStrategy } from './outlook/outlook.strategy';
+import { PathwayRevisionStrategy } from './pathway/pathway.strategy';
+import { PathwayStageRevisionStrategy } from './pathway-stage/pathway-stage.strategy';
 import { ResourceRevisionStrategy } from './resource/resource.strategy';
 import { SkillRevisionStrategy } from './skill/skill.strategy';
 import { SourceRevisionStrategy } from './source/source.strategy';
-import { PathwayRevisionStrategy } from './pathway/pathway.strategy';
 
 /**
  * Register every strategy. Called by the module bootstrap provider.
@@ -31,4 +32,5 @@ export function registerStrategies(): void {
   registerStrategy(new SourceRevisionStrategy());
   registerStrategy(new OutlookRevisionStrategy());
   registerStrategy(new PathwayRevisionStrategy());
+  registerStrategy(new PathwayStageRevisionStrategy());
 }
