@@ -166,6 +166,10 @@ export interface PlanAdvisory {
   entityId?: string;
 }
 
+export interface PlanContext {
+  careerId: string;
+}
+
 /**
  * The output of `plan`. `stale` is set by the strategy from its own staleness
  * rule; the envelope re-checks staleness at submit/publish using
@@ -325,6 +329,7 @@ export interface RevisionStrategy<TSnapshot = unknown> {
     live: unknown | null,
     snapshot: TSnapshot,
     baseVersion: number,
+    context?: PlanContext,
   ): RevisionPlan;
 
   /**

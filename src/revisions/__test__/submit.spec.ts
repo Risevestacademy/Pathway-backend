@@ -33,6 +33,7 @@ describe('PublishingService › submit', () => {
       contentId: string;
       baseVersion: number;
       snapshot: unknown;
+      careerId?: string;
     }>,
   ) => {
     txMock.contentRevision.findMany.mockResolvedValue(rows);
@@ -75,6 +76,32 @@ describe('PublishingService › submit', () => {
     expect(txMock.revisionSession.update).not.toHaveBeenCalled();
     expect(txMock.contentRevision.updateMany).not.toHaveBeenCalled();
     expect(analyticsMock.capture).not.toHaveBeenCalled();
+  });
+
+  it("plans each revision with its session's career", async () => {
+    const { service, txMock, fakeCareerStrategy } = ctx();
+    lockTo(txMock, draftSession);
+    seedRevisions(txMock, [
+      {
+        id: 'rev-1',
+        contentType: 'CAREER',
+        contentId: 'career-1',
+        baseVersion: 0,
+        snapshot: { title: 'x' },
+        careerId: 'career-1',
+      },
+    ]);
+
+    await service
+      .submit('session-1', { id: 'user-1', role: Role.EDITOR })
+      .catch(() => undefined);
+
+    expect(fakeCareerStrategy.plan).toHaveBeenCalledWith(
+      null,
+      { title: 'x' },
+      0,
+      { careerId: 'career-1' },
+    );
   });
 
   it('returns PLAN_BLOCKED with per-revision blockers and writes nothing', async () => {
